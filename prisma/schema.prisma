@@ -1,0 +1,530 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  GUEST
+  PARENT
+  COACH
+  ADMIN
+}
+
+enum CoachType {
+  INDIVIDUAL
+  INSTITUTE
+}
+
+enum SubscriptionPlan {
+  FREE
+  STANDARD
+  PREMIUM
+}
+
+enum SafetyGrade {
+  GRADE_A_PLUS
+  GRADE_A
+  GRADE_B
+  PENDING_AUDIT
+}
+
+enum KycStatus {
+  PENDING
+  DOCS_REVIEW
+  INSPECTION_SCHEDULED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  REFERRED_BACK
+}
+
+enum PassType {
+  FREE_TRIAL
+  MONTHLY_BATCH
+  TOURNAMENT_ENTRY
+}
+
+enum EscrowStatus {
+  HELD
+  RELEASED_TO_COACH
+  REFUNDED_TO_PARENT
+  DISPUTED
+}
+
+enum TicketCategory {
+  TRIAL_PASS
+  RESCHEDULE
+  TOURNAMENT
+  REFUND
+  SAFETY
+  COACH_KYC
+}
+
+model User {
+  id             String          @id @default(cuid())
+  phone          String          @unique
+  email          String?         @unique
+  passwordHash   String?
+  role           Role            @default(PARENT)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  parentProfile  ParentProfile?
+  coachingCentre CoachingCentre?
+  tickets        SupportTicket[]
+  notifications  Notification[]
+  reviews        Review[]
+  inspections    KycInspection[] @relation("InspectorRelation")
+
+  @@index([phone, role])
+}
+
+model ParentProfile {
+  id                    String         @id @default(cuid())
+  userId                String         @unique
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName              String
+  locality              String
+  city                  String         @default("Agra")
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  isSuspended           Boolean        @default(false)
+  notes                 String?
+  children              ChildProfile[]
+  bookings              Booking[]
+  savedCentres          SavedCentre[]
+}
+
+model ChildProfile {
+  id              String         @id @default(cuid())
+  parentId        String
+  parent          ParentProfile  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  fullName        String
+  age             Int
+  grade           String?
+  interests       String[]
+  bookings        Booking[]
+  attendances     Attendance[]
+}
+
+model CoachingCentre {
+  id                  String           @id @default(cuid())
+  ownerUserId         String           @unique
+  owner               User             @relation(fields: [ownerUserId], references: [id])
+  name                String
+  tagline             String
+  category            String           // sports, brain-booster, arts, martial-arts
+  locality            String
+  address             String
+  phone               String
+  rating              Decimal          @default(5.0) @db.Decimal(3, 2)
+  reviewsCount        Int              @default(0)
+  monthlyTuitionFee   Decimal          @db.Decimal(10, 2)
+  trialFee            Decimal          @default(0.00) @db.Decimal(10, 2)
+  eligibleAgeGroup    String
+  headCoachName       String
+  headCoachBio        String
+  coachesCount        Int              @default(1)
+  studentCoachRatio   String
+  latitude            Float?
+  longitude           Float?
+  safetyGrade         SafetyGrade      @default(PENDING_AUDIT)
+  kycStatus           KycStatus        @default(PENDING)
+  coachType           CoachType        @default(INDIVIDUAL)
+  planTier            SubscriptionPlan @default(FREE)
+  planPaymentId       String?          // e.g. "pay_xxxx" or "razorpay_order_xxxx"
+  planPurchasedAt     DateTime?
+  planExpiresAt       DateTime?
+  planBillingCycle    String?          // "monthly" | "annual"
+  isTopInArea         Boolean          @default(false)
+  isVerifiedBatch     Boolean          @default(false)
+  rejectionReason     String?
+  referredBackRemarks String?
+  statusNotes         String?
+  isSuspended         Boolean          @default(false)
+  isActive            Boolean          @default(true)
+  cctvMonitored       Boolean          @default(false)
+  nisCertified        Boolean          @default(false)
+  policeVerifiedStaff Boolean          @default(false)
+  firstAidAvailable   Boolean          @default(false)
+  
+  facilities          Facility[]
+  batches             Batch[]
+  reviews             Review[]
+  leads               Lead[]
+  inspections         KycInspection[]
+  bookings            Booking[]
+  paymentTransactions PaymentTransaction[]
+  offerings           AcademyOffering[]
+
+  @@index([locality, category, safetyGrade])
+}
+
+model Facility {
+  id               String         @id @default(cuid())
+  coachingCentreId String
+  centre           CoachingCentre @relation(fields: [coachingCentreId], references: [id], onDelete: Cascade)
+  description      String
+}
+
+model Batch {
+  id               String         @id @default(cuid())
+  coachingCentreId String
+  centre           CoachingCentre @relation(fields: [coachingCentreId], references: [id], onDelete: Cascade)
+  name             String
+  schedule         String         // e.g. "Mon, Wed, Fri • 4:00 PM - 5:15 PM"
+  ageGroup         String
+  totalSeats       Int
+  seatsFilled      Int            @default(0)
+  monthlyFee       Decimal        @db.Decimal(10, 2)
+  batchType        String         @default("REGULAR")
+  isAdmissionsOpen Boolean        @default(true)
+  bookings         Booking[]
+  attendances      Attendance[]
+}
+
+model Competition {
+  id             String          @id @default(cuid())
+  title          String
+  sport          String
+  category       String
+  organizer      String
+  dates          String
+  timing         String
+  venue          String
+  locality       String
+  registrationFee Decimal        @db.Decimal(10, 2)
+  ageDivisions   String
+  prizePool      String
+  equipmentRules String
+  reportingRules String
+  matchFormat    String
+  umpiringRules  String
+  rulebookPdfUrl String?
+  bookings       Booking[]
+
+  @@index([locality, category])
+}
+
+model Booking {
+  id               String          @id @default(cuid())
+  passId           String          @unique // e.g. TRL-AGRA-4012, KUC-SES-9912, KUC-AGRA-2026-8819
+  passType         PassType
+  parentId         String
+  parent           ParentProfile   @relation(fields: [parentId], references: [id])
+  childId          String
+  child            ChildProfile    @relation(fields: [childId], references: [id])
+  coachingCentreId String?
+  centre           CoachingCentre? @relation(fields: [coachingCentreId], references: [id])
+  batchId          String?
+  batch            Batch?          @relation(fields: [batchId], references: [id])
+  competitionId    String?
+  competition      Competition?    @relation(fields: [competitionId], references: [id])
+  scheduledAt      DateTime?
+  grossAmount      Decimal         @db.Decimal(10, 2)
+  creditApplied    Decimal         @default(0.00) @db.Decimal(10, 2)
+  netAmountPaid    Decimal         @db.Decimal(10, 2)
+  escrowStatus     EscrowStatus    @default(HELD)
+  bookingStatus    String          @default("CONFIRMED")
+  isCheckedIn      Boolean         @default(false)
+  checkedInAt      DateTime?
+  createdAt        DateTime        @default(now())
+
+  attendances      Attendance[]
+  @@index([passId, escrowStatus])
+}
+
+model Attendance {
+  id           String       @id @default(cuid())
+  bookingId    String
+  booking      Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  batchId      String
+  batch        Batch        @relation(fields: [batchId], references: [id])
+  childId      String
+  child        ChildProfile @relation(fields: [childId], references: [id])
+  date         DateTime     @default(now())
+  isPresent    Boolean      @default(true)
+}
+
+model Review {
+  id                   String         @id @default(cuid())
+  coachingCentreId     String
+  centre               CoachingCentre @relation(fields: [coachingCentreId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User           @relation(fields: [userId], references: [id])
+  rating               Int            // 1 to 5
+  comment              String?        // optional message
+  images               String[]       @default([]) // optional image URLs uploaded by parent
+  parentName           String?
+  parentPhone          String?
+  childName            String?
+  batchName            String?
+  isVerifiedEnrollment Boolean        @default(true)
+  status               String         @default("APPROVED") // APPROVED, FLAGGED, HIDDEN
+  coachReply           String?
+  repliedAt            DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @default(now()) @updatedAt
+
+  @@index([coachingCentreId, status])
+  @@index([userId])
+}
+
+model PlatformReview {
+  id         String   @id @default(cuid())
+  name       String
+  location   String
+  childInfo  String
+  discipline String
+  quote      String
+  rating     Int      @default(5)
+  avatarBg   String   @default("bg-emerald-600")
+  initials   String   @default("PS")
+  order      Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+}
+
+model Lead {
+  id               String         @id @default(cuid())
+  coachingCentreId String
+  centre           CoachingCentre @relation(fields: [coachingCentreId], references: [id], onDelete: Cascade)
+  parentName       String
+  parentPhone      String
+  childName        String
+  childAge         Int
+  inquiryNotes     String
+  status           String         @default("new") // new, trial, enrolled, lost
+  createdAt        DateTime       @default(now())
+}
+
+model KycInspection {
+  id               String         @id @default(cuid())
+  coachingCentreId String
+  centre           CoachingCentre @relation(fields: [coachingCentreId], references: [id], onDelete: Cascade)
+  inspectorId      String
+  inspector        User           @relation("InspectorRelation", fields: [inspectorId], references: [id])
+  scheduledDate    DateTime
+  cctvChecked      Boolean        @default(false)
+  nisChecked       Boolean        @default(false)
+  policeChecked    Boolean        @default(false)
+  firstAidChecked  Boolean        @default(false)
+  awardedGrade     SafetyGrade?
+  inspectorNotes   String?
+  completedAt      DateTime?
+}
+
+model SupportTicket {
+  id          String         @id @default(cuid())
+  ticketId    String         @unique // e.g. TKT-AGRA-8831
+  userId      String?
+  user        User?          @relation(fields: [userId], references: [id])
+  category    TicketCategory
+  fullName    String
+  phone       String
+  bookingRef  String?
+  description String
+  status      String         @default("OPEN")
+  createdAt   DateTime       @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model SavedCentre {
+  id               String        @id @default(cuid())
+  parentId         String
+  parent           ParentProfile @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  coachingCentreId String
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  icon        String?  // icon key, e.g. "TennisBall", "Trophy", "Swimmer"
+  description String?
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MajorActivity {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  slug        String       @unique
+  description String?
+  imageUrl    String?
+  icon        String?      @default("Trophy")
+  accentColor String?      @default("#10B981")
+  order       Int          @default(0)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  disciplines Discipline[]
+
+  @@index([slug, isActive, order])
+}
+
+model Discipline {
+  id          String        @id @default(cuid())
+  activityId  String
+  activity    MajorActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String        @unique
+  shortDesc   String?
+  imageUrl    String
+  icon        String?       @default("Sparkle")
+  badge       String?       // e.g. "Free Trial", "Trending", "Popular"
+  order       Int           @default(0)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([activityId, slug, isActive, order])
+}
+
+model HeroSlide {
+  id               String   @id @default(cuid())
+  title            String
+  subtitle         String?
+  badge            String?
+  imageUrl         String
+  ctaText          String?  @default("Explore Activities")
+  ctaLink          String?  @default("/activities")
+  secondaryCtaText String?  @default("Book Free Trial")
+  secondaryCtaLink String?  @default("/activities")
+  accentGradient   String?  @default("from-blue-600 via-indigo-600 to-emerald-600")
+  order            Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+model PlatformConfig {
+  id                  String   @id @default("default")
+  siteName            String   @default("KnowUrCoach")
+  tagline             String   @default("Hyperlocal Sports & Academy Discovery in Agra")
+  themeColor          String   @default("emerald") // emerald, indigo, violet, blue, amber
+  bgColor             String   @default("slate")   // slate, zinc, neutral, clean
+  fontSize            String   @default("normal")  // small, normal, large
+  borderRadius        String   @default("rounded-xl") // rounded-lg, rounded-xl, rounded-2xl, rounded-3xl
+  allowTrialBookings  Boolean  @default(true)
+  allowFreeTierPublicListing Boolean @default(true) // Whether free tier academies show in public directory
+  enableFreePlan             Boolean @default(true) // Whether free tier is available
+  enableStandardPlan         Boolean @default(true)
+  enablePremiumPlan          Boolean @default(true)
+  standardPlanPrice   Decimal  @default(1499.00) @db.Decimal(10, 2)
+  premiumPlanPrice    Decimal  @default(3999.00) @db.Decimal(10, 2)
+  freePlanFeatures    String?  // JSON string or comma list of features
+  standardPlanFeatures String? // JSON string or comma list of features
+  premiumPlanFeatures  String? // JSON string or comma list of features
+  updatedAt           DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorEmail  String
+  actorRole   String   @default("ADMIN")
+  action      String   // e.g. "COACH_APPROVED", "COACH_REJECTED", "FEE_UPDATED", "CREDIT_CONFIG_UPDATED"
+  targetModel String   // "CoachingCentre", "PlatformConfig", "User"
+  targetId    String?
+  details     Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([actorEmail, action])
+  @@index([targetModel, targetId])
+}
+
+model PaymentSettings {
+  id                    String   @id @default("default")
+  razorpayTestKeyId     String?  @map("razorpay_test_key_id")
+  razorpayTestKeySecret String?  @map("razorpay_test_key_secret")
+  razorpayLiveKeyId     String?  @map("razorpay_live_key_id")
+  razorpayLiveKeySecret String?  @map("razorpay_live_key_secret")
+  isTestMode            Boolean  @default(true) @map("is_test_mode")
+  webhookSecret         String?  @map("webhook_secret")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model PaymentTransaction {
+  id               String            @id @default(cuid())
+  orderId          String?           @unique
+  paymentId        String?           @unique
+  signature        String?
+  coachingCentreId String?
+  centre           CoachingCentre?   @relation(fields: [coachingCentreId], references: [id], onDelete: SetNull)
+  userId           String?
+  planTier         SubscriptionPlan?
+  billingCycle     String?           // "monthly" | "annual"
+  amount           Decimal           @db.Decimal(10, 2)
+  currency         String            @default("INR")
+  status           String            @default("PENDING") // PENDING, SUCCESS, FAILED
+  isTestMode       Boolean           @default(true)
+  paymentMethod    String?
+  notes            Json?
+  rawResponse      Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([coachingCentreId, status])
+  @@index([orderId, paymentId])
+}
+
+model AcademyOffering {
+  id               String         @id @default(cuid())
+  coachingCentreId String
+  centre           CoachingCentre @relation(fields: [coachingCentreId], references: [id], onDelete: Cascade)
+  activitySlug     String
+  activityName     String
+  categorySlug     String
+  categoryName     String
+  monthlyFee       Decimal        @db.Decimal(10, 2)
+  admissionFee     Decimal        @db.Decimal(10, 2)
+  ageGroup         String?
+  description      String?
+  coachName        String?
+  isActive         Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([coachingCentreId, activitySlug, categorySlug])
+}
+
+model OtpVerification {
+  id              String   @id @default(cuid())
+  email           String
+  otpHash         String
+  role            String
+  expiresAt       DateTime
+  lastRequestedAt DateTime
+  requestCount    Int      @default(0)
+  failedAttempts  Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([email, role])
+}
+

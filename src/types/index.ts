@@ -1,0 +1,82 @@
+export interface AcademyBatch {
+  id?: string;
+  name: string;
+  category?: string;
+  categoryDisplayName?: string;
+  categoryEmoji?: string;
+  coachName?: string;
+  time?: string;
+  schedule?: string;
+  ageGroup?: string;
+  seats?: string;
+  seatsFilled?: number;
+  totalSeats?: number;
+  monthlyFee?: number;
+  isAdmissionsOpen?: boolean;
+}
+
+export interface Academy {
+  id: string;
+  name: string;
+  tagline: string;
+  category: 'sports' | 'brain-booster' | 'arts' | 'cricket' | 'skating' | 'martial-arts' | string;
+  activities: string[];
+  activitiesText: string;
+  locality: 'kamla-nagar' | 'sanjay-place' | 'sadar' | 'dayalbagh' | 'fatehabad-road' | string;
+  localityName: string;
+  city?: string;
+  lat?: number;
+  lon?: number;
+  address: string;
+  phone: string;
+  distance: number;
+  distanceText: string;
+  age: ('u5' | 'u8' | 'u12' | 'u16' | string)[];
+  ageText: string;
+  fee: number;
+  trialFee: number;
+  rating: number;
+  reviewsCount: number;
+  verifiedTag: string;
+  image: string;
+  coachName: string;
+  coachTitle: string;
+  coachesCount: number;
+  ratio: string;
+  facilities: string[];
+  safety: string;
+  isTopInArea?: boolean;
+  planTier?: string;
+  isVerifiedBatch?: boolean;
+  coachType?: string;
+  batches: AcademyBatch[];
+}
+
+export interface Competition {
+  id: string;
+  title: string;
+  sport: string;
+  category: 'sports' | 'stem' | 'arts' | 'martial-arts' | string;
+  locality: 'eklavya' | 'sanjay-place' | 'kamla-nagar' | 'dayalbagh' | 'shilpgram' | string;
+  venue: string;
+  venueShort: string;
+  status: 'open' | 'fast-filling' | 'upcoming' | string;
+  statusText: string;
+  age: string[];
+  ageText: string;
+  fee: number;
+  feeUnit: string;
+  date: string;
+  timing: string;
+  organizer: string;
+  badgeSpecial?: string;
+  prizePool: string;
+  tags: string[];
+  equipment: string;
+  reporting: string;
+  format: string;
+  umpiring: string;
+  contact: string;
+  rulebookPdf: string;
+  isTeam?: boolean;
+}
