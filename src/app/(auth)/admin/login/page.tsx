@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useRef, Suspense } from "react";
-import { signIn } from "next-auth/react";
+import React, { useState, useRef, useEffect, Suspense } from "react";
+import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -24,6 +24,7 @@ function AdminLoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/admin";
+  const { data: session, status } = useSession();
 
   const [email, setEmail] = useState("");
   const [authMethod, setAuthMethod] = useState<"password" | "otp">("password");
@@ -37,6 +38,13 @@ function AdminLoginFormContent() {
   const [error, setError] = useState<string | null>(null);
 
   const otpInputRef = useRef<HTMLInputElement>(null);
+
+  // If already authenticated as an Admin, redirect directly to dashboard
+  useEffect(() => {
+    if (status === "authenticated" && String((session?.user as any)?.role || "").toUpperCase() === "ADMIN") {
+      window.location.href = callbackUrl;
+    }
+  }, [status, session, callbackUrl]);
 
   const handleSendOtp = async () => {
     if (!email || !email.includes("@")) {
@@ -105,8 +113,7 @@ function AdminLoginFormContent() {
       if (result?.error) {
         setError(result.error);
       } else if (result?.ok) {
-        router.push(callbackUrl);
-        router.refresh();
+        window.location.href = callbackUrl;
       }
     } catch {
       setError("An unexpected error occurred during administrative login.");

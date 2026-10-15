@@ -22,14 +22,15 @@ export function AuthGuard({ children, requiredRole }: AuthGuardProps) {
 
   const isLoading = status === "loading";
   const isAuthenticated = status === "authenticated" && Boolean(session?.user);
-  const userRole = (session?.user as any)?.role || "GUEST";
+  const rawRole = (session?.user as any)?.role;
+  const userRole = rawRole ? String(rawRole).trim().toUpperCase() : "GUEST";
 
   useEffect(() => {
     if (isLoading) return;
 
     if (!isAuthenticated) {
       const loginUrl = requiredRole === "ADMIN" ? "/admin/login" : "/login";
-      router.replace(`${loginUrl}?callbackUrl=${encodeURIComponent(pathname)}`);
+      window.location.href = `${loginUrl}?callbackUrl=${encodeURIComponent(pathname)}`;
       return;
     }
 
@@ -37,12 +38,12 @@ export function AuthGuard({ children, requiredRole }: AuthGuardProps) {
     const isAllowed = userRole === requiredRole || (requiredRole !== "ADMIN" && userRole === "ADMIN");
     if (!isAllowed) {
       // Wrong role — redirect to their respective portal
-      if (userRole === "PARENT") router.replace("/parent/bookings");
-      else if (userRole === "COACH") router.replace("/coach/dashboard");
-      else if (userRole === "ADMIN") router.replace("/admin");
-      else router.replace(requiredRole === "ADMIN" ? "/admin/login" : "/login");
+      if (userRole === "PARENT") window.location.href = "/parent/bookings";
+      else if (userRole === "COACH") window.location.href = "/coach/dashboard";
+      else if (userRole === "ADMIN") window.location.href = "/admin";
+      else window.location.href = requiredRole === "ADMIN" ? "/admin/login" : "/login";
     }
-  }, [isLoading, isAuthenticated, userRole, requiredRole, router, pathname]);
+  }, [isLoading, isAuthenticated, userRole, requiredRole, pathname]);
 
   // Show spinner while resolving session
   if (isLoading) {
