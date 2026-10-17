@@ -75,21 +75,8 @@ export async function getPaymentSettings() {
 
     return settings;
   } catch (error) {
-    console.error('[getPaymentSettings] Database error, using environment fallback:', error);
-    return {
-      id: 'default',
-      razorpayTestKeyId:
-        process.env.RAZORPAY_KEY_ID || 'rzp_test_TllUCnsrU8NX1s',
-      razorpayTestKeySecret:
-        process.env.RAZORPAY_KEY_SECRET || '8O1t77GVUE7WntTbfv3k4jkF',
-      razorpayLiveKeyId: process.env.RAZORPAY_LIVE_KEY_ID || null,
-      razorpayLiveKeySecret: process.env.RAZORPAY_LIVE_KEY_SECRET || null,
-      isTestMode: true,
-      webhookSecret:
-        process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_webhook_secret_agra',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    console.error('[DB_ERROR] Failed to fetch payment settings from database:', error);
+    throw new Error('Database error: Unable to retrieve payment settings');
   }
 }
 

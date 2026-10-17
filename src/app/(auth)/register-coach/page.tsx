@@ -36,7 +36,7 @@ import {
 } from '@phosphor-icons/react';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { MultiCategorySelector } from '@/components/ui/MultiCategorySelector';
-import { getCategoryEmoji, getCategoryDisplayName, FALLBACK_TAXONOMY_GROUPS } from '@/lib/categories';
+import { getCategoryEmoji, getCategoryDisplayName } from '@/lib/categories';
 
 const ACADEMY_CATEGORIES = [
   { id: 'tennis', label: '🎾 Tennis Academy' },
@@ -98,7 +98,8 @@ export default function RegisterCoachPage() {
   const [acadName, setAcadName] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['badminton']);
   const category = selectedCategories[0] || 'badminton';
-  const [taxonomy, setTaxonomy] = useState<any[]>(FALLBACK_TAXONOMY_GROUPS);
+  const [taxonomy, setTaxonomy] = useState<any[]>([]);
+  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
   const [founder, setFounder] = useState('');
   const [locality, setLocality] = useState('');
   const [address, setAddress] = useState('');
@@ -153,15 +154,17 @@ export default function RegisterCoachPage() {
   useEffect(() => {
     async function loadTaxonomy() {
       try {
+        setTaxonomyError(null);
         const data = await getTaxonomyCategories();
         if (data && data.length > 0) {
           setTaxonomy(data);
         } else {
-          setTaxonomy(FALLBACK_TAXONOMY_GROUPS);
+          setTaxonomy([]);
         }
-      } catch (err) {
-        console.warn('Could not load categories:', err);
-        setTaxonomy(FALLBACK_TAXONOMY_GROUPS);
+      } catch (err: any) {
+        console.error('[DB_ERROR] Failed to load taxonomy categories in register-coach:', err);
+        setTaxonomyError(err?.message || 'Database error: Failed to load activity categories.');
+        setTaxonomy([]);
       }
     }
     loadTaxonomy();
@@ -840,6 +843,12 @@ export default function RegisterCoachPage() {
                           )}
                         </div>
                       </div>
+
+                      {taxonomyError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium">
+                          {taxonomyError}
+                        </div>
+                      )}
 
                       {/* Multi-Activity / Category 2-Dropdown Cascading Selector */}
                       <MultiCategorySelector

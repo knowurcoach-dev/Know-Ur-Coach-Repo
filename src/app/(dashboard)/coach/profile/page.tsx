@@ -19,7 +19,8 @@ import {
   Check,
   X,
 } from '@phosphor-icons/react';
-import { getCategoryEmoji, getCategoryDisplayName, FALLBACK_TAXONOMY_GROUPS } from '@/lib/categories';
+import { getCategoryEmoji, getCategoryDisplayName } from '@/lib/categories';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import { MultiCategorySelector } from '@/components/ui/MultiCategorySelector';
 
 const AGRA_LOCALITIES = [
@@ -47,7 +48,8 @@ export default function CoachProfilePage() {
   const [name, setName] = useState('');
   const [tagline, setTagline] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['badminton']);
-  const [taxonomy, setTaxonomy] = useState<any[]>(FALLBACK_TAXONOMY_GROUPS);
+  const [taxonomy, setTaxonomy] = useState<any[]>([]);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [locality, setLocality] = useState('Kamla Nagar');
   const [address, setAddress] = useState('');
   const [headCoachName, setHeadCoachName] = useState('');
@@ -69,44 +71,43 @@ export default function CoachProfilePage() {
     });
   };
 
-  useEffect(() => {
-    async function loadData() {
-      if (!userEmail) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      try {
-        const [res, tax] = await Promise.all([
-          getCoachDashboardData(userEmail),
-          getTaxonomyCategories(),
-        ]);
-        if (tax && tax.length > 0) {
-          setTaxonomy(tax);
-        } else {
-          setTaxonomy(FALLBACK_TAXONOMY_GROUPS);
-        }
-        if (res.success && res.centre) {
-          setCentreData(res.centre);
-          setName(res.centre.name || '');
-          setTagline(res.centre.tagline || '');
-          const loadedCategories = (res.centre.category ? res.centre.category.split(',') : ['badminton'])
-            .map((s: string) => s.trim().toLowerCase())
-            .filter(Boolean);
-          setSelectedCategories(loadedCategories.length > 0 ? loadedCategories : ['badminton']);
-          setLocality(res.centre.locality?.replace('-', ' ') || 'Kamla Nagar');
-          setAddress(res.centre.address || '');
-          setHeadCoachName(res.centre.headCoachName || '');
-          setHeadCoachBio(res.centre.headCoachBio || '');
-        }
-      } catch (err) {
-        console.warn('Could not load coach profile:', err);
-      } finally {
-        setLoading(false);
-      }
+  const loadData = React.useCallback(async () => {
+    if (!userEmail) {
+      setLoading(false);
+      return;
     }
-    loadData();
+    setLoading(true);
+    setDbError(null);
+    try {
+      const [res, tax] = await Promise.all([
+        getCoachDashboardData(userEmail),
+        getTaxonomyCategories(),
+      ]);
+      setTaxonomy(tax || []);
+      if (res.success && res.centre) {
+        setCentreData(res.centre);
+        setName(res.centre.name || '');
+        setTagline(res.centre.tagline || '');
+        const loadedCategories = (res.centre.category ? res.centre.category.split(',') : ['badminton'])
+          .map((s: string) => s.trim().toLowerCase())
+          .filter(Boolean);
+        setSelectedCategories(loadedCategories.length > 0 ? loadedCategories : ['badminton']);
+        setLocality(res.centre.locality?.replace('-', ' ') || 'Kamla Nagar');
+        setAddress(res.centre.address || '');
+        setHeadCoachName(res.centre.headCoachName || '');
+        setHeadCoachBio(res.centre.headCoachBio || '');
+      }
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to load coach profile data:', err);
+      setDbError(err?.message || 'Database connection error: Failed to load coach profile data.');
+    } finally {
+      setLoading(false);
+    }
   }, [userEmail]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,6 +148,19 @@ export default function CoachProfilePage() {
 
   if (loading) {
     return <GeneralCoachPageSkeleton title="Academy Profile & Venue Details" />;
+  }
+
+  if (dbError) {
+    return (
+      <div className="w-full bg-slate-50 min-h-screen py-12 px-4 flex items-center justify-center">
+        <DatabaseErrorView
+          title="Unable to Load Profile"
+          message="We are having trouble loading your academy profile right now. Please try again."
+          error={dbError}
+          onRetry={loadData}
+        />
+      </div>
+    );
   }
 
   return (

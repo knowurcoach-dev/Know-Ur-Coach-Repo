@@ -414,6 +414,11 @@ model HeroSlide {
   accentGradient   String?  @default("from-blue-600 via-indigo-600 to-emerald-600")
   order            Int      @default(0)
   isActive         Boolean  @default(true)
+  showBadge        Boolean  @default(true)
+  showTitle        Boolean  @default(true)
+  showSubtitle     Boolean  @default(true)
+  showPrimaryCta   Boolean  @default(true)
+  showSecondaryCta Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

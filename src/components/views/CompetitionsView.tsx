@@ -7,6 +7,7 @@ import { CompetitionCard } from '@/components/cards/CompetitionCard';
 import { usePersona } from '@/context/PersonaContext';
 import { useModalStore } from '@/hooks/useModalStore';
 import { ActivityCardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import {
@@ -41,9 +42,11 @@ export function CompetitionsView() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [competitionsList, setCompetitionsList] = useState<Competition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   async function loadComps() {
     setIsLoading(true);
+    setDbError(null);
     try {
       const { competitions } = await getDiscoveryData();
       if (competitions && competitions.length > 0) {
@@ -94,8 +97,9 @@ export function CompetitionsView() {
       } else {
         setCompetitionsList([]);
       }
-    } catch (err) {
-      console.warn('Error loading competitions from DB:', err);
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to load competitions from database in CompetitionsView:', err);
+      setDbError(err?.message || 'Database connection error: Failed to load competitions.');
       setCompetitionsList([]);
     } finally {
       setIsLoading(false);
@@ -322,7 +326,16 @@ export function CompetitionsView() {
         </div>
 
         {/* Competitions Cards Container or Skeleton */}
-        {isLoading ? (
+        {dbError ? (
+          <div className="py-6">
+            <DatabaseErrorView
+              title="Unable to Load Competitions"
+              message="We are having trouble loading sports competitions and events right now. Please try again."
+              error={dbError}
+              onRetry={loadComps}
+            />
+          </div>
+        ) : isLoading ? (
           <ActivityCardSkeleton count={4} />
         ) : filteredCompetitions.length > 0 ? (
           <div id="competitions-list" className="grid grid-cols-1 md:grid-cols-2 gap-5">

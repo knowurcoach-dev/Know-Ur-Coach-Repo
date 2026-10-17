@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersona } from '@/context/PersonaContext';
 import { getCoachBatchesData, saveCoachBatch, deleteCoachBatch } from '@/lib/actions';
-import { getCategoryDisplayName, getCategoryEmoji, FALLBACK_TAXONOMY_GROUPS } from '@/lib/categories';
+import { getCategoryDisplayName, getCategoryEmoji } from '@/lib/categories';
 import { GeneralCoachPageSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   CalendarCheck,
   Plus,
@@ -26,6 +27,7 @@ export default function CoachBatchesPage() {
   const [isPending, startTransition] = useTransition();
 
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [centreData, setCentreData] = useState<any>(null);
   const [batches, setBatches] = useState<any[]>([]);
 
@@ -42,28 +44,31 @@ export default function CoachBatchesPage() {
 
   const userEmail = session?.user?.email || (user as any)?.email;
 
-  const loadData = async () => {
+  const loadData = React.useCallback(async () => {
     if (!userEmail) {
       setLoading(false);
       return;
     }
     setLoading(true);
+    setDbError(null);
     try {
       const res = await getCoachBatchesData(userEmail);
       if (res.success) {
         setCentreData(res.centre);
         setBatches(res.batches || []);
       }
-    } catch (err) {
-      console.warn('Could not load batches:', err);
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to load coach batches in CoachBatchesPage:', err);
+      setDbError(err?.message || 'Unable to load batches. Please try again.');
+      setBatches([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [userEmail]);
 
   useEffect(() => {
     loadData();
-  }, [userEmail]);
+  }, [loadData]);
 
   const handleOpenCreateModal = () => {
     const defaultCat = (centreData?.categories && centreData.categories[0]) ||
@@ -152,6 +157,19 @@ export default function CoachBatchesPage() {
 
   if (loading) {
     return <GeneralCoachPageSkeleton title="Batch & Timings Management" />;
+  }
+
+  if (dbError) {
+    return (
+      <div className="w-full bg-slate-50 min-h-screen py-12 px-4 flex items-center justify-center">
+        <DatabaseErrorView
+          title="Unable to Load Batches"
+          message="We are having trouble loading your coaching batches right now. Please try again."
+          error={dbError}
+          onRetry={loadData}
+        />
+      </div>
+    );
   }
 
   return (

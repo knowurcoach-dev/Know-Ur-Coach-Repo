@@ -8,31 +8,7 @@ export interface PlatformCategory {
   order?: number;
 }
 
-export const DEFAULT_PLATFORM_CATEGORIES: PlatformCategory[] = [
-  // Sports & Athletics (8)
-  { name: 'Badminton Academy', slug: 'badminton', icon: 'TennisBall', description: 'Wooden BWF-standard indoor courts with pro training.', order: 1, isActive: true },
-  { name: 'Tennis & Racquet Sports', slug: 'tennis', icon: 'TennisBall', description: 'Synthetic and clay tennis courts, NIS certified coaching.', order: 2, isActive: true },
-  { name: 'Cricket Academy', slug: 'cricket', icon: 'Baseball', description: 'Turf wickets, bowling machines, BCCI accredited coaches.', order: 3, isActive: true },
-  { name: 'Football & Turf Sports', slug: 'football', icon: 'SoccerBall', description: 'FIFA standard 7v7 and 5v5 astroturf floodlit arenas.', order: 4, isActive: true },
-  { name: 'Olympic Swimming', slug: 'swimming', icon: 'Waves', description: 'Heated & 50m Olympic pools with certified lifeguards.', order: 5, isActive: true },
-  { name: 'Martial Arts & Taekwondo', slug: 'martial-arts', icon: 'ShieldCheck', description: 'Self-defense, belt gradings, WKF championship mats.', order: 6, isActive: true },
-  { name: 'Speed Skating Hub', slug: 'skating', icon: 'Lightning', description: 'Banked roller skating rinks with national level mentors.', order: 7, isActive: true },
-  { name: 'Athletics & Gymnastics', slug: 'athletics', icon: 'Trophy', description: 'Track & field sprints, gymnastics routines & agility.', order: 8, isActive: true },
 
-  // Brain Booster & STEM (5)
-  { name: 'Chess Masterclass', slug: 'chess', icon: 'Brain', description: 'FIDE certified grandmaster training, openings & endgame tactics.', order: 9, isActive: true },
-  { name: 'Coding & AI for Juniors', slug: 'coding', icon: 'Cpu', description: 'Python, Scratch, Web apps and AI logic for kids.', order: 10, isActive: true },
-  { name: 'Science & Experiential Labs', slug: 'science-labs', icon: 'Flask', description: 'Hands-on chemistry, physics demos and discovery kits.', order: 11, isActive: true },
-  { name: 'Robotics & Automation Lab', slug: 'robotics', icon: 'Cpu', description: 'Arduino, Lego Mindstorms, automation & Olympiad prep.', order: 12, isActive: true },
-  { name: 'Vedic Maths & Abacus', slug: 'abacus', icon: 'Calculator', description: 'Mental arithmetic speed math and cognitive brain gyms.', order: 13, isActive: true },
-
-  // Cultural & Fine Arts (5)
-  { name: 'Kathak & Classical Dance', slug: 'dance', icon: 'Palette', description: 'Kathak, Bharatnatyam, mudras & certified examinations.', order: 14, isActive: true },
-  { name: 'Western Dance & Hip Hop', slug: 'western-dance', icon: 'Palette', description: 'Hip hop, freestyle, jazz, contemporary choreography.', order: 15, isActive: true },
-  { name: 'Guitar & Keyboard Studio', slug: 'instruments', icon: 'MusicNote', description: 'Acoustic guitar, keyboard, drums & Trinity College syllabus.', order: 16, isActive: true },
-  { name: 'Fine Arts & Sketching', slug: 'fine-arts', icon: 'Palette', description: 'Sketching, watercolor, oil canvas & creative craft.', order: 17, isActive: true },
-  { name: 'Classical Vocal & Sangeet', slug: 'music', icon: 'MusicNote', description: 'Vocal classical, harmonium, tabla, riyaaz & bhajan.', order: 18, isActive: true },
-];
 
 export const CATEGORY_PILLAR_MAP: Record<string, 'sports' | 'brain-booster' | 'arts'> = {
   // Sports & Athletics
@@ -164,47 +140,7 @@ export interface TaxonomyGroup {
   categories: TaxonomyCategoryItem[];
 }
 
-export const FALLBACK_TAXONOMY_GROUPS: TaxonomyGroup[] = [
-  {
-    id: 'sports',
-    name: 'Sports & Athletics',
-    slug: 'sports',
-    categories: [
-      { id: 'badminton', name: 'Badminton Academy', slug: 'badminton', icon: '🏸', shortName: 'Badminton' },
-      { id: 'tennis', name: 'Tennis & Racquet Sports', slug: 'tennis', icon: '🎾', shortName: 'Lawn Tennis' },
-      { id: 'cricket', name: 'Cricket Academy', slug: 'cricket', icon: '🏏', shortName: 'Cricket' },
-      { id: 'football', name: 'Football & Turf Sports', slug: 'football', icon: '⚽', shortName: 'Football' },
-      { id: 'swimming', name: 'Olympic Swimming', slug: 'swimming', icon: '🏊', shortName: 'Swimming' },
-      { id: 'martial-arts', name: 'Martial Arts & Taekwondo', slug: 'martial-arts', icon: '🥋', shortName: 'Martial Arts' },
-      { id: 'skating', name: 'Speed Skating Hub', slug: 'skating', icon: '🛼', shortName: 'Skating' },
-      { id: 'athletics', name: 'Athletics & Gymnastics', slug: 'athletics', icon: '🤸', shortName: 'Athletics' },
-    ],
-  },
-  {
-    id: 'brain-booster',
-    name: 'Brain Booster & STEM',
-    slug: 'brain-booster',
-    categories: [
-      { id: 'chess', name: 'Chess Masterclass', slug: 'chess', icon: '♟️', shortName: 'Chess' },
-      { id: 'coding', name: 'Coding & AI for Juniors', slug: 'coding', icon: '💻', shortName: 'Coding & AI' },
-      { id: 'science-labs', name: 'Science & Experiential Labs', slug: 'science-labs', icon: '🔬', shortName: 'Science Labs' },
-      { id: 'robotics', name: 'Robotics & Automation Lab', slug: 'robotics', icon: '🤖', shortName: 'Robotics' },
-      { id: 'abacus', name: 'Vedic Maths & Abacus', slug: 'abacus', icon: '🧮', shortName: 'Vedic Maths' },
-    ],
-  },
-  {
-    id: 'arts',
-    name: 'Cultural & Fine Arts',
-    slug: 'arts',
-    categories: [
-      { id: 'dance', name: 'Kathak & Classical Dance', slug: 'dance', icon: '💃', shortName: 'Classical Dance' },
-      { id: 'western-dance', name: 'Western Dance & Hip Hop', slug: 'western-dance', icon: '🕺', shortName: 'Western Dance' },
-      { id: 'instruments', name: 'Guitar & Keyboard Studio', slug: 'instruments', icon: '🎸', shortName: 'Instruments' },
-      { id: 'fine-arts', name: 'Fine Arts & Sketching', slug: 'fine-arts', icon: '🎨', shortName: 'Fine Arts' },
-      { id: 'music', name: 'Classical Vocal & Sangeet', slug: 'music', icon: '🎵', shortName: 'Vocal Music' },
-    ],
-  },
-];
+
 
 /**
  * Splits a comma-separated category string into an array of clean slugs.
@@ -320,3 +256,52 @@ export function resolveCategoryCoverImage(slugOrName?: string, existingUrl?: str
   }
   return 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?q=80&w=600&auto=format&fit=crop';
 }
+
+/**
+ * Resolves a natural search query or tag string to its standard category slug and pillar.
+ */
+export function resolveCategoryFromSearch(q: string): { category: string; pillar: string } | null {
+  if (!q) return null;
+  const clean = q.toLowerCase().trim();
+  if (clean.includes('dance') || clean.includes('kathak') || clean.includes('ballet') || clean.includes('hip hop') || clean.includes('hiphop')) {
+    return { category: 'dance', pillar: 'arts' };
+  }
+  if (clean.includes('badminton') || clean.includes('shuttle')) {
+    return { category: 'badminton', pillar: 'sports' };
+  }
+  if (clean.includes('robot') || clean.includes('stem') || clean.includes('coding') || clean.includes('arduino')) {
+    return { category: 'robotics', pillar: 'brain-booster' };
+  }
+  if (clean.includes('tennis') && !clean.includes('table tennis') && !clean.includes('badminton')) {
+    return { category: 'tennis', pillar: 'sports' };
+  }
+  if (clean.includes('martial') || clean.includes('karate') || clean.includes('taekwondo') || clean.includes('judo') || clean.includes('boxing')) {
+    return { category: 'martial-arts', pillar: 'sports' };
+  }
+  if (clean.includes('chess')) {
+    return { category: 'chess', pillar: 'brain-booster' };
+  }
+  if (clean.includes('swim') || clean.includes('aquatic')) {
+    return { category: 'swimming', pillar: 'sports' };
+  }
+  if (clean.includes('paint') || clean.includes('art') || clean.includes('draw') || clean.includes('sketch')) {
+    return { category: 'arts', pillar: 'arts' };
+  }
+  if (clean.includes('cricket')) {
+    return { category: 'cricket', pillar: 'sports' };
+  }
+  if (clean.includes('football') || clean.includes('soccer')) {
+    return { category: 'football', pillar: 'sports' };
+  }
+  if (clean.includes('skat')) {
+    return { category: 'skating', pillar: 'sports' };
+  }
+  if (clean.includes('abacus') || clean.includes('vedic')) {
+    return { category: 'abacus', pillar: 'brain-booster' };
+  }
+  if (clean.includes('music') || clean.includes('guitar') || clean.includes('piano') || clean.includes('vocal')) {
+    return { category: 'music', pillar: 'arts' };
+  }
+  return null;
+}
+

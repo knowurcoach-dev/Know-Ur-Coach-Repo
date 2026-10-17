@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       route,
     });
   } catch (err: any) {
-    console.error('[Location Directions API Error]', err);
+    console.error('[LOCATION_ERROR] Failed to calculate directions:', err);
     return NextResponse.json(
       { error: 'Failed to calculate directions', details: err?.message },
       { status: 500 }

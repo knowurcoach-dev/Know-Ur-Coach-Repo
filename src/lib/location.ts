@@ -61,6 +61,7 @@ export interface CityNeighbourhood {
   slug: string;
   tag?: string;
   highlight?: string;
+  cityName?: string;
 }
 
 export const POPULAR_CITY_NEIGHBOURHOODS: Record<string, CityNeighbourhood[]> = {
@@ -177,23 +178,106 @@ export const POPULAR_CITY_NEIGHBOURHOODS: Record<string, CityNeighbourhood[]> = 
   ],
 };
 
-export function getPopularNeighbourhoodsForCity(cityName?: string): CityNeighbourhood[] {
-  if (!cityName) return POPULAR_CITY_NEIGHBOURHOODS['Agra'];
-  const cleanCity = cityName.trim();
-  if (POPULAR_CITY_NEIGHBOURHOODS[cleanCity]) {
-    return POPULAR_CITY_NEIGHBOURHOODS[cleanCity];
+export const ALL_INDIA_POPULAR_NEIGHBOURHOODS: CityNeighbourhood[] = [
+  { name: 'Connaught Place', slug: 'connaught-place', cityName: 'Delhi NCR' },
+  { name: 'Bandra West', slug: 'bandra', cityName: 'Mumbai' },
+  { name: 'Indiranagar', slug: 'indiranagar', cityName: 'Bengaluru' },
+  { name: 'Gachibowli', slug: 'gachibowli', cityName: 'Hyderabad' },
+  { name: 'Kothrud', slug: 'kothrud', cityName: 'Pune' },
+  { name: 'Bodakdev', slug: 'bodakdev', cityName: 'Ahmedabad' },
+  { name: 'Malviya Nagar', slug: 'malviya-nagar', cityName: 'Jaipur' },
+  { name: 'Gomti Nagar', slug: 'gomti-nagar', cityName: 'Lucknow' },
+  { name: 'Kamla Nagar', slug: 'kamla-nagar', cityName: 'Agra' },
+  { name: 'Sector 17', slug: 'sector-17', cityName: 'Chandigarh' },
+  { name: 'Salt Lake', slug: 'salt-lake', cityName: 'Kolkata' },
+  { name: 'Anna Nagar', slug: 'anna-nagar', cityName: 'Chennai' },
+  { name: 'Vasant Kunj', slug: 'vasant-kunj', cityName: 'Delhi NCR' },
+  { name: 'Juhu', slug: 'juhu', cityName: 'Mumbai' },
+  { name: 'Whitefield', slug: 'whitefield', cityName: 'Bengaluru' },
+  { name: 'Hitec City', slug: 'hitec-city', cityName: 'Hyderabad' },
+];
+
+export const STATE_TO_CITIES: Record<string, string[]> = {
+  'Uttar Pradesh': ['Agra', 'Lucknow'],
+  'Maharashtra': ['Mumbai', 'Pune'],
+  'Karnataka': ['Bengaluru'],
+  'Telangana': ['Hyderabad'],
+  'Delhi': ['Delhi NCR'],
+  'Rajasthan': ['Jaipur'],
+  'Gujarat': ['Ahmedabad'],
+  'West Bengal': ['Kolkata'],
+  'Tamil Nadu': ['Chennai'],
+  'Chandigarh': ['Chandigarh'],
+  'Punjab': ['Chandigarh'],
+  'Haryana': ['Chandigarh', 'Delhi NCR'],
+};
+
+export function isStateLocation(locationQuery?: string): boolean {
+  if (!locationQuery) return false;
+  const lower = locationQuery.trim().toLowerCase();
+  for (const state of Object.keys(STATE_TO_CITIES)) {
+    if (state.toLowerCase() === lower || lower.includes(state.toLowerCase())) {
+      return true;
+    }
   }
-  const lower = cleanCity.toLowerCase();
+  return false;
+}
+
+export function getPopularNeighbourhoodsForCity(cityName?: string): CityNeighbourhood[] {
+  if (!cityName || cityName.trim() === '' || cityName.toLowerCase().includes('india')) {
+    return ALL_INDIA_POPULAR_NEIGHBOURHOODS;
+  }
+
+  const clean = cityName.trim();
+  const lower = clean.toLowerCase();
+
+  // 1. Direct match with city in POPULAR_CITY_NEIGHBOURHOODS
+  if (POPULAR_CITY_NEIGHBOURHOODS[clean]) {
+    return POPULAR_CITY_NEIGHBOURHOODS[clean].map((n) => ({ ...n, cityName: clean }));
+  }
+
+  // 2. Fuzzy match with city in POPULAR_CITY_NEIGHBOURHOODS
   for (const [cityKey, list] of Object.entries(POPULAR_CITY_NEIGHBOURHOODS)) {
     if (
       cityKey.toLowerCase() === lower ||
       lower.includes(cityKey.toLowerCase()) ||
       cityKey.toLowerCase().includes(lower)
     ) {
-      return list;
+      return list.map((n) => ({ ...n, cityName: cityKey }));
     }
   }
-  return POPULAR_CITY_NEIGHBOURHOODS['Agra'];
+
+  // 3. Match with state in STATE_TO_CITIES
+  for (const [stateKey, cities] of Object.entries(STATE_TO_CITIES)) {
+    if (
+      stateKey.toLowerCase() === lower ||
+      lower.includes(stateKey.toLowerCase()) ||
+      stateKey.toLowerCase().includes(lower)
+    ) {
+      const stateNeighbourhoods: CityNeighbourhood[] = [];
+      for (const city of cities) {
+        const cityList = POPULAR_CITY_NEIGHBOURHOODS[city] || [];
+        stateNeighbourhoods.push(...cityList.map((n) => ({ ...n, cityName: city, stateName: stateKey })));
+      }
+      if (stateNeighbourhoods.length > 0) return stateNeighbourhoods;
+    }
+  }
+
+  // 4. Check TOP_INDIAN_CITIES for state matching
+  const matchedTopCity = TOP_INDIAN_CITIES.find(
+    (tc) =>
+      tc.city.toLowerCase() === lower ||
+      tc.state.toLowerCase() === lower ||
+      lower.includes(tc.city.toLowerCase()) ||
+      lower.includes(tc.state.toLowerCase())
+  );
+  if (matchedTopCity) {
+    const list = POPULAR_CITY_NEIGHBOURHOODS[matchedTopCity.city];
+    if (list) return list.map((n) => ({ ...n, cityName: matchedTopCity.city, stateName: matchedTopCity.state }));
+  }
+
+  // Fallback: If unknown or generic, show diverse national hubs
+  return ALL_INDIA_POPULAR_NEIGHBOURHOODS;
 }
 
 /**

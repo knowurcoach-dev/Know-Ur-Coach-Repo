@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error('[Static Map API Error]', err);
+    console.error('[LOCATION_ERROR] Failed to fetch static map:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -22,13 +22,13 @@ export async function GET() {
       },
     });
   } catch (err) {
-    console.warn("API /api/config fallback:", err);
-    return NextResponse.json({
-      success: false,
-      themeColor: 'emerald',
-      bgColor: 'slate',
-      siteName: 'KnowUrCoach',
-      tagline: 'Hyperlocal Sports & Academy Discovery across India',
-    });
+    console.error("[DB_ERROR] Failed to fetch platform config from database:", err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Database error: Failed to fetch platform config',
+      },
+      { status: 500 }
+    );
   }
 }

@@ -9,33 +9,45 @@ import {
   Quotes,
   UserCheck,
 } from '@phosphor-icons/react';
-import { PlatformReviewItem, INITIAL_PLATFORM_REVIEWS } from '@/lib/platform-reviews-data';
+import { PlatformReviewItem } from '@/lib/platform-reviews-data';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 
 export function ParentTestimonialsSection() {
-  const [reviews, setReviews] = useState<PlatformReviewItem[]>(INITIAL_PLATFORM_REVIEWS);
-  const [isLoading, setIsLoading] = useState(false);
+  const [reviews, setReviews] = useState<PlatformReviewItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
 
   // Fetch dynamic testimonials from DB
-  useEffect(() => {
-    async function fetchReviews() {
-      try {
-        const res = await fetch('/api/homepage-reviews');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.reviews && data.reviews.length > 0) {
-            setReviews(data.reviews);
-          }
-        }
-      } catch (err) {
-        console.warn('Using default reviews:', err);
+  const fetchReviews = React.useCallback(async () => {
+    setIsLoading(true);
+    setDbError(null);
+    try {
+      const res = await fetch('/api/homepage-reviews');
+      if (!res.ok) {
+        throw new Error(`HTTP error ${res.status}: Failed to fetch reviews`);
       }
+      const data = await res.json();
+      if (data.reviews && Array.isArray(data.reviews)) {
+        setReviews(data.reviews);
+      } else {
+        setReviews([]);
+      }
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to fetch homepage reviews:', err);
+      setDbError(err?.message || 'Database connection error: Could not load parent reviews.');
+      setReviews([]);
+    } finally {
+      setIsLoading(false);
     }
-    fetchReviews();
   }, []);
+
+  useEffect(() => {
+    fetchReviews();
+  }, [fetchReviews]);
 
   const checkScroll = () => {
     if (!scrollContainerRef.current) return;
@@ -62,6 +74,24 @@ export function ParentTestimonialsSection() {
       behavior: 'smooth',
     });
   };
+
+  if (dbError) {
+    return (
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <DatabaseErrorView
+          compact
+          title="Reviews Unavailable"
+          message="Parent reviews could not be loaded right now. Please try again later."
+          error={dbError}
+          onRetry={fetchReviews}
+        />
+      </section>
+    );
+  }
+
+  if (!isLoading && reviews.length === 0) {
+    return null;
+  }
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">

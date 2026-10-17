@@ -11,8 +11,9 @@ import {
   verifyCoachDocument,
 } from '@/lib/actions';
 import { usePersona } from '@/context/PersonaContext';
-import { ConfirmationModal } from '@/components/modals/ConfirmationModal';
 import { AdminVerifySkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { ConfirmationModal } from '@/components/modals/ConfirmationModal';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   ShieldCheck,
   CheckCircle,
@@ -90,70 +91,6 @@ interface CoachItem {
   facilities?: FacilityItem[];
 }
 
-const FALLBACK_CENTRES: CoachItem[] = [
-  {
-    id: 'centre-1',
-    name: 'Agra Champions Sports Club',
-    locality: 'Kamla Nagar',
-    headCoachName: 'Coach Sunil Rathore',
-    phone: '+91 98970 12345',
-    address: 'Plot 42, Near Water Tank, Kamla Nagar, Agra',
-    kycStatus: 'DOCS_REVIEW',
-    safetyGrade: 'PENDING_AUDIT',
-    statusNotes: 'In-app digital KYC submitted. Aadhaar & NIS Diploma attached. 3 venue photos provided.',
-    monthlyTuitionFee: 1500,
-    trialFee: 0,
-    planTier: 'PREMIUM',
-    cctvMonitored: true,
-    nisCertified: true,
-    policeVerifiedStaff: false,
-    firstAidAvailable: true,
-    batches: [
-      { name: 'Junior Badminton Squad', schedule: 'Mon, Wed, Fri • 4:00 PM', ageGroup: '6 - 12 Yrs', totalSeats: 15, monthlyFee: 1500 },
-      { name: 'Advanced Cadet Camp', schedule: 'Tue, Thu, Sat • 5:30 PM', ageGroup: '11 - 16 Yrs', totalSeats: 12, monthlyFee: 2000 },
-    ],
-  },
-  {
-    id: 'centre-2',
-    name: 'Taj Swimming & Aquatics Center',
-    locality: 'Fatehabad Road',
-    headCoachName: 'Coach Vikram Sharma',
-    phone: '+91 94122 88412',
-    address: 'Opposite Gateway Hotel, Fatehabad Road, Agra',
-    kycStatus: 'DOCS_REVIEW',
-    safetyGrade: 'GRADE_A',
-    statusNotes: 'Pool filtration certificates verified. Life guard CPR certification cleared.',
-    monthlyTuitionFee: 2200,
-    trialFee: 0,
-    planTier: 'PREMIUM',
-    cctvMonitored: true,
-    nisCertified: true,
-    policeVerifiedStaff: true,
-    firstAidAvailable: true,
-    batches: [
-      { name: 'Beginner Freestyle Swimming', schedule: 'Daily • 6:30 AM', ageGroup: '5 - 14 Yrs', totalSeats: 20, monthlyFee: 2200 },
-    ],
-  },
-  {
-    id: 'centre-3',
-    name: 'Eklavya Cricket Nets & Academy',
-    locality: 'Sadar Bazar',
-    headCoachName: 'Coach Manoj Kulshrestha',
-    phone: '+91 97600 33411',
-    address: 'Near Cantt Railway Station, Sadar Bazar, Agra',
-    kycStatus: 'PENDING',
-    safetyGrade: 'PENDING_AUDIT',
-    statusNotes: 'Newly registered coach. Pending in-app document upload & batch configuration.',
-    monthlyTuitionFee: 1800,
-    trialFee: 0,
-    planTier: 'STANDARD',
-    cctvMonitored: false,
-    nisCertified: false,
-    policeVerifiedStaff: false,
-    firstAidAvailable: false,
-  },
-];
-
 const SUGGESTED_REFERRED_REMARKS = [
   'NIS Coach Certificate scan is blurry. Please re-upload a clear high-resolution copy.',
   'Coach Government ID front & back photo is required. Please upload valid Aadhaar or Voter ID.',
@@ -166,6 +103,7 @@ export default function AdminVerifyCoachesPage() {
   const { showToast } = usePersona();
   const [coaches, setCoaches] = useState<CoachItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [approvingCoachId, setApprovingCoachId] = useState<string | null>(null);
 
@@ -243,16 +181,18 @@ export default function AdminVerifyCoachesPage() {
 
   const loadData = async () => {
     setIsLoading(true);
+    setDbError(null);
     try {
       const res = await getAdminDashboardData();
       if (res.coaches && res.coaches.length > 0) {
         setCoaches(res.coaches as any);
       } else {
-        setCoaches(FALLBACK_CENTRES);
+        setCoaches([]);
       }
-    } catch (err) {
-      console.error("Failed to load coaches for KYC audit:", err);
-      setCoaches(FALLBACK_CENTRES);
+    } catch (err: any) {
+      console.error("[DB_ERROR] Failed to load coaches for KYC audit in AdminVerifyCoachesPage:", err);
+      setDbError(err?.message || "Database connection error: Failed to load coaches.");
+      setCoaches([]);
     } finally {
       setIsLoading(false);
     }
@@ -559,7 +499,16 @@ export default function AdminVerifyCoachesPage() {
             ACADEMY QUEUE LIST
            ══════════════════════════════════════════ */}
         <div className="space-y-4">
-          {filteredCoaches.length === 0 ? (
+          {dbError ? (
+            <div className="py-6">
+              <DatabaseErrorView
+                title="Unable to Load Academies"
+                message="We are having trouble loading the coach verification queue right now. Please try again."
+                error={dbError}
+                onRetry={loadData}
+              />
+            </div>
+          ) : filteredCoaches.length === 0 ? (
             <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-xs space-y-3">
               <CheckCircle size={40} weight="fill" className="text-emerald-500 mx-auto" />
               <h3 className="text-base font-extrabold text-slate-900">

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
               { phone: cleanEmail },
             ],
           },
-        }).catch(() => null);
+        });
 
         if (!existingUser) {
           return NextResponse.json(
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
             coachingCentre: { isNot: null },
           },
           include: { coachingCentre: true },
-        }).catch(() => null);
+        });
 
         if (existingCoach) {
           return NextResponse.json(
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
       message: `Verification code sent to ${cleanEmail}`,
     });
   } catch (error: any) {
-    console.error('[send-otp API error]:', error);
+    console.error('[AUTH_ERROR] send-otp API error:', error);
     return NextResponse.json(
       { success: false, error: error?.message || 'Failed to send OTP' },
       { status: 500 }

@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error('[API payment-failed logging error]:', error);
+    console.error('[DB_ERROR] Failed to record payment failure:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to record failed payment' },
       { status: 500 }

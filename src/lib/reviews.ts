@@ -505,12 +505,11 @@ export async function deleteReviewByAdmin(reviewId: string) {
 // HOMEPAGE TESTIMONIALS / PLATFORM REVIEWS MANAGEMENT
 // ========================================================
 
-import { PlatformReviewItem, INITIAL_PLATFORM_REVIEWS } from '@/lib/platform-reviews-data';
+import { PlatformReviewItem } from '@/lib/platform-reviews-data';
 export type { PlatformReviewItem };
-export { INITIAL_PLATFORM_REVIEWS };
 
 /**
- * Retrieves all active homepage reviews from DB, seeding initial ones if empty
+ * Retrieves all active homepage reviews from DB
  */
 export async function getHomepageReviews(): Promise<PlatformReviewItem[]> {
   try {
@@ -520,27 +519,7 @@ export async function getHomepageReviews(): Promise<PlatformReviewItem[]> {
     });
 
     if (!list || list.length === 0) {
-      // Seed default testimonials into DB so Admin can modify them
-      for (const item of INITIAL_PLATFORM_REVIEWS) {
-        await (prisma as any).platformReview.upsert({
-          where: { id: item.id },
-          create: {
-            id: item.id,
-            name: item.name,
-            location: item.location,
-            childInfo: item.childInfo,
-            discipline: item.discipline,
-            quote: item.quote,
-            rating: item.rating,
-            avatarBg: item.avatarBg,
-            initials: item.initials,
-            order: item.order,
-            isActive: item.isActive,
-          },
-          update: {},
-        }).catch(() => null);
-      }
-      return INITIAL_PLATFORM_REVIEWS;
+      return [];
     }
 
     return list.map((r: any) => ({
@@ -557,8 +536,8 @@ export async function getHomepageReviews(): Promise<PlatformReviewItem[]> {
       isActive: r.isActive,
     }));
   } catch (err) {
-    console.warn('[getHomepageReviews fallback to defaults]:', err);
-    return INITIAL_PLATFORM_REVIEWS;
+    console.error('[DB_ERROR] Failed to fetch homepage reviews:', err);
+    throw new Error('Database error: Failed to fetch homepage reviews');
   }
 }
 
@@ -570,12 +549,10 @@ export async function getAllHomepageReviewsForAdmin(): Promise<PlatformReviewIte
     const list = await (prisma as any).platformReview.findMany({
       orderBy: { order: 'asc' },
     });
-    if (!list || list.length === 0) {
-      return INITIAL_PLATFORM_REVIEWS;
-    }
-    return list;
+    return list || [];
   } catch (err) {
-    return INITIAL_PLATFORM_REVIEWS;
+    console.error('[DB_ERROR] Failed to fetch admin homepage reviews:', err);
+    throw new Error('Database error: Failed to fetch admin homepage reviews');
   }
 }
 

@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error('[API verify-payment error]:', error);
+    console.error('[PAYMENT_ERROR] Failed to verify payment signature:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Payment verification failed.' },
       { status: 500 }

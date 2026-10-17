@@ -6,7 +6,7 @@ export async function GET() {
     const reviews = await getHomepageReviews();
     return NextResponse.json({ success: true, reviews });
   } catch (err: any) {
-    console.error('[API GET /api/homepage-reviews error]', err);
-    return NextResponse.json({ error: 'Failed to fetch homepage reviews' }, { status: 500 });
+    console.error('[DB_ERROR] GET /api/homepage-reviews error:', err);
+    return NextResponse.json({ success: false, error: 'Failed to fetch homepage reviews' }, { status: 500 });
   }
 }

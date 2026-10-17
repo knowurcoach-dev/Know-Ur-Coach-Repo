@@ -10,6 +10,7 @@ import { useModalStore } from '@/hooks/useModalStore';
 import { usePersona } from '@/context/PersonaContext';
 import { useAuth } from '@/hooks/useAuth';
 import { ActivityDetailSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import { AcademyReviewsSection } from '@/components/reviews/AcademyReviewsSection';
 import { useBookmarks } from '@/hooks/useBookmarks';
 import {
@@ -51,6 +52,7 @@ export default function AcademyDetailPage() {
 
   const [academy, setAcademy] = useState<Academy | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [selectedBatchIndex, setSelectedBatchIndex] = useState(0);
   const [batchCategoryFilter, setBatchCategoryFilter] = useState<string>('all');
   const [isOwnerPreview, setIsOwnerPreview] = useState(false);
@@ -108,12 +110,13 @@ export default function AcademyDetailPage() {
     }
   };
 
-  useEffect(() => {
-    async function loadAcademy() {
-      setLoading(true);
-      try {
-        const res = await getAcademyById(id);
-        let foundInDb: any = res.centre;
+  const loadAcademy = React.useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setDbError(null);
+    try {
+      const res = await getAcademyById(id);
+      let foundInDb: any = res.centre;
         if (!foundInDb) {
           const { centres } = await getDiscoveryData();
           foundInDb = centres.find(
@@ -257,18 +260,20 @@ export default function AcademyDetailPage() {
             console.warn('Could not load private coach preview:', coachErr);
           }
         }
-      } catch (err) {
-        console.error('Error loading academy:', err);
+
+        setAcademy(null);
+      } catch (err: any) {
+        console.error('[DB_ERROR] Failed to load academy details in activities/[id] page:', err);
+        setDbError(err?.message || 'Database connection error: Failed to load academy profile.');
+        setAcademy(null);
+      } finally {
+        setLoading(false);
       }
+  }, [id, activeCity, userEmail]);
 
-      setAcademy(null);
-      setLoading(false);
-    }
-
-    if (id) {
-      loadAcademy();
-    }
-  }, [id]);
+  useEffect(() => {
+    loadAcademy();
+  }, [loadAcademy]);
 
   const { isSaved, toggleBookmark } = useBookmarks();
   const isBookmarked = isSaved(id);
@@ -338,6 +343,19 @@ export default function AcademyDetailPage() {
 
   if (loading) {
     return <ActivityDetailSkeleton />;
+  }
+
+  if (dbError) {
+    return (
+      <div className="w-full bg-slate-50 min-h-screen py-16 px-4 flex items-center justify-center">
+        <DatabaseErrorView
+          title="Unable to Load Academy"
+          message="We are having trouble loading this academy's details right now. Please try again."
+          error={dbError}
+          onRetry={loadAcademy}
+        />
+      </div>
+    );
   }
 
   if (!academy) {

@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error('[API create-order error]:', error);
+    console.error('[PAYMENT_ERROR] Failed to initialize subscription order:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Internal server error initializing order.' },
       { status: 500 }

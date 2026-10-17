@@ -13,6 +13,7 @@ import { HeroSlideData, DEFAULT_HERO_SLIDES } from '@/lib/hero-slides';
 import { usePersona } from '@/context/PersonaContext';
 import { ConfirmationModal } from '@/components/modals/ConfirmationModal';
 import { AdminTableSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   Sparkle,
   Plus,
@@ -31,6 +32,11 @@ import {
   Megaphone,
   Slideshow,
   ArrowRight,
+  TextT,
+  CursorClick,
+  Tag,
+  MagnifyingGlass,
+  Check,
 } from '@phosphor-icons/react';
 
 const IMAGE_PRESETS = [
@@ -62,7 +68,7 @@ export default function AdminHeroSlidesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSlide, setEditingSlide] = useState<HeroSlideData | null>(null);
 
-  // Form Fields
+  // Form Fields with element texts & visibility toggles
   const [formData, setFormData] = useState({
     title: '',
     subtitle: '',
@@ -75,6 +81,11 @@ export default function AdminHeroSlidesPage() {
     accentGradient: 'from-blue-600 via-indigo-600 to-emerald-600',
     order: 1,
     isActive: true,
+    showBadge: true,
+    showTitle: true,
+    showSubtitle: true,
+    showPrimaryCta: true,
+    showSecondaryCta: true,
   });
 
   // Deletion Modal
@@ -84,18 +95,23 @@ export default function AdminHeroSlidesPage() {
     title: '',
   });
 
+  const [dbError, setDbError] = useState<string | null>(null);
+
   const loadSlides = async () => {
     setIsLoading(true);
+    setDbError(null);
     try {
       const res = await getAdminHeroSlides();
       if (res.success && res.slides) {
         setSlides(res.slides);
       } else {
-        setSlides(DEFAULT_HERO_SLIDES);
+        setSlides([]);
       }
-    } catch (err) {
-      console.error('Failed to load slides:', err);
-      showToast('Error loading hero slides');
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to load hero slides in AdminHeroSlidesPage:', err);
+      setDbError(err?.message || 'Database connection error: Failed to load hero slides.');
+      setSlides([]);
+      showToast('Error loading hero slides from database');
     } finally {
       setIsLoading(false);
     }
@@ -119,6 +135,11 @@ export default function AdminHeroSlidesPage() {
       accentGradient: GRADIENT_PRESETS[0].value,
       order: slides.length + 1,
       isActive: true,
+      showBadge: true,
+      showTitle: true,
+      showSubtitle: true,
+      showPrimaryCta: true,
+      showSecondaryCta: true,
     });
     setIsModalOpen(true);
   };
@@ -137,14 +158,19 @@ export default function AdminHeroSlidesPage() {
       accentGradient: slide.accentGradient || GRADIENT_PRESETS[0].value,
       order: slide.order,
       isActive: slide.isActive,
+      showBadge: slide.showBadge !== false,
+      showTitle: slide.showTitle !== false,
+      showSubtitle: slide.showSubtitle !== false,
+      showPrimaryCta: slide.showPrimaryCta !== false,
+      showSecondaryCta: slide.showSecondaryCta !== false,
     });
     setIsModalOpen(true);
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title.trim()) {
-      showToast('⚠️ Please enter a slide title');
+    if (formData.showTitle && !formData.title.trim()) {
+      showToast('⚠️ Please enter a slide headline/title');
       return;
     }
     if (!formData.imageUrl.trim()) {
@@ -192,6 +218,31 @@ export default function AdminHeroSlidesPage() {
         }
       } catch (err) {
         showToast('Error updating slide status');
+      }
+    });
+  };
+
+  const handleToggleField = (
+    slide: HeroSlideData,
+    field: 'showBadge' | 'showTitle' | 'showSubtitle' | 'showPrimaryCta' | 'showSecondaryCta',
+    fieldName: string
+  ) => {
+    if (!slide.id) return;
+    const currentVal = slide[field] !== false;
+    const newVal = !currentVal;
+    startTransition(async () => {
+      try {
+        const res = await updateHeroSlide(slide.id!, { [field]: newVal });
+        if (res.success) {
+          setSlides((prev) =>
+            prev.map((s) => (s.id === slide.id ? { ...s, [field]: newVal } : s))
+          );
+          showToast(`${fieldName}: ${newVal ? 'Visible' : 'Hidden'}`);
+        } else {
+          showToast(res.message || 'Failed to update visibility');
+        }
+      } catch (err) {
+        showToast('Error updating visibility');
       }
     });
   };
@@ -274,7 +325,7 @@ export default function AdminHeroSlidesPage() {
               Hero Carousel Management
             </h1>
             <p className="text-sm text-blue-200 mt-1 max-w-2xl">
-              Control the homepage carousel slides: custom headlines, descriptions, high-resolution imagery, and action callout buttons viewed by parents across India.
+              Control the homepage carousel slides: toggle visibility of badges, titles, subtitles, and buttons. Customize exact text, call-to-actions, and high-resolution imagery.
             </p>
           </div>
 
@@ -309,18 +360,27 @@ export default function AdminHeroSlidesPage() {
               </span>
             </h2>
             <span className="text-xs text-slate-500 font-medium">
-              Drag or use arrows to change carousel display sequence
+              Click any element toggle (Pill, Title, Subtitle, Buttons) to turn visibility on or off instantly
             </span>
           </div>
 
-          {slides.length === 0 ? (
+          {dbError ? (
+            <div className="py-6">
+              <DatabaseErrorView
+                title="Unable to Load Slides"
+                message="We are having trouble loading hero slides right now. Please try again."
+                error={dbError}
+                onRetry={loadSlides}
+              />
+            </div>
+          ) : slides.length === 0 ? (
             <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm space-y-4">
               <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto">
                 <Slideshow size={32} weight="bold" />
               </div>
               <h3 className="text-lg font-bold text-slate-900">No Hero Slides Configured</h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Your homepage is currently using default fallback slides. Add customized slides or click &quot;Reset Defaults&quot; to populate.
+                No active hero slides found in the database. Add customized slides or click &quot;Reset Defaults&quot; to seed standard slides into PostgreSQL.
               </p>
               <button
                 onClick={openCreateModal}
@@ -332,152 +392,281 @@ export default function AdminHeroSlidesPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {slides.map((slide, index) => (
-                <div
-                  key={slide.id || index}
-                  className={`bg-white rounded-2xl border transition-all shadow-sm hover:shadow-md overflow-hidden ${
-                    slide.isActive ? 'border-slate-200' : 'border-dashed border-slate-300 opacity-60'
-                  }`}
-                >
-                  <div className="flex flex-col md:flex-row items-stretch">
-                    {/* Visual Slide Image Thumbnail */}
-                    <div className="relative w-full md:w-72 h-44 md:h-auto shrink-0 bg-slate-900 overflow-hidden">
-                      <img
-                        src={slide.imageUrl}
-                        alt={slide.title}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src =
-                            'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?q=80&w=800&auto=format&fit=crop';
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                        <span className="bg-black/70 backdrop-blur-md text-white font-black text-[10px] px-2 py-0.5 rounded-full border border-white/20">
-                          #{index + 1}
-                        </span>
-                        {slide.isActive ? (
-                          <span className="bg-emerald-500 text-white font-black text-[10px] px-2 py-0.5 rounded-full shadow-xs">
-                            Active
+              {slides.map((slide, index) => {
+                const showBadge = slide.showBadge !== false;
+                const showTitle = slide.showTitle !== false;
+                const showSubtitle = slide.showSubtitle !== false;
+                const showPrimaryCta = slide.showPrimaryCta !== false;
+                const showSecondaryCta = slide.showSecondaryCta !== false;
+
+                return (
+                  <div
+                    key={slide.id || index}
+                    className={`bg-white rounded-2xl border transition-all shadow-sm hover:shadow-md overflow-hidden ${
+                      slide.isActive ? 'border-slate-200' : 'border-dashed border-slate-300 opacity-60'
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row items-stretch">
+                      {/* Visual Slide Image Thumbnail */}
+                      <div className="relative w-full md:w-72 h-48 md:h-auto shrink-0 bg-slate-900 overflow-hidden">
+                        <img
+                          src={slide.imageUrl}
+                          alt={slide.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src =
+                              'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?q=80&w=800&auto=format&fit=crop';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                          <span className="bg-black/70 backdrop-blur-md text-white font-black text-[10px] px-2 py-0.5 rounded-full border border-white/20">
+                            #{index + 1}
                           </span>
-                        ) : (
-                          <span className="bg-slate-700 text-slate-300 font-bold text-[10px] px-2 py-0.5 rounded-full">
-                            Draft
-                          </span>
+                          {slide.isActive ? (
+                            <span className="bg-emerald-500 text-white font-black text-[10px] px-2 py-0.5 rounded-full shadow-xs">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="bg-slate-700 text-slate-300 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                              Draft
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Badge Preview */}
+                        {slide.badge && (
+                          <div className="absolute bottom-2.5 left-2.5 right-2.5">
+                            <span
+                              className={`text-[10px] font-black px-2 py-0.5 rounded-md truncate block transition-all ${
+                                showBadge
+                                  ? 'text-emerald-300 bg-black/70 backdrop-blur-md border border-emerald-500/30'
+                                  : 'text-slate-400 bg-black/60 line-through opacity-60'
+                              }`}
+                            >
+                              {showBadge ? slide.badge : `(Hidden: ${slide.badge})`}
+                            </span>
+                          </div>
                         )}
                       </div>
-                      {slide.badge && (
-                        <div className="absolute bottom-2.5 left-2.5 right-2.5">
-                          <span className="text-[10px] font-black text-emerald-300 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-md border border-emerald-500/30 truncate block">
-                            {slide.badge}
-                          </span>
-                        </div>
-                      )}
-                    </div>
 
-                    {/* Content & Actions */}
-                    <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
-                      <div className="space-y-1.5">
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
-                            {slide.title}
-                          </h3>
+                      {/* Content & Actions */}
+                      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <h3
+                              className={`text-base sm:text-lg font-black leading-snug transition-colors ${
+                                showTitle ? 'text-slate-900' : 'text-slate-400 italic line-through'
+                              }`}
+                            >
+                              {slide.title}
+                              {!showTitle && (
+                                <span className="ml-2 text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded not-italic">
+                                  Title Hidden
+                                </span>
+                              )}
+                            </h3>
 
-                          {/* Reordering Up/Down controls */}
-                          <div className="flex items-center gap-1 shrink-0 bg-slate-100 p-1 rounded-xl">
-                            <button
-                              onClick={() => handleMoveOrder(index, 'up')}
-                              disabled={index === 0}
-                              className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                              title="Move Slide Up"
+                            {/* Reordering Up/Down controls */}
+                            <div className="flex items-center gap-1 shrink-0 bg-slate-100 p-1 rounded-xl">
+                              <button
+                                onClick={() => handleMoveOrder(index, 'up')}
+                                disabled={index === 0}
+                                className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                                title="Move Slide Up"
+                              >
+                                <ArrowUp size={14} weight="bold" />
+                              </button>
+                              <button
+                                onClick={() => handleMoveOrder(index, 'down')}
+                                disabled={index === slides.length - 1}
+                                className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                                title="Move Slide Down"
+                              >
+                                <ArrowDown size={14} weight="bold" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {slide.subtitle && (
+                            <p
+                              className={`text-xs leading-relaxed line-clamp-2 transition-colors ${
+                                showSubtitle ? 'text-slate-600' : 'text-slate-400 italic line-through'
+                              }`}
                             >
-                              <ArrowUp size={14} weight="bold" />
-                            </button>
-                            <button
-                              onClick={() => handleMoveOrder(index, 'down')}
-                              disabled={index === slides.length - 1}
-                              className="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                              title="Move Slide Down"
-                            >
-                              <ArrowDown size={14} weight="bold" />
-                            </button>
+                              {slide.subtitle}
+                              {!showSubtitle && (
+                                <span className="ml-2 text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded not-italic">
+                                  Subtitle Hidden
+                                </span>
+                              )}
+                            </p>
+                          )}
+
+                          {/* Visibility Controls Bar (Quick Toggle Buttons for Every Element) */}
+                          <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                              <span>Element Visibility Toggles:</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* Badge Toggle Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleField(slide, 'showBadge', 'Badge Pill')}
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  showBadge
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                    : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 line-through'
+                                }`}
+                                title="Toggle Badge Pill Visibility"
+                              >
+                                {showBadge ? <Eye size={13} weight="bold" /> : <EyeSlash size={13} />}
+                                <span>Pill Badge: {showBadge ? 'ON' : 'OFF'}</span>
+                              </button>
+
+                              {/* Title Toggle Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleField(slide, 'showTitle', 'Headline Title')}
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  showTitle
+                                    ? 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100'
+                                    : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 line-through'
+                                }`}
+                                title="Toggle Title Visibility"
+                              >
+                                {showTitle ? <Eye size={13} weight="bold" /> : <EyeSlash size={13} />}
+                                <span>Title: {showTitle ? 'ON' : 'OFF'}</span>
+                              </button>
+
+                              {/* Subtitle Toggle Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleField(slide, 'showSubtitle', 'Subtitle')}
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  showSubtitle
+                                    ? 'bg-indigo-50 text-indigo-800 border-indigo-300 hover:bg-indigo-100'
+                                    : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 line-through'
+                                }`}
+                                title="Toggle Subtitle Visibility"
+                              >
+                                {showSubtitle ? <Eye size={13} weight="bold" /> : <EyeSlash size={13} />}
+                                <span>Subtitle: {showSubtitle ? 'ON' : 'OFF'}</span>
+                              </button>
+
+                              {/* Primary Button Toggle Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleField(slide, 'showPrimaryCta', 'Primary Button')}
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  showPrimaryCta
+                                    ? 'bg-violet-50 text-violet-800 border-violet-300 hover:bg-violet-100'
+                                    : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 line-through'
+                                }`}
+                                title="Toggle Primary Button Visibility"
+                              >
+                                {showPrimaryCta ? <Eye size={13} weight="bold" /> : <EyeSlash size={13} />}
+                                <span>Button 1: {showPrimaryCta ? 'ON' : 'OFF'}</span>
+                              </button>
+
+                              {/* Secondary Button Toggle Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleField(slide, 'showSecondaryCta', 'Secondary Button')}
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  showSecondaryCta
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                    : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 line-through'
+                                }`}
+                                title="Toggle Secondary Button Visibility"
+                              >
+                                {showSecondaryCta ? <Eye size={13} weight="bold" /> : <EyeSlash size={13} />}
+                                <span>Button 2: {showSecondaryCta ? 'ON' : 'OFF'}</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* CTA Pills preview */}
+                          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                            {slide.ctaText && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                                  showPrimaryCta
+                                    ? 'text-blue-700 bg-blue-50 border-blue-200'
+                                    : 'text-slate-400 bg-slate-100 border-slate-200 line-through'
+                                }`}
+                              >
+                                <span>Primary: {slide.ctaText}</span>
+                                <span className="text-slate-400">({slide.ctaLink || '/activities'})</span>
+                              </span>
+                            )}
+                            {slide.secondaryCtaText && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                                  showSecondaryCta
+                                    ? 'text-slate-700 bg-slate-100 border-slate-200'
+                                    : 'text-slate-400 bg-slate-100 border-slate-200 line-through'
+                                }`}
+                              >
+                                <span>Secondary: {slide.secondaryCtaText}</span>
+                                <span className="text-slate-400">({slide.secondaryCtaLink || '/activities'})</span>
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        {slide.subtitle && (
-                          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                            {slide.subtitle}
-                          </p>
-                        )}
-
-                        {/* CTA Pills preview */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {slide.ctaText && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
-                              <span>Primary: {slide.ctaText}</span>
-                              <span className="text-slate-400">({slide.ctaLink})</span>
-                            </span>
-                          )}
-                          {slide.secondaryCtaText && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
-                              <span>Secondary: {slide.secondaryCtaText}</span>
-                              <span className="text-slate-400">({slide.secondaryCtaLink})</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Bottom action row */}
-                      <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleActive(slide)}
-                          className={`text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                            slide.isActive
-                              ? 'text-emerald-700 hover:text-emerald-800'
-                              : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                        >
-                          {slide.isActive ? (
-                            <>
-                              <Eye size={15} weight="fill" className="text-emerald-600" />
-                              <span>Live on Homepage</span>
-                            </>
-                          ) : (
-                            <>
-                              <EyeSlash size={15} />
-                              <span>Hidden from Homepage</span>
-                            </>
-                          )}
-                        </button>
-
-                        <div className="flex items-center gap-2">
+                        {/* Bottom action row */}
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                           <button
-                            onClick={() => openEditModal(slide)}
-                            className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                            type="button"
+                            onClick={() => handleToggleActive(slide)}
+                            className={`text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                              slide.isActive
+                                ? 'text-emerald-700 hover:text-emerald-800'
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
                           >
-                            <PencilSimple size={14} weight="bold" />
-                            <span>Edit</span>
+                            {slide.isActive ? (
+                              <>
+                                <Eye size={15} weight="fill" className="text-emerald-600" />
+                                <span>Live on Homepage</span>
+                              </>
+                            ) : (
+                              <>
+                                <EyeSlash size={15} />
+                                <span>Hidden from Homepage</span>
+                              </>
+                            )}
                           </button>
-                          <button
-                            onClick={() =>
-                              setDeleteModal({
-                                isOpen: true,
-                                id: slide.id!,
-                                title: slide.title,
-                              })
-                            }
-                            className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
-                          >
-                            <Trash size={14} weight="bold" />
-                            <span>Delete</span>
-                          </button>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openEditModal(slide)}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <PencilSimple size={14} weight="bold" />
+                              <span>Edit &amp; Configure</span>
+                            </button>
+                            <button
+                              onClick={() =>
+                                setDeleteModal({
+                                  isOpen: true,
+                                  id: slide.id!,
+                                  title: slide.title,
+                                })
+                              }
+                              className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <Trash size={14} weight="bold" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -485,15 +674,16 @@ export default function AdminHeroSlidesPage() {
 
       {/* CREATE / EDIT SLIDE MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8">
-            <div className="bg-gradient-to-r from-blue-900 to-indigo-900 p-6 text-white flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-6">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-900 to-indigo-900 p-5 sm:p-6 text-white flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-black">
-                  {editingSlide ? 'Edit Hero Slide' : 'Create New Hero Slide'}
+                <h3 className="text-lg sm:text-xl font-black">
+                  {editingSlide ? 'Edit Hero Slide & Visibility Settings' : 'Create New Hero Slide'}
                 </h3>
                 <p className="text-xs text-blue-200 mt-0.5">
-                  Configure text, high-res background image, and call-to-action buttons
+                  Customize texts, button labels, links, and toggle visibility on or off for each element
                 </p>
               </div>
               <button
@@ -504,195 +694,525 @@ export default function AdminHeroSlidesPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-              {/* Title */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                  Main Headline / Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Where Passion Meets Potential: Kids Sports & Coaching"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Subtitle */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                  Subtitle / Custom Text
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Discover verified sports academies, dance studios, and STEM robotics labs with 100% free trial sessions."
-                  value={formData.subtitle}
-                  onChange={(e) => setFormData({ ...formData, subtitle: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Badge Pill */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                  Top Highlight Badge Pill
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. India's Verified Kids Coaching Network"
-                  value={formData.badge}
-                  onChange={(e) => setFormData({ ...formData, badge: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Image URL & Presets */}
+            <form onSubmit={handleSave} className="p-5 sm:p-6 space-y-6 max-h-[78vh] overflow-y-auto">
+              {/* LIVE PREVIEW BANNER */}
               <div className="space-y-2">
-                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-                  Slide Image URL *
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    required
-                    placeholder="https://images.unsplash.com/..."
-                    value={formData.imageUrl}
-                    onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {formData.imageUrl && (
-                    <div className="w-12 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                      <img
-                        src={formData.imageUrl}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Sparkle size={14} weight="fill" className="text-amber-500" />
+                    <span>Real-Time Live Preview</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Updates instantly as you edit text and toggles below
+                  </span>
                 </div>
 
-                {/* Preset Chips */}
-                <div>
-                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
-                    Quick Preset Images:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {IMAGE_PRESETS.map((preset) => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, imageUrl: preset.url })}
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                          formData.imageUrl === preset.url
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
+                <div className="relative rounded-2xl overflow-hidden shadow-lg bg-slate-950 border border-slate-200 h-64 sm:h-72 flex items-center p-6 sm:p-8 text-left">
+                  {/* Background Image */}
+                  <img
+                    src={formData.imageUrl || IMAGE_PRESETS[0].url}
+                    alt="Preview"
+                    className="absolute inset-0 w-full h-full object-cover brightness-90"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?q=80&w=800&auto=format&fit=crop';
+                    }}
+                  />
+                  {/* Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/80 to-slate-950/20" />
+
+                  {/* Content Container */}
+                  <div className="relative z-10 max-w-xl space-y-2.5">
+                    {/* Badge Pill Preview */}
+                    {formData.showBadge ? (
+                      <div className="inline-flex items-center gap-1.5 bg-black/60 backdrop-blur-md border border-white/20 px-3 py-0.5 rounded-full text-xs font-black text-white shadow-md">
+                        <Sparkle size={12} weight="fill" className="text-emerald-400" />
+                        <span>{formData.badge || "India's Verified Kids Coaching Network"}</span>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 bg-black/40 border border-dashed border-white/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold text-slate-400">
+                        <EyeSlash size={11} />
+                        <span>Badge Pill Hidden</span>
+                      </div>
+                    )}
+
+                    {/* Title Preview */}
+                    {formData.showTitle ? (
+                      <h4 className="text-xl sm:text-2xl font-black text-white leading-tight drop-shadow-md">
+                        {formData.title || 'Slide Title Headline Goes Here'}{' '}
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400">
+                          Across India
+                        </span>
+                      </h4>
+                    ) : (
+                      <div className="p-1.5 rounded border border-dashed border-white/30 text-[11px] font-bold text-slate-400 inline-flex items-center gap-1">
+                        <EyeSlash size={12} />
+                        <span>Headline Title Hidden</span>
+                      </div>
+                    )}
+
+                    {/* Subtitle Preview */}
+                    {formData.showSubtitle ? (
+                      <p className="text-xs text-slate-200 line-clamp-2 leading-relaxed drop-shadow">
+                        {formData.subtitle || 'Discover verified sports academies, dance studios, and STEM robotics labs with 100% free trial sessions.'}
+                      </p>
+                    ) : (
+                      <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                        <EyeSlash size={11} />
+                        <span>Subtitle Text Hidden</span>
+                      </div>
+                    )}
+
+                    {/* Buttons Preview */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {formData.showPrimaryCta ? (
+                        <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs px-3.5 py-1.5 rounded-xl shadow-md">
+                          <span>{formData.ctaText || 'Explore Academies'}</span>
+                          <ArrowRight size={13} weight="bold" />
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-400 border border-dashed border-white/30 px-2 py-1 rounded-lg flex items-center gap-1">
+                          <EyeSlash size={10} /> Button 1 Hidden
+                        </span>
+                      )}
+
+                      {formData.showSecondaryCta ? (
+                        <div className="inline-flex items-center gap-1.5 bg-white/20 text-white font-bold text-xs px-3 py-1.5 rounded-xl border border-white/30 backdrop-blur-md">
+                          <MagnifyingGlass size={12} weight="bold" className="text-blue-300" />
+                          <span>{formData.secondaryCtaText || 'Search Below'}</span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-400 border border-dashed border-white/30 px-2 py-1 rounded-lg flex items-center gap-1">
+                          <EyeSlash size={10} /> Button 2 Hidden
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                    Primary CTA Text
+              {/* SECTION 1: TOP HIGHLIGHT BADGE PILL */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag size={18} weight="bold" className="text-emerald-600" />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        1. Top Highlight Badge Pill
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Small rounded pill tag rendered above the main headline
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Button for Badge Pill */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showBadge}
+                      onChange={(e) => setFormData({ ...formData, showBadge: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    <span className="ml-2 text-xs font-black text-slate-700 min-w-16">
+                      {formData.showBadge ? (
+                        <span className="text-emerald-700 flex items-center gap-1">
+                          <Eye size={13} weight="bold" /> Visible
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <EyeSlash size={13} /> Hidden
+                        </span>
+                      )}
+                    </span>
                   </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Explore Activities"
-                    value={formData.ctaText}
-                    onChange={(e) => setFormData({ ...formData, ctaText: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                    Primary CTA Link
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    What to write on the Badge Pill:
                   </label>
                   <input
                     type="text"
-                    placeholder="/activities"
-                    value={formData.ctaLink}
-                    onChange={(e) => setFormData({ ...formData, ctaLink: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={!formData.showBadge}
+                    placeholder="e.g. India's Verified Kids Coaching Network"
+                    value={formData.badge}
+                    onChange={(e) => setFormData({ ...formData, badge: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                      formData.showBadge
+                        ? 'border-slate-300 bg-white text-slate-900'
+                        : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                    }`}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                    Secondary CTA Text
+              {/* SECTION 2: MAIN HEADLINE / TITLE */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TextT size={18} weight="bold" className="text-blue-600" />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        2. Main Headline / Title Text
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Primary large title displayed prominently on the slide
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Button for Title */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showTitle}
+                      onChange={(e) => setFormData({ ...formData, showTitle: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    <span className="ml-2 text-xs font-black text-slate-700 min-w-16">
+                      {formData.showTitle ? (
+                        <span className="text-blue-700 flex items-center gap-1">
+                          <Eye size={13} weight="bold" /> Visible
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <EyeSlash size={13} /> Hidden
+                        </span>
+                      )}
+                    </span>
                   </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Book Free Trial"
-                    value={formData.secondaryCtaText}
-                    onChange={(e) => setFormData({ ...formData, secondaryCtaText: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                    Secondary CTA Link
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    What to write on the Headline / Title:
                   </label>
                   <input
                     type="text"
-                    placeholder="/activities?trial=free"
-                    value={formData.secondaryCtaLink}
-                    onChange={(e) => setFormData({ ...formData, secondaryCtaLink: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required={formData.showTitle}
+                    disabled={!formData.showTitle}
+                    placeholder="e.g. Where Passion Meets Potential: Kids Sports & Athletics"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                      formData.showTitle
+                        ? 'border-slate-300 bg-white text-slate-900'
+                        : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                    }`}
                   />
                 </div>
               </div>
 
-              {/* Gradient Theme Preset */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                  Accent Gradient Color Style
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {GRADIENT_PRESETS.map((grad) => (
-                    <button
-                      key={grad.label}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, accentGradient: grad.value })}
-                      className={`text-xs font-bold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all ${
-                        formData.accentGradient === grad.value
-                          ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
-                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+              {/* SECTION 3: SUBTITLE / CUSTOM DESCRIPTION */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TextT size={18} weight="bold" className="text-indigo-600" />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        3. Subtitle / Description Text
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Supportive descriptive body text under the headline
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Button for Subtitle */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showSubtitle}
+                      onChange={(e) => setFormData({ ...formData, showSubtitle: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                    <span className="ml-2 text-xs font-black text-slate-700 min-w-16">
+                      {formData.showSubtitle ? (
+                        <span className="text-indigo-700 flex items-center gap-1">
+                          <Eye size={13} weight="bold" /> Visible
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <EyeSlash size={13} /> Hidden
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    What to write on the Subtitle:
+                  </label>
+                  <textarea
+                    rows={2}
+                    disabled={!formData.showSubtitle}
+                    placeholder="Discover verified sports academies, Olympic pools, and badminton arenas with 100% free trial sessions."
+                    value={formData.subtitle}
+                    onChange={(e) => setFormData({ ...formData, subtitle: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                      formData.showSubtitle
+                        ? 'border-slate-300 bg-white text-slate-900'
+                        : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* SECTION 4: PRIMARY ACTION BUTTON (CTA) */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CursorClick size={18} weight="bold" className="text-violet-600" />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        4. Primary Action Button
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        High-contrast gradient action button (e.g. Explore Sports)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Button for Primary CTA */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showPrimaryCta}
+                      onChange={(e) => setFormData({ ...formData, showPrimaryCta: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600"></div>
+                    <span className="ml-2 text-xs font-black text-slate-700 min-w-16">
+                      {formData.showPrimaryCta ? (
+                        <span className="text-violet-700 flex items-center gap-1">
+                          <Eye size={13} weight="bold" /> Visible
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <EyeSlash size={13} /> Hidden
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      What to write on Primary Button:
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!formData.showPrimaryCta}
+                      placeholder="e.g. Explore Academies"
+                      value={formData.ctaText}
+                      onChange={(e) => setFormData({ ...formData, ctaText: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                        formData.showPrimaryCta
+                          ? 'border-slate-300 bg-white text-slate-900'
+                          : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
                       }`}
-                    >
-                      <span className={`w-3.5 h-3.5 rounded-full bg-gradient-to-r ${grad.value}`} />
-                      <span>{grad.label}</span>
-                    </button>
-                  ))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Primary Button Link URL:
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!formData.showPrimaryCta}
+                      placeholder="/activities?activity=sports"
+                      value={formData.ctaLink}
+                      onChange={(e) => setFormData({ ...formData, ctaLink: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                        formData.showPrimaryCta
+                          ? 'border-slate-300 bg-white text-slate-900'
+                          : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                      }`}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Status Toggle */}
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-                  Slide Active Status
-                </span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.isActive}
-                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                  <span className="ml-2 text-xs font-bold text-slate-700">
-                    {formData.isActive ? 'Active (Visible)' : 'Draft (Hidden)'}
-                  </span>
-                </label>
+              {/* SECTION 5: SECONDARY ACTION BUTTON (CTA) */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CursorClick size={18} weight="bold" className="text-amber-600" />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        5. Secondary Action Button
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Frosted glass button (e.g. Search Below or Book Free Trial)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Button for Secondary CTA */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showSecondaryCta}
+                      onChange={(e) => setFormData({ ...formData, showSecondaryCta: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                    <span className="ml-2 text-xs font-black text-slate-700 min-w-16">
+                      {formData.showSecondaryCta ? (
+                        <span className="text-amber-700 flex items-center gap-1">
+                          <Eye size={13} weight="bold" /> Visible
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <EyeSlash size={13} /> Hidden
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      What to write on Secondary Button:
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!formData.showSecondaryCta}
+                      placeholder="e.g. Book Free Trial or Search Below"
+                      value={formData.secondaryCtaText}
+                      onChange={(e) => setFormData({ ...formData, secondaryCtaText: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                        formData.showSecondaryCta
+                          ? 'border-slate-300 bg-white text-slate-900'
+                          : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Secondary Button Link URL:
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!formData.showSecondaryCta}
+                      placeholder="#search or /activities?trial=free"
+                      value={formData.secondaryCtaLink}
+                      onChange={(e) => setFormData({ ...formData, secondaryCtaLink: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                        formData.showSecondaryCta
+                          ? 'border-slate-300 bg-white text-slate-900'
+                          : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 6: SLIDE IMAGE & APPEARANCE */}
+              <div className="space-y-4 pt-2">
+                {/* Image URL & Presets */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                    Slide Image URL *
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://images.unsplash.com/..."
+                      value={formData.imageUrl}
+                      onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                      className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {formData.imageUrl && (
+                      <div className="w-12 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                        <img
+                          src={formData.imageUrl}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Preset Chips */}
+                  <div>
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                      Quick Preset Images:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {IMAGE_PRESETS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, imageUrl: preset.url })}
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                            formData.imageUrl === preset.url
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gradient Theme Preset */}
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                    Accent Gradient Color Style
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {GRADIENT_PRESETS.map((grad) => (
+                      <button
+                        key={grad.label}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, accentGradient: grad.value })}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all ${
+                          formData.accentGradient === grad.value
+                            ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className={`w-3.5 h-3.5 rounded-full bg-gradient-to-r ${grad.value}`} />
+                        <span>{grad.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Overall Slide Active Status */}
+                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                  <div>
+                    <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">
+                      Slide Publication Status
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      When active, this slide appears in the homepage carousel sequence
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.isActive}
+                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                    <span className="ml-2 text-xs font-bold text-slate-700">
+                      {formData.isActive ? 'Active (Live)' : 'Draft (Hidden)'}
+                    </span>
+                  </label>
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -710,7 +1230,7 @@ export default function AdminHeroSlidesPage() {
                   className="px-6 py-2.5 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
                   <FloppyDisk size={15} weight="bold" />
-                  <span>{editingSlide ? 'Update Slide' : 'Create Slide'}</span>
+                  <span>{editingSlide ? 'Update Slide Settings' : 'Create Slide'}</span>
                 </button>
               </div>
             </form>

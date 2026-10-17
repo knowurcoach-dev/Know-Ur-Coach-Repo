@@ -13,7 +13,7 @@ import {
   updateCoachAcademyProfile,
 } from '@/lib/actions';
 import { parseDocsPayload } from '@/lib/coach-docs';
-import { getCategoryEmoji, getCategoryDisplayName, FALLBACK_TAXONOMY_GROUPS } from '@/lib/categories';
+import { getCategoryEmoji, getCategoryDisplayName } from '@/lib/categories';
 import { CoachDashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import {
   SealCheck,
@@ -1427,7 +1427,6 @@ export default function CoachDashboardPage() {
                       const offeredCategories = centreData?.category
                         ? centreData.category.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean)
                         : ['badminton'];
-                      const allTaxonomyCategories = FALLBACK_TAXONOMY_GROUPS.flatMap((g) => g.categories || []);
 
                       return (
                       <div

@@ -55,43 +55,16 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Graceful fallback response
-    const fallbackResult: LocationResult = {
-      id: 'fallback-loc',
-      displayName: 'Agra, Uttar Pradesh',
-      name: 'Kamla Nagar',
-      locality: 'Kamla Nagar',
-      city: 'Agra',
-      state: 'Uttar Pradesh',
-      lat: 27.1767,
-      lon: 78.0081,
-    };
-
-    return NextResponse.json({
-      result: fallbackResult,
-      source: 'fallback',
-      provider,
-      attribution,
-    });
+    return NextResponse.json(
+      { error: 'Could not resolve location for given coordinates' },
+      { status: 404 }
+    );
   } catch (err: any) {
-    console.error('[Reverse Geocoding Error]', err);
-    const attribution = getLocationAttribution();
-    const { provider } = getConfiguredProvider();
-    return NextResponse.json({
-      result: {
-        id: 'fallback-loc',
-        displayName: 'Agra, Uttar Pradesh',
-        name: 'Kamla Nagar',
-        locality: 'Kamla Nagar',
-        city: 'Agra',
-        state: 'Uttar Pradesh',
-        lat: 27.1767,
-        lon: 78.0081,
-      },
-      source: 'fallback',
-      provider,
-      attribution,
-    });
+    console.error('[LOCATION_ERROR] Reverse geocoding failed:', err);
+    return NextResponse.json(
+      { error: 'Failed to reverse geocode location' },
+      { status: 500 }
+    );
   }
 }
 

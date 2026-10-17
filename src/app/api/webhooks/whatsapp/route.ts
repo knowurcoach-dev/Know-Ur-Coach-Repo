@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       sender: senderName,
     });
   } catch (error: any) {
-    console.error('[WhatsApp Webhook Error]', error);
+    console.error('[WEBHOOK_ERROR] WhatsApp webhook processing failed:', error);
     return NextResponse.json(
       { error: 'WhatsApp webhook processing failed', message: error.message },
       { status: 500 }

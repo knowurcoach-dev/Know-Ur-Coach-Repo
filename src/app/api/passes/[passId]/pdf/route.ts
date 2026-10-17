@@ -69,6 +69,7 @@ export async function GET(
       },
     });
   } catch (err: any) {
+    console.error('[DB_ERROR] Failed to generate pass PDF:', err);
     return NextResponse.json(
       { error: err?.message || 'Pass generation failed' },
       { status: 500 }

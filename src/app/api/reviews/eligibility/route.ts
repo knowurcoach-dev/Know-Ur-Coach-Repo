@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     const res = await checkParentReviewEligibility(academyId);
     return NextResponse.json(res);
   } catch (err: any) {
-    console.error('[API GET /api/reviews/eligibility error]', err);
+    console.error('[DB_ERROR] Failed to verify review eligibility:', err);
     return NextResponse.json({ isEligible: false, reason: 'NOT_ENROLLED', message: 'Could not verify eligibility.' }, { status: 500 });
   }
 }

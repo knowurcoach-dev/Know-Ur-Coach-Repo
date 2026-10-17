@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { KycStatus, SafetyGrade, SubscriptionPlan, CoachType, Role, PassType, EscrowStatus } from "@prisma/client";
 import { logAdminAction } from "@/lib/audit";
-import { PlatformCategory, DEFAULT_PLATFORM_CATEGORIES, getCategoryDisplayName, FALLBACK_TAXONOMY_GROUPS } from "@/lib/categories";
+import { PlatformCategory, getCategoryDisplayName } from "@/lib/categories";
 import { DEFAULT_HERO_SLIDES, HeroSlideData } from "@/lib/hero-slides";
 import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail } from "@/lib/mail";
 import { buildStatusNotesWithDocs, parseDocsPayload, updateDocStatusInStatusNotes } from "@/lib/coach-docs";
@@ -2128,16 +2128,8 @@ export async function getAdminDashboardData() {
 
     return toPlainObject(result);
   } catch (err) {
-    console.warn("DB getAdminDashboardData fallback:", err);
-    return {
-      coaches: [],
-      parents: [],
-      activities: [],
-      categories: [],
-      competitions: [],
-      config: null,
-      stats: { totalCoaches: 0, pendingApprovals: 0, approvedCoaches: 0, totalParents: 0, totalBookings: 0, totalCompetitions: 0, totalActivities: 0, totalCategories: 0 },
-    };
+    console.error("[DB_ERROR] Failed to fetch admin dashboard data:", err);
+    throw new Error("Database error: Failed to fetch admin dashboard data");
   }
 }
 
@@ -2190,7 +2182,7 @@ export async function getDiscoveryData() {
       prisma.heroSlide.findMany({
         where: { isActive: true },
         orderBy: { order: 'asc' },
-      }).catch(() => []),
+      }),
     ]);
 
     const mappedActivities = (majorActivities || []).map((act: any) => ({
@@ -2230,18 +2222,11 @@ export async function getDiscoveryData() {
       activities: mappedActivities,
       categories: allCategories,
       config,
-      heroSlides: (heroSlides && heroSlides.length > 0) ? heroSlides : DEFAULT_HERO_SLIDES,
+      heroSlides: heroSlides || [],
     });
   } catch (err) {
-    console.error("DB getDiscoveryData error:", err);
-    return {
-      centres: [],
-      competitions: [],
-      activities: [],
-      categories: [],
-      config: null,
-      heroSlides: DEFAULT_HERO_SLIDES,
-    };
+    console.error("[DB_ERROR] Failed to fetch discovery data from database:", err);
+    throw new Error("Database error: Failed to fetch discovery data");
   }
 }
 
@@ -2254,15 +2239,16 @@ export async function updateLeadStatus(
       where: { id: leadId },
       data: { status },
     });
+    return {
+      success: true,
+      leadId,
+      status,
+      updatedAt: new Date().toISOString(),
+    };
   } catch (err) {
-    console.warn("DB updateLeadStatus fallback:", err);
+    console.error("[DB_ERROR] Failed to update lead status:", err);
+    throw new Error("Database error: Failed to update lead status");
   }
-  return {
-    success: true,
-    leadId,
-    status,
-    updatedAt: new Date().toISOString(),
-  };
 }
 
 export async function getActiveCategories(): Promise<PlatformCategory[]> {
@@ -2271,13 +2257,10 @@ export async function getActiveCategories(): Promise<PlatformCategory[]> {
       where: { isActive: true },
       orderBy: { order: 'asc' },
     });
-    if (categories && categories.length > 0) {
-      return toPlainObject(categories);
-    }
-    return DEFAULT_PLATFORM_CATEGORIES;
+    return toPlainObject(categories || []);
   } catch (err) {
-    console.warn("DB getActiveCategories fallback:", err);
-    return DEFAULT_PLATFORM_CATEGORIES;
+    console.error("[DB_ERROR] Failed to fetch active categories from database:", err);
+    throw new Error("Database error: Failed to fetch active categories");
   }
 }
 
@@ -2841,8 +2824,8 @@ export async function getCoachDashboardData(userEmailOrId?: string) {
       config: config ? toPlainObject(config) : null,
     };
   } catch (err) {
-    console.warn("DB getCoachDashboardData fallback:", err);
-    return { success: false, centre: null, config: null };
+    console.error("[DB_ERROR] Failed to fetch coach dashboard data:", err);
+    throw new Error("Database error: Failed to fetch coach dashboard data");
   }
 }
 
@@ -3270,8 +3253,8 @@ export async function getParentDashboardData(userEmailOrId?: string) {
       savedCentres: toPlainObject(savedCentresWithDetails),
     };
   } catch (err) {
-    console.warn("DB getParentDashboardData error:", err);
-    return { success: false, parent: null, bookings: [], children: [], savedCentres: [] };
+    console.error("[DB_ERROR] Failed to fetch parent dashboard data:", err);
+    throw new Error("Database error: Failed to fetch parent dashboard data");
   }
 }
 
@@ -3468,8 +3451,8 @@ export async function getCoachLeadsData(coachEmailOrId: string) {
       leads: toPlainObject(combinedLeads),
     };
   } catch (err) {
-    console.warn("DB getCoachLeadsData error:", err);
-    return { success: false, leads: [], centre: null };
+    console.error("[DB_ERROR] Failed to fetch coach leads data:", err);
+    throw new Error("Database error: Failed to fetch coach leads data");
   }
 }
 
@@ -3583,8 +3566,8 @@ export async function getCoachAttendanceData(coachEmailOrId: string) {
       batches: toPlainObject(user.coachingCentre.batches || []),
     };
   } catch (err) {
-    console.warn("DB getCoachAttendanceData error:", err);
-    return { success: false, batches: [], centre: null };
+    console.error("[DB_ERROR] Failed to fetch coach attendance data:", err);
+    throw new Error("Database error: Failed to fetch coach attendance data");
   }
 }
 
@@ -3749,8 +3732,8 @@ export async function getCoachBatchesData(coachEmailOrId: string) {
       ),
     };
   } catch (err) {
-    console.warn("DB getCoachBatchesData error:", err);
-    return { success: false, batches: [], centre: null };
+    console.error("[DB_ERROR] Failed to fetch coach batches data:", err);
+    throw new Error("Database error: Failed to fetch coach batches data");
   }
 }
 
@@ -3990,18 +3973,8 @@ export async function getCoachRevenueData(coachEmailOrId: string) {
       recentAdmissions,
     };
   } catch (err) {
-    console.warn("DB getCoachRevenueData error:", err);
-    return {
-      success: false,
-      centre: null,
-      monthlyEstimatedRevenue: 0,
-      annualProjectedRevenue: 0,
-      totalEnrolledStudents: 0,
-      totalCapacity: 0,
-      capacityUtilizationPct: 0,
-      batchesSummary: [],
-      recentAdmissions: [],
-    };
+    console.error("[DB_ERROR] Failed to fetch coach revenue data:", err);
+    throw new Error("Database error: Failed to fetch coach revenue data");
   }
 }
 
@@ -4059,8 +4032,8 @@ export async function getSavedCentreIds(userEmailOrId?: string): Promise<string[
     });
     return saved.map((s) => s.coachingCentreId);
   } catch (err) {
-    console.warn("getSavedCentreIds error:", err);
-    return [];
+    console.error("[DB_ERROR] Failed to fetch saved centre IDs from database:", err);
+    throw new Error("Database error: Failed to fetch saved centre IDs");
   }
 }
 
@@ -4366,11 +4339,10 @@ export async function getTaxonomyCategories() {
         })),
       }));
     }
-
-    return FALLBACK_TAXONOMY_GROUPS;
+    return [];
   } catch (err) {
-    console.warn("getTaxonomyCategories error:", err);
-    return FALLBACK_TAXONOMY_GROUPS;
+    console.error("[DB_ERROR] Failed to fetch taxonomy categories from database:", err);
+    throw new Error("Database error: Failed to fetch taxonomy categories");
   }
 }
 
@@ -4582,8 +4554,8 @@ export async function getAcademyById(id: string) {
       centre: toPlainObject(centre),
     };
   } catch (err) {
-    console.warn("DB getAcademyById error:", err);
-    return { success: false, centre: null };
+    console.error("[DB_ERROR] Failed to fetch academy by id:", err);
+    throw new Error("Database error: Failed to fetch academy profile");
   }
 }
 
@@ -4597,13 +4569,10 @@ export async function getHeroSlides() {
       where: { isActive: true },
       orderBy: { order: 'asc' },
     });
-    if (slides && slides.length > 0) {
-      return toPlainObject(slides);
-    }
-    return DEFAULT_HERO_SLIDES;
+    return toPlainObject(slides || []);
   } catch (err) {
-    console.warn("Failed to get hero slides:", err);
-    return DEFAULT_HERO_SLIDES;
+    console.error("[DB_ERROR] Failed to get hero slides:", err);
+    throw new Error("Database error: Failed to get hero slides");
   }
 }
 
@@ -4629,6 +4598,11 @@ export async function getAdminHeroSlides() {
             accentGradient: s.accentGradient,
             order: s.order,
             isActive: s.isActive,
+            showBadge: s.showBadge ?? true,
+            showTitle: s.showTitle ?? true,
+            showSubtitle: s.showSubtitle ?? true,
+            showPrimaryCta: s.showPrimaryCta ?? true,
+            showSecondaryCta: s.showSecondaryCta ?? true,
           },
         });
       }
@@ -4638,8 +4612,8 @@ export async function getAdminHeroSlides() {
     }
     return { success: true, slides: toPlainObject(slides) };
   } catch (err: any) {
-    console.error("Failed to get admin hero slides:", err);
-    return { success: false, slides: DEFAULT_HERO_SLIDES, error: err.message };
+    console.error("[DB_ERROR] Failed to get admin hero slides:", err);
+    return { success: false, slides: [], error: err.message || "Database error: Failed to get admin hero slides" };
   }
 }
 
@@ -4665,6 +4639,11 @@ export async function createHeroSlide(data: Partial<HeroSlideData>) {
         accentGradient: data.accentGradient || "from-blue-600 via-indigo-600 to-emerald-600",
         order: data.order ?? nextOrder,
         isActive: data.isActive ?? true,
+        showBadge: data.showBadge ?? true,
+        showTitle: data.showTitle ?? true,
+        showSubtitle: data.showSubtitle ?? true,
+        showPrimaryCta: data.showPrimaryCta ?? true,
+        showSecondaryCta: data.showSecondaryCta ?? true,
       },
     });
 
@@ -4693,6 +4672,11 @@ export async function updateHeroSlide(id: string, data: Partial<HeroSlideData>) 
         ...(data.accentGradient !== undefined && { accentGradient: data.accentGradient }),
         ...(data.order !== undefined && { order: data.order }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
+        ...(data.showBadge !== undefined && { showBadge: data.showBadge }),
+        ...(data.showTitle !== undefined && { showTitle: data.showTitle }),
+        ...(data.showSubtitle !== undefined && { showSubtitle: data.showSubtitle }),
+        ...(data.showPrimaryCta !== undefined && { showPrimaryCta: data.showPrimaryCta }),
+        ...(data.showSecondaryCta !== undefined && { showSecondaryCta: data.showSecondaryCta }),
       },
     });
 
@@ -4754,6 +4738,11 @@ export async function seedDefaultHeroSlides() {
           accentGradient: s.accentGradient,
           order: s.order,
           isActive: s.isActive,
+          showBadge: s.showBadge ?? true,
+          showTitle: s.showTitle ?? true,
+          showSubtitle: s.showSubtitle ?? true,
+          showPrimaryCta: s.showPrimaryCta ?? true,
+          showSecondaryCta: s.showSecondaryCta ?? true,
         },
       });
     }

@@ -9,16 +9,16 @@ import { AcademyCard } from '@/components/cards/AcademyCard';
 import { Academy } from '@/types';
 import { getDiscoveryData } from '@/lib/actions';
 import { ActivityCardSkeleton } from '@/components/dashboard/DashboardSkeleton';
-import { DEFAULT_HERO_SLIDES, HeroSlideData } from '@/lib/hero-slides';
+import { HeroSlideData } from '@/lib/hero-slides';
 import {
   PlatformCategory,
-  DEFAULT_PLATFORM_CATEGORIES,
-  FALLBACK_TAXONOMY_GROUPS,
   TaxonomyGroup,
   getCategoryDisplayName,
   getCategoryEmoji,
+  getCategoryPillar,
 } from '@/lib/categories';
-import { getPopularNeighbourhoodsForCity, CityNeighbourhood } from '@/lib/location';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
+import { getPopularNeighbourhoodsForCity, CityNeighbourhood, isStateLocation } from '@/lib/location';
 import { HowItWorksSection } from '@/components/home/HowItWorksSection';
 import { ParentTestimonialsSection } from '@/components/home/ParentTestimonialsSection';
 import {
@@ -42,6 +42,7 @@ import {
   X,
   CaretDown,
   MapPin,
+  RocketLaunch,
 } from '@phosphor-icons/react';
 
 interface SearchSuggestion {
@@ -61,6 +62,7 @@ export function HomeView() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSectionRef = useRef<HTMLDivElement>(null);
+  const journeySectionRef = useRef<HTMLDivElement>(null);
   const suggestionsBoxRef = useRef<HTMLDivElement>(null);
 
   // Search & Filter States
@@ -71,9 +73,10 @@ export function HomeView() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Taxonomy & Hero Slides Data
-  const [platformCategories, setPlatformCategories] = useState<PlatformCategory[]>(DEFAULT_PLATFORM_CATEGORIES);
-  const [activitiesList, setActivitiesList] = useState<TaxonomyGroup[]>(FALLBACK_TAXONOMY_GROUPS);
-  const [heroSlides, setHeroSlides] = useState<HeroSlideData[]>(DEFAULT_HERO_SLIDES);
+  const [platformCategories, setPlatformCategories] = useState<PlatformCategory[]>([]);
+  const [activitiesList, setActivitiesList] = useState<TaxonomyGroup[]>([]);
+  const [heroSlides, setHeroSlides] = useState<HeroSlideData[]>([]);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Carousel State & Timing
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
@@ -88,80 +91,89 @@ export function HomeView() {
   const [isAllNeighbourhoodsExpanded, setIsAllNeighbourhoodsExpanded] = useState(false);
 
   // Load dynamic data from DB (Centres, Categories, Activities, Hero Slides)
-  useEffect(() => {
-    async function loadData() {
-      setIsLoading(true);
-      try {
-        const data: any = await getDiscoveryData();
-        if (data.heroSlides && Array.isArray(data.heroSlides) && data.heroSlides.length > 0) {
-          setHeroSlides(data.heroSlides);
-        }
-        if (data.activities && Array.isArray(data.activities) && data.activities.length > 0) {
-          setActivitiesList(data.activities);
-        }
-        if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
-          setPlatformCategories(data.categories);
-        }
-        if (data.centres && Array.isArray(data.centres) && data.centres.length > 0) {
-          const mapped = data.centres.map((c: any) => {
-            const categorySlugs = (c.category ? c.category.split(',') : ['tennis'])
-              .map((s: string) => s.trim().toLowerCase())
-              .filter(Boolean);
-            const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
-
-            return {
-              id: c.id,
-              name: c.name,
-              tagline: c.tagline,
-              category: (c.category as any) || 'tennis',
-              activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(c.category)],
-              activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(c.category),
-              locality: (c.locality as any) || 'central',
-              localityName: c.locality
-                ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-                : c.city || activeCity || 'City Center',
-              address: c.address,
-              phone: c.phone,
-              distance: 2.5,
-              distanceText: '2.5 km away',
-              age: ['u8', 'u12', 'u16'] as any,
-              ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
-              fee: Number(c.monthlyTuitionFee) || 1800,
-              trialFee: Number(c.trialFee) || 0,
-              rating: Number(c.rating) || 5.0,
-              reviewsCount: Number(c.reviewsCount || 0),
-              verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Inspected',
-              image: c.image || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600&auto=format&fit=crop',
-              coachName: c.headCoachName,
-              coachTitle: 'NIS Certified Head Coach',
-              coachesCount: c.coachesCount || 3,
-              ratio: c.studentCoachRatio || '1 : 8',
-              facilities: (c.facilities || []).map((f: any) => f.description),
-              safety: '24/7 CCTV • First Aid • Police Verified',
-              isTopInArea: c.isTopInArea,
-              planTier: c.planTier,
-              isVerifiedBatch: c.isVerifiedBatch,
-              coachType: c.coachType,
-              batches: (c.batches || []).map((b: any) => ({
-                name: b.name,
-                time: b.schedule,
-                seats: `${b.seatsFilled}/${b.totalSeats} Enrolled`,
-              })),
-            };
-          });
-          setFeaturedAcademies(mapped);
-        } else {
-          setFeaturedAcademies([]);
-        }
-      } catch (err) {
-        console.warn('Failed to load discovery data for home:', err);
-        setFeaturedAcademies([]);
-      } finally {
-        setIsLoading(false);
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setDbError(null);
+    try {
+      const data: any = await getDiscoveryData();
+      if (data.heroSlides && Array.isArray(data.heroSlides)) {
+        setHeroSlides(data.heroSlides);
+      } else {
+        setHeroSlides([]);
       }
+      if (data.activities && Array.isArray(data.activities)) {
+        setActivitiesList(data.activities);
+      } else {
+        setActivitiesList([]);
+      }
+      if (data.categories && Array.isArray(data.categories)) {
+        setPlatformCategories(data.categories);
+      } else {
+        setPlatformCategories([]);
+      }
+      if (data.centres && Array.isArray(data.centres) && data.centres.length > 0) {
+        const mapped = data.centres.map((c: any) => {
+          const categorySlugs = (c.category ? c.category.split(',') : ['tennis'])
+            .map((s: string) => s.trim().toLowerCase())
+            .filter(Boolean);
+          const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
+
+          return {
+            id: c.id,
+            name: c.name,
+            tagline: c.tagline,
+            category: (c.category as any) || 'tennis',
+            activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(c.category)],
+            activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(c.category),
+            locality: (c.locality as any) || 'central',
+            localityName: c.locality
+              ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+              : c.city || activeCity || 'City Center',
+            address: c.address,
+            phone: c.phone,
+            distance: 2.5,
+            distanceText: '2.5 km away',
+            age: ['u8', 'u12', 'u16'] as any,
+            ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
+            fee: Number(c.monthlyTuitionFee) || 1800,
+            trialFee: Number(c.trialFee) || 0,
+            rating: Number(c.rating) || 5.0,
+            reviewsCount: Number(c.reviewsCount || 0),
+            verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Inspected',
+            image: c.image || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600&auto=format&fit=crop',
+            coachName: c.headCoachName,
+            coachTitle: 'NIS Certified Head Coach',
+            coachesCount: c.coachesCount || 3,
+            ratio: c.studentCoachRatio || '1 : 8',
+            facilities: (c.facilities || []).map((f: any) => f.description),
+            safety: '24/7 CCTV • First Aid • Police Verified',
+            isTopInArea: c.isTopInArea,
+            planTier: c.planTier,
+            isVerifiedBatch: c.isVerifiedBatch,
+            coachType: c.coachType,
+            batches: (c.batches || []).map((b: any) => ({
+              name: b.name,
+              time: b.schedule,
+              seats: `${b.seatsFilled}/${b.totalSeats} Enrolled`,
+            })),
+          };
+        });
+        setFeaturedAcademies(mapped);
+      } else {
+        setFeaturedAcademies([]);
+      }
+    } catch (err: any) {
+      console.error('[FRONTEND_ERROR] Failed to load discovery data for home:', err);
+      setDbError(err?.message || 'Database error: Failed to fetch live discovery data.');
+      setFeaturedAcademies([]);
+    } finally {
+      setIsLoading(false);
     }
-    loadData();
   }, [activeCity]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Carousel Autoplay Timer (Exact 5 seconds with automatic reset on manual navigation)
   useEffect(() => {
@@ -190,7 +202,16 @@ export function HomeView() {
     setSlideTimerKey((k) => k + 1);
   }, []);
 
-  // Popular Neighbourhoods in the Active City
+  // Check if India is selected or a State is selected
+  const isAllIndia = useMemo(() => {
+    return !activeCity || activeCity.trim() === '' || activeCity.toLowerCase().includes('india');
+  }, [activeCity]);
+
+  const isState = useMemo(() => {
+    return isStateLocation(activeCity);
+  }, [activeCity]);
+
+  // Popular Neighbourhoods based on selected City, State, or India
   const popularNeighbourhoods = useMemo<CityNeighbourhood[]>(() => {
     return getPopularNeighbourhoodsForCity(activeCity);
   }, [activeCity]);
@@ -200,7 +221,7 @@ export function HomeView() {
     setIsAllNeighbourhoodsExpanded(false);
   }, [activeCity]);
 
-  const INITIAL_NEIGHBOURHOODS_COUNT = 4;
+  const INITIAL_NEIGHBOURHOODS_COUNT = 6;
   const visibleNeighbourhoods = useMemo(() => {
     if (isAllNeighbourhoodsExpanded) return popularNeighbourhoods;
     return popularNeighbourhoods.slice(0, INITIAL_NEIGHBOURHOODS_COUNT);
@@ -208,13 +229,19 @@ export function HomeView() {
 
   const remainingNeighbourhoodsCount = Math.max(0, popularNeighbourhoods.length - INITIAL_NEIGHBOURHOODS_COUNT);
 
-  const handleNeighbourhoodClick = (localitySlug: string, localityName: string) => {
+  const handleNeighbourhoodClick = (localitySlug: string, localityName: string, localityCity?: string) => {
+    const targetCity = localityCity || (isAllIndia ? 'All India' : activeCity);
     setLocation({
       locality: localityName,
-      city: activeCity,
+      city: targetCity,
     });
-    showToast(`📍 Exploring ${localityName}, ${activeCity}`);
-    router.push(`/activities/explore?city=${encodeURIComponent(activeCity)}&locality=${encodeURIComponent(localitySlug)}`);
+    showToast(`📍 Exploring ${localityName}${localityCity && !localityCity.toLowerCase().includes('india') ? `, ${localityCity}` : ''}`);
+    const params = new URLSearchParams();
+    if (targetCity && !targetCity.toLowerCase().includes('india')) {
+      params.set('city', targetCity);
+    }
+    params.set('locality', localitySlug);
+    router.push(`/activities/explore?${params.toString()}`);
   };
 
   // Derived Linked Categories for Dropdown 2 based on selected Main Activity
@@ -307,6 +334,17 @@ export function HomeView() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar: string }> = {
+  '🏸 Badminton': { category: 'badminton', search: 'Badminton', pillar: 'sports' },
+  '🤖 Robotics': { category: 'robotics', search: 'Robotics', pillar: 'brain-booster' },
+  '🎾 Tennis': { category: 'tennis', search: 'Tennis', pillar: 'sports' },
+  '🥋 Martial Arts': { category: 'martial-arts', search: 'Martial Arts', pillar: 'sports' },
+  '💃 Dance': { category: 'dance', search: 'Dance', pillar: 'arts' },
+  '♟️ Chess': { category: 'chess', search: 'Chess', pillar: 'brain-booster' },
+  '🏊 Swimming': { category: 'swimming', search: 'Swimming', pillar: 'sports' },
+  '🎨 Art & Painting': { category: 'arts', search: 'Art & Painting', pillar: 'arts' },
+};
+
   const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
     if (suggestion.type === 'category') {
       setSearchQuery(suggestion.title);
@@ -317,7 +355,11 @@ export function HomeView() {
       const params = new URLSearchParams();
       if (activeCity) params.set('city', activeCity);
       params.set('search', suggestion.title);
-      if (suggestion.categorySlug) params.set('category', suggestion.categorySlug);
+      if (suggestion.categorySlug) {
+        params.set('category', suggestion.categorySlug);
+        const pillar = getCategoryPillar(suggestion.categorySlug);
+        if (pillar) params.set('activity', pillar);
+      }
       router.push(`/activities/explore?${params.toString()}`);
     } else {
       setSearchQuery(suggestion.title);
@@ -372,23 +414,46 @@ export function HomeView() {
     if (activeCity) params.set('city', activeCity);
     if (searchQuery.trim()) params.set('search', searchQuery.trim());
     if (selectedMainActivity) params.set('activity', selectedMainActivity);
-    if (selectedCategory) params.set('category', selectedCategory);
+    if (selectedCategory) {
+      params.set('category', selectedCategory);
+      if (!selectedMainActivity) {
+        const pillar = getCategoryPillar(selectedCategory);
+        if (pillar) params.set('activity', pillar);
+      }
+    }
     router.push(`/activities/explore?${params.toString()}`);
   };
 
   const handleQuickTagClick = (tag: string) => {
-    const cleanTag = tag.replace(/^[^\s]+\s*/, '');
-    setSearchQuery(cleanTag);
+    const mapped = POPULAR_TAG_MAP[tag];
+    const categorySlug = mapped ? mapped.category : tag.replace(/^[^\s]+\s*/, '').toLowerCase().replace(/\s+/g, '-');
+    const cleanSearch = mapped ? mapped.search : tag.replace(/^[^\s]+\s*/, '');
+    const pillar = mapped ? mapped.pillar : getCategoryPillar(categorySlug);
+
+    setSearchQuery(cleanSearch);
+    setSelectedCategory(categorySlug);
+    setSelectedMainActivity(pillar);
+
     const params = new URLSearchParams();
     if (activeCity) params.set('city', activeCity);
-    params.set('search', cleanTag);
+    params.set('category', categorySlug);
+    params.set('search', cleanSearch);
+    if (pillar) {
+      params.set('activity', pillar);
+    }
     router.push(`/activities/explore?${params.toString()}`);
   };
 
   const scrollToSearch = () => {
     if (searchSectionRef.current) {
-      searchSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      searchSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => searchInputRef.current?.focus(), 400);
+    }
+  };
+
+  const scrollToJourney = () => {
+    if (journeySectionRef.current) {
+      journeySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
@@ -406,125 +471,201 @@ export function HomeView() {
   const topInAreaAcademies = sortedFeatured.filter((a) => a.isTopInArea);
   const displayTop = topInAreaAcademies.length > 0 ? topInAreaAcademies.slice(0, 4) : sortedFeatured.slice(0, 4);
 
-  const activeSlide = heroSlides[currentSlideIndex] || heroSlides[0] || DEFAULT_HERO_SLIDES[0];
+  if (dbError && !isLoading && featuredAcademies.length === 0 && heroSlides.length === 0) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center py-16 px-4">
+        <DatabaseErrorView
+          title="Unable to Load Academies"
+          message="We are having trouble loading sports academies and activities right now. Please check your internet connection or try refreshing."
+          error={dbError}
+          onRetry={loadData}
+          showHomeButton={false}
+        />
+      </div>
+    );
+  }
+
+  const hasSlides = heroSlides.length > 0;
+  const activeSlide = hasSlides ? (heroSlides[currentSlideIndex] || heroSlides[0]) : null;
 
   return (
     <div className="space-y-8 sm:space-y-12 pb-20 overflow-hidden">
-      {/* ========================================================
-          1. INTEGRATED HERO CAROUSEL SECTION
-             (Search Section Inside the Carousel • Clear Images with Cinematic Contrast & White Text)
-         ======================================================== */}
-      <section
-        className="relative text-white pt-5 pb-8 sm:pt-8 sm:pb-12 overflow-hidden border-b border-slate-800/80 min-h-[500px] sm:min-h-[560px] flex items-center justify-center bg-slate-950"
-        onMouseEnter={() => setIsCarouselPaused(true)}
-        onMouseLeave={() => setIsCarouselPaused(false)}
-      >
-        {/* Full-bleed Clear Carousel Background Slides */}
-        <div className="absolute inset-0 z-0 overflow-hidden">
-          {heroSlides.map((slide, idx) => (
-            <div
-              key={slide.id || idx}
-              className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-                idx === currentSlideIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'
-              } transition-transform duration-7000`}
-            >
-              <img
-                src={slide.imageUrl}
-                alt={slide.title}
-                className="w-full h-full object-cover object-center brightness-90 contrast-105"
-              />
-            </div>
-          ))}
-
-          {/* Balanced Cinematic Dark Overlay: Soft tint keeping photos clear & vibrant while giving high contrast to white text */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/40 to-black/75" />
-          <div className="absolute inset-0 bg-radial from-transparent via-black/25 to-black/60 pointer-events-none" />
+      {/* Compact error alert if partial error occurred */}
+      {dbError && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <DatabaseErrorView compact error={dbError} onRetry={loadData} />
         </div>
+      )}
 
-        {/* Decorative soft glowing ambient halos */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+      {/* ========================================================
+          1. HERO STAGE (GLASSMORPHISM & SPREADED GRADIENT AESTHETIC)
+             Expansive chromatic gradients blooming across the canvas
+             with translucent frosted glassmorphic consoles
+         ======================================================== */}
+      <section className="relative bg-gradient-to-br from-indigo-50/70 via-sky-50/40 to-emerald-50/50 text-slate-900 overflow-hidden py-4 sm:py-6 lg:py-8 border-b border-indigo-100/60 shadow-xs">
+        {/* Expansive Spreaded Gradient Glows Blooming Across Canvas */}
+        <div className="absolute -top-32 -left-32 w-[650px] h-[650px] bg-gradient-to-br from-blue-400/25 via-indigo-300/20 to-purple-400/15 rounded-full blur-[110px] pointer-events-none" />
+        <div className="absolute top-1/4 -right-32 w-[600px] h-[600px] bg-gradient-to-tr from-emerald-300/25 via-teal-200/20 to-cyan-300/20 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute -bottom-24 left-1/3 w-[550px] h-[550px] bg-gradient-to-r from-amber-200/20 via-rose-200/15 to-indigo-200/20 rounded-full blur-[100px] pointer-events-none" />
 
-        {/* Carousel Floating Side Navigation Arrows */}
-        {heroSlides.length > 1 && (
-          <>
-            <button
-              type="button"
-              onClick={handlePrevSlide}
-              className="hidden md:flex absolute left-4 lg:left-8 top-32 z-20 w-11 h-11 rounded-full bg-black/40 hover:bg-black/65 text-white/90 hover:text-white border border-white/20 shadow-xl items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95"
-              title="Previous Slide"
-              aria-label="Previous Slide"
+        {/* Fine Micro-Dot Pattern */}
+        <div className="absolute inset-0 bg-[radial-gradient(rgba(99,102,241,0.07)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-3.5 sm:space-y-4 relative z-10">
+          {/* Dedicated Carousel Banner if slides exist */}
+          {hasSlides && activeSlide ? (
+            <div
+              className="relative rounded-3xl overflow-hidden shadow-2xl shadow-indigo-500/10 bg-slate-900/95 border border-white/60 backdrop-blur-md h-[290px] sm:h-[350px] md:h-[390px] flex items-center"
+              onMouseEnter={() => setIsCarouselPaused(true)}
+              onMouseLeave={() => setIsCarouselPaused(false)}
             >
-              <CaretLeft size={20} weight="bold" />
-            </button>
+              {/* Carousel Slide Backgrounds */}
+              <div className="absolute inset-0 z-0 overflow-hidden">
+                {heroSlides.map((slide, idx) => (
+                  <div
+                    key={slide.id || idx}
+                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+                      idx === currentSlideIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'
+                    } transition-transform duration-7000`}
+                  >
+                    <img
+                      src={slide.imageUrl}
+                      alt={slide.title}
+                      className="w-full h-full object-cover object-center brightness-95"
+                    />
+                  </div>
+                ))}
 
-            <button
-              type="button"
-              onClick={handleNextSlide}
-              className="hidden md:flex absolute right-4 lg:right-8 top-32 z-20 w-11 h-11 rounded-full bg-black/40 hover:bg-black/65 text-white/90 hover:text-white border border-white/20 shadow-xl items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95"
-              title="Next Slide"
-              aria-label="Next Slide"
-            >
-              <CaretRight size={20} weight="bold" />
-            </button>
-          </>
-        )}
+                {/* Balanced Gradient: Vivid photography visible on right, crisp text on left */}
+                <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-slate-950 via-slate-950/85 md:via-slate-950/70 to-slate-950/30 md:to-transparent" />
+              </div>
 
-        {/* Main Content INSIDE Carousel Hero: (Badge & Controls -> Dynamic Headline -> Subtitle -> Search Console -> Trust Signals) */}
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 relative z-10 text-center space-y-3 sm:space-y-4 w-full">
-          {/* Top Row: Badge Pill + Optional Slide Action Link */}
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <div className="inline-flex items-center gap-1.5 bg-black/35 backdrop-blur-md border border-white/25 px-3.5 py-1 rounded-full text-[11px] sm:text-xs font-black text-white shadow-md">
-              <Sparkle size={13} weight="fill" className="text-emerald-400" />
-              <span>{activeSlide.badge || "India's Verified Kids Coaching Network"}</span>
+              {/* Carousel Side Navigation Arrows */}
+              {heroSlides.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePrevSlide}
+                    className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/50 hover:bg-black/80 text-white/90 hover:text-white border border-white/20 shadow-xl items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95 backdrop-blur-md"
+                    title="Previous Slide"
+                    aria-label="Previous Slide"
+                  >
+                    <CaretLeft size={18} weight="bold" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextSlide}
+                    className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/50 hover:bg-black/80 text-white/90 hover:text-white border border-white/20 shadow-xl items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95 backdrop-blur-md"
+                    title="Next Slide"
+                    aria-label="Next Slide"
+                  >
+                    <CaretRight size={18} weight="bold" />
+                  </button>
+                </>
+              )}
+
+              {/* Slide Content: Left Aligned on Desktop for maximum image visibility */}
+              <div className="relative z-10 w-full max-w-2xl px-6 sm:px-10 lg:px-12 py-6 space-y-2.5 sm:space-y-3 text-left">
+                {/* Badge Pill */}
+                {activeSlide.showBadge !== false && (activeSlide.badge || "India's Verified Kids Coaching Network") && (
+                  <div className="inline-flex items-center gap-1.5 bg-black/50 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full text-xs font-black text-white shadow-md">
+                    <Sparkle size={13} weight="fill" className="text-emerald-400" />
+                    <span>{activeSlide.badge || "India's Verified Kids Coaching Network"}</span>
+                  </div>
+                )}
+
+                {/* Inspiring Headline */}
+                {activeSlide.showTitle !== false && (
+                  <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tight leading-tight sm:leading-tight text-white drop-shadow-lg">
+                    {activeSlide.title}{' '}
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400">
+                      {activeCity.toLowerCase().includes('india') ? 'Across India' : `in ${activeCity}`}
+                    </span>
+                  </h1>
+                )}
+
+                {/* Subtitle */}
+                {activeSlide.showSubtitle !== false && activeSlide.subtitle && (
+                  <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium max-w-lg drop-shadow-md line-clamp-2 sm:line-clamp-none">
+                    {activeSlide.subtitle}
+                  </p>
+                )}
+
+                {/* Slide Action Buttons */}
+                {(activeSlide.showPrimaryCta !== false || activeSlide.showSecondaryCta !== false) && (
+                  <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                    {activeSlide.showPrimaryCta !== false && (
+                      <Link
+                        href={activeSlide.ctaLink || '/activities'}
+                        className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 transition-all transform hover:scale-105 active:scale-95 cursor-pointer group"
+                      >
+                        <span>{activeSlide.ctaText || 'Explore Academies'}</span>
+                        <ArrowRight size={15} weight="bold" className="group-hover:translate-x-1 transition-transform" />
+                      </Link>
+                    )}
+
+                    {activeSlide.showSecondaryCta !== false && (
+                      activeSlide.secondaryCtaLink && !activeSlide.secondaryCtaLink.startsWith('#') && activeSlide.secondaryCtaLink !== '/activities#search' ? (
+                        <Link
+                          href={activeSlide.secondaryCtaLink}
+                          className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl border border-white/25 backdrop-blur-md shadow-md transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                        >
+                          <MagnifyingGlass size={14} weight="bold" className="text-blue-300" />
+                          <span>{activeSlide.secondaryCtaText || 'Search Below'}</span>
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={scrollToSearch}
+                          className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl border border-white/25 backdrop-blur-md shadow-md transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                        >
+                          <MagnifyingGlass size={14} weight="bold" className="text-blue-300" />
+                          <span>{activeSlide.secondaryCtaText || 'Search Below'}</span>
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Carousel Slide Progress Bar at the bottom */}
+              {heroSlides.length > 1 && !isCarouselPaused && (
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40 overflow-hidden z-20">
+                  <div
+                    key={slideTimerKey}
+                    className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 animate-slide-progress"
+                    style={{ animationDuration: `${SLIDE_DURATION_MS}ms` }}
+                  />
+                </div>
+              )}
             </div>
-
-            {/* Optional Slide Action Link */}
-            {activeSlide.ctaText && (
-              <Link
-                href={activeSlide.ctaLink || '/activities'}
-                className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold text-white bg-white/20 hover:bg-white/30 border border-white/30 px-2.5 py-1 rounded-full transition-all cursor-pointer shadow-sm group"
-              >
-                <span>{activeSlide.ctaText}</span>
-                <ArrowRight size={11} weight="bold" className="group-hover:translate-x-0.5 transition-transform" />
-              </Link>
-            )}
-          </div>
-
-          {/* Inspiring Headline (White with luminous gradient highlight) */}
-          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight text-white max-w-4xl mx-auto drop-shadow-md">
-            {activeSlide.title}{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400">
-              {activeCity.toLowerCase().includes('india') ? 'Across India' : `in ${activeCity}`}
-            </span>
-          </h1>
-
-          {/* Subtitle (Clean White / Light Slate) */}
-          {activeSlide.subtitle && (
-            <p className="text-xs sm:text-sm text-slate-200/90 leading-relaxed font-medium max-w-2xl mx-auto drop-shadow-sm">
-              {activeSlide.subtitle}
-            </p>
+          ) : (
+            <div className="relative rounded-3xl overflow-hidden shadow-lg bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 border border-white/60 backdrop-blur-md p-6 sm:p-10 text-left">
+              <div className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full text-xs font-black text-white shadow-md mb-2">
+                <Sparkle size={13} weight="fill" className="text-emerald-400" />
+                <span>India&apos;s Verified Kids Coaching Network</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-tight">
+                Discover Verified Sports, Arts &amp; STEM Coaching{' '}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400">
+                  {activeCity.toLowerCase().includes('india') ? 'Across India' : `in ${activeCity}`}
+                </span>
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-200 mt-2 max-w-xl font-medium leading-relaxed">
+                Hyperlocal verified academies, background-checked NIS trainers, CCTV audits &amp; free trial sessions with 100% money-back escrow protection.
+              </p>
+            </div>
           )}
 
-          {/* ========================================================
-              SEARCH CONSOLE (COMPACT ON MOBILE & SEAMLESSLY INTEGRATED)
-             ======================================================== */}
+          {/* Bottom: Streamlined Search Console (Frosted Glassmorphism) */}
           <div
             ref={searchSectionRef}
-            className="max-w-4xl mx-auto bg-white/95 backdrop-blur-md p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-2xl border border-white/40 text-slate-800 space-y-2.5 sm:space-y-3.5 text-left"
+            className="relative bg-white/75 backdrop-blur-2xl rounded-3xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(30,58,138,0.08)] border border-white/80 ring-1 ring-black/[0.03] text-slate-800 space-y-2"
           >
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <MagnifyingGlass size={14} weight="bold" className="text-blue-600" />
-                <span>Find Kids Activities &amp; Coaching Centers</span>
-              </span>
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 hidden sm:inline-block">
-                Exploring verified centers in <strong className="text-slate-900 font-extrabold">{activeCity}</strong>
-              </span>
-            </div>
-
-            <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 relative">
-              {/* 1. Keyword Input with Suggestions Dropdown */}
+            {/* Single Compact Form Line */}
+            <form onSubmit={handleSearchSubmit} className="flex flex-col md:flex-row items-stretch md:items-center gap-2 relative">
+              {/* 1. Keyword Input with Autocomplete Suggestions Dropdown */}
               <div className="relative flex-1">
                 <MagnifyingGlass size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -541,7 +682,7 @@ export function HomeView() {
                     if (searchQuery.trim().length > 0) setIsSuggestionsOpen(true);
                   }}
                   onKeyDown={handleKeyDown}
-                  className="w-full pl-9 pr-8 py-2 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all placeholder:text-slate-400"
+                  className="w-full pl-9 pr-8 py-2 sm:py-2.5 bg-white/70 backdrop-blur-md border border-white/90 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white shadow-2xs transition-all placeholder:text-slate-400"
                 />
                 {searchQuery && (
                   <button
@@ -550,19 +691,19 @@ export function HomeView() {
                       setSearchQuery('');
                       setIsSuggestionsOpen(false);
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                   >
                     <X size={14} />
                   </button>
                 )}
 
-                {/* Suggestions Dropdown (Shows when user types e.g. 'b') */}
+                {/* Suggestions Dropdown */}
                 {isSuggestionsOpen && suggestions.length > 0 && (
                   <div
                     ref={suggestionsBoxRef}
-                    className="absolute top-full left-0 right-0 mt-2 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150"
+                    className="absolute top-full left-0 right-0 mt-2 z-50 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150"
                   >
-                    <div className="px-3.5 py-1.5 bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 flex justify-between items-center">
+                    <div className="px-3.5 py-1.5 bg-slate-50/80 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 flex justify-between items-center">
                       <span>Matching Suggestions</span>
                       <span>{suggestions.length} results</span>
                     </div>
@@ -575,7 +716,7 @@ export function HomeView() {
                           onClick={() => handleSelectSuggestion(item)}
                           onMouseEnter={() => setActiveSuggestionIndex(idx)}
                           className={`px-3.5 py-2.5 flex items-center justify-between cursor-pointer transition-colors ${
-                            isSelected ? 'bg-blue-50 text-blue-900' : 'hover:bg-slate-50 text-slate-800'
+                            isSelected ? 'bg-blue-50/90 text-blue-900' : 'hover:bg-slate-50/80 text-slate-800'
                           }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -601,15 +742,15 @@ export function HomeView() {
                 )}
               </div>
 
-              {/* Both Dropdowns: Single Row (2-col grid) on Mobile, Inline on Desktop */}
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
+              {/* Dropdowns: 2-col Grid on Mobile, Inline on Desktop */}
+              <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-2">
                 {/* 2. Main Activities Dropdown */}
-                <div className="relative w-full sm:w-44">
-                  <Sparkle size={14} className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none" />
+                <div className="relative w-full md:w-44">
+                  <Sparkle size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none" />
                   <select
                     value={selectedMainActivity}
                     onChange={(e) => handleMainActivityChange(e.target.value)}
-                    className="w-full pl-7 sm:pl-8 pr-6 sm:pr-7 py-2 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate appearance-none"
+                    className="w-full pl-7 pr-6 py-2 sm:py-2.5 bg-white/70 backdrop-blur-md border border-white/90 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white cursor-pointer truncate appearance-none shadow-2xs transition-all"
                     title="Filter by Main Activity Pillar"
                   >
                     <option value="">All Activities</option>
@@ -619,16 +760,16 @@ export function HomeView() {
                       </option>
                     ))}
                   </select>
-                  <CaretDown size={12} className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <CaretDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
 
-                {/* 3. Linked Categories Dropdown (Filtered to Selected Activity) */}
-                <div className="relative w-full sm:w-48">
-                  <Trophy size={14} className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none" />
+                {/* 3. Linked Categories Dropdown */}
+                <div className="relative w-full md:w-48">
+                  <Trophy size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none" />
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full pl-7 sm:pl-8 pr-6 sm:pr-7 py-2 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate appearance-none"
+                    className="w-full pl-7 pr-6 py-2 sm:py-2.5 bg-white/70 backdrop-blur-md border border-white/90 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white cursor-pointer truncate appearance-none shadow-2xs transition-all"
                     title="Filter by Linked Category"
                   >
                     <option value="">
@@ -642,7 +783,7 @@ export function HomeView() {
                       </option>
                     ))}
                   </select>
-                  <CaretDown size={12} className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <CaretDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
               </div>
 
@@ -650,15 +791,15 @@ export function HomeView() {
               <button
                 type="submit"
                 id="hero-search-btn"
-                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/20 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
+                className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/20 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
               >
                 <MagnifyingGlass size={15} weight="bold" />
                 <span>Search</span>
               </button>
             </form>
 
-            {/* Quick Tag Pills (Horizontal Swipe on Mobile to prevent tall vertical stacking) */}
-            <div className="flex items-center gap-1.5 pt-0.5 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap">
+            {/* 1. Popular Activity Tags */}
+            <div className="flex items-center gap-1.5 pt-1 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap">
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide shrink-0 mr-0.5">
                 Popular:
               </span>
@@ -676,182 +817,156 @@ export function HomeView() {
                   key={tag}
                   type="button"
                   onClick={() => handleQuickTagClick(tag)}
-                  className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 text-[10px] sm:text-[11px] font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+                  className="px-2 py-0.5 rounded-lg bg-white/60 hover:bg-white/95 backdrop-blur-sm hover:text-blue-700 text-slate-600 text-[10px] sm:text-[11px] font-bold border border-white/80 shadow-2xs hover:shadow-xs transition-all cursor-pointer shrink-0 whitespace-nowrap"
                 >
                   {tag}
                 </button>
               ))}
             </div>
 
-            {/* ========================================================
-                POPULAR NEIGHBOURHOODS WITH +MORE TOGGLE
-               ======================================================== */}
+            {/* 2. Popular Localities in City/State/India with +more Toggle */}
             {popularNeighbourhoods.length > 0 && (
-              <div className="pt-2 sm:pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 sm:gap-2">
-                <div className="flex items-center gap-1.5 shrink-0">
+              <div className="pt-2 sm:pt-2.5 border-t border-slate-200/50 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap">
+                <div className="flex items-center gap-1 shrink-0 mr-0.5">
                   <MapPin size={13} weight="fill" className="text-emerald-600" />
-                  <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-800 uppercase tracking-wide">
-                    Popular in {activeCity}:
+                  <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-800 uppercase tracking-wide shrink-0">
+                    {isAllIndia ? 'Popular Across India:' : `Popular in ${activeCity}:`}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {visibleNeighbourhoods.map((nh) => (
-                    <button
-                      key={nh.slug}
-                      type="button"
-                      onClick={() => handleNeighbourhoodClick(nh.slug, nh.name)}
-                      className="inline-flex items-center gap-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 text-slate-700 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-lg border border-slate-200 transition-all cursor-pointer active:scale-95 group"
-                      title={`Explore coaching in ${nh.name}${nh.tag ? ` (${nh.tag})` : ''}`}
-                    >
-                      <span>{nh.name}</span>
-                      {nh.tag && (
-                        <span className="text-[9px] text-slate-400 group-hover:text-emerald-600 font-medium hidden md:inline">
-                          • {nh.tag}
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                {visibleNeighbourhoods.map((nh) => (
+                  <button
+                    key={`${nh.slug}-${nh.cityName || ''}`}
+                    type="button"
+                    onClick={() => handleNeighbourhoodClick(nh.slug, nh.name, nh.cityName)}
+                    className="inline-flex items-center gap-1 bg-white/60 hover:bg-emerald-50/80 hover:text-emerald-800 hover:border-emerald-300/80 text-slate-700 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-lg border border-white/80 backdrop-blur-sm shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95 group shrink-0 whitespace-nowrap"
+                    title={`Explore coaching in ${nh.name}${nh.cityName ? `, ${nh.cityName}` : ''}`}
+                  >
+                    <span>{nh.name}</span>
+                    {(isAllIndia || isState) && nh.cityName && (
+                      <span className="text-[9px] text-slate-500 font-medium">({nh.cityName})</span>
+                    )}
+                  </button>
+                ))}
 
-                  {/* +more / Show Less Toggle Button */}
-                  {remainingNeighbourhoodsCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAllNeighbourhoodsExpanded((prev) => !prev)}
-                      className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-lg border border-blue-200 transition-all cursor-pointer active:scale-95"
-                      title={isAllNeighbourhoodsExpanded ? 'Show fewer neighbourhoods' : `Show ${remainingNeighbourhoodsCount} more neighbourhoods`}
-                    >
-                      <span>{isAllNeighbourhoodsExpanded ? 'Show Less' : `+${remainingNeighbourhoodsCount} more`}</span>
-                      <CaretDown
-                        size={10}
-                        weight="bold"
-                        className={`transition-transform duration-200 ${isAllNeighbourhoodsExpanded ? 'rotate-180' : ''}`}
-                      />
-                    </button>
-                  )}
-                </div>
+                {/* +more / Show Less Toggle Button */}
+                {remainingNeighbourhoodsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAllNeighbourhoodsExpanded((prev) => !prev)}
+                    className="inline-flex items-center gap-1 bg-blue-50/80 hover:bg-blue-100/90 text-blue-700 text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-lg border border-blue-200/70 backdrop-blur-sm transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap shadow-2xs"
+                    title={isAllNeighbourhoodsExpanded ? 'Show fewer neighbourhoods' : `Show ${remainingNeighbourhoodsCount} more neighbourhoods`}
+                  >
+                    <span>{isAllNeighbourhoodsExpanded ? 'Show Less' : `+${remainingNeighbourhoodsCount} more`}</span>
+                    <CaretDown
+                      size={10}
+                      weight="bold"
+                      className={`transition-transform duration-200 ${isAllNeighbourhoodsExpanded ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Age Wise Quick Discovery (Compact on mobile) */}
-            <div className="border-t border-slate-100 pt-2 sm:pt-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 sm:gap-2">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide shrink-0">
+            {/* 3. Age Wise Discovery */}
+            <div className="border-t border-slate-200/50 pt-2 sm:pt-2.5 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide shrink-0 mr-0.5">
                 Age Wise Discovery:
               </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap w-full sm:w-auto">
-                {[
-                  { label: '👶 3-5 Yrs (Early Explorers)', shortLabel: '👶 3-5 Yrs', age: 'u5' },
-                  { label: '👦 6-8 Yrs (Skill Builders)', shortLabel: '👦 6-8 Yrs', age: 'u8' },
-                  { label: '🎒 9-12 Yrs (Junior Champs)', shortLabel: '🎒 9-12 Yrs', age: 'u12' },
-                  { label: '🌟 13-16+ Yrs (Mastery)', shortLabel: '🌟 13-16+ Yrs', age: 'u16' },
-                ].map((chip) => (
-                  <button
-                    key={chip.age}
-                    type="button"
-                    onClick={() => router.push(`/activities?city=${encodeURIComponent(activeCity)}&age=${chip.age}`)}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
-                  >
-                    <span className="sm:hidden">{chip.shortLabel}</span>
-                    <span className="hidden sm:inline">{chip.label}</span>
-                  </button>
-                ))}
-              </div>
+              {[
+                { label: '👶 3-5 Yrs (Early Explorers)', shortLabel: '👶 3-5 Yrs', age: 'u5' },
+                { label: '👦 6-8 Yrs (Skill Builders)', shortLabel: '👦 6-8 Yrs', age: 'u8' },
+                { label: '🎒 9-12 Yrs (Junior Champs)', shortLabel: '🎒 9-12 Yrs', age: 'u12' },
+                { label: '🌟 13-16+ Yrs (Mastery)', shortLabel: '🌟 13-16+ Yrs', age: 'u16' },
+              ].map((chip) => (
+                <button
+                  key={chip.age}
+                  type="button"
+                  onClick={() => router.push(`/activities/explore?city=${encodeURIComponent(activeCity)}&age=${chip.age}`)}
+                  className="bg-white/60 hover:bg-white/95 backdrop-blur-sm text-slate-800 text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-white/80 shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
+                >
+                  <span className="sm:hidden">{chip.shortLabel}</span>
+                  <span className="hidden sm:inline">{chip.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* ========================================================
-              BOTTOM CAROUSEL PAGINATION & CONTROLS PILL
-             ======================================================== */}
-          {heroSlides.length > 1 && (
-            <div className="flex items-center justify-center pt-0.5 pb-0.5">
-              <div className="inline-flex items-center gap-2 bg-black/40 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-xl text-white">
-                <button
-                  type="button"
-                  onClick={handlePrevSlide}
-                  className="p-1 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
-                  title="Previous Slide"
-                  aria-label="Previous Slide"
-                >
-                  <CaretLeft size={14} weight="bold" />
-                </button>
-
-                <div className="flex items-center gap-1.5 px-1">
-                  {heroSlides.map((_, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleJumpToSlide(idx)}
-                      className={`h-2.5 rounded-full transition-all cursor-pointer ${
-                        idx === currentSlideIndex
-                          ? 'w-6 bg-blue-500 shadow-sm'
-                          : 'w-2 bg-white/40 hover:bg-white/60'
-                      }`}
-                      title={`Go to Slide ${idx + 1}`}
-                      aria-label={`Slide ${idx + 1}`}
-                    />
-                  ))}
+          {/* Trust Guarantees & 5-Step Parent Journey (Frosted Glassmorphic Strip) */}
+          <div className="relative bg-white/70 backdrop-blur-2xl rounded-3xl p-3 sm:p-3.5 border border-white/80 shadow-[0_15px_35px_rgba(30,58,138,0.06)] ring-1 ring-black/[0.02]">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3 items-center">
+              {/* 1. Free Trial Guarantee */}
+              <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-white/70 backdrop-blur-md border border-white/90 hover:border-emerald-300 shadow-2xs hover:shadow-sm transition-all hover:-translate-y-0.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100/80 flex items-center justify-center text-emerald-600 shrink-0 shadow-2xs">
+                  <CheckCircle size={20} weight="fill" />
                 </div>
-
-                {/* Bottom Pagination Number Display */}
-                <span className="text-xs font-mono font-black text-white px-1 select-none">
-                  {String(currentSlideIndex + 1).padStart(2, '0')} / {String(heroSlides.length).padStart(2, '0')}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setIsCarouselPaused((p) => !p)}
-                  className="p-1 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
-                  title={isCarouselPaused ? 'Resume Auto-Play' : 'Pause Auto-Play'}
-                  aria-label={isCarouselPaused ? 'Resume Auto-Play' : 'Pause Auto-Play'}
-                >
-                  {isCarouselPaused ? <Play size={11} weight="fill" /> : <Pause size={11} weight="fill" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleNextSlide}
-                  className="p-1 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
-                  title="Next Slide"
-                  aria-label="Next Slide"
-                >
-                  <CaretRight size={14} weight="bold" />
-                </button>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-900 leading-tight">Free Trial Guarantee</div>
+                  <div className="text-[10px] text-slate-500 font-medium truncate">100% Zero-Fee Pass</div>
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Key Trust Signals Strip */}
-          <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-8 pt-1 text-xs font-bold text-slate-100/90 drop-shadow-sm">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle size={16} weight="fill" className="text-emerald-400" /> Free Trial Guarantee
-            </span>
-            <span className="flex items-center gap-1.5">
-              <ShieldCheck size={16} weight="fill" className="text-blue-400" /> Physical Safety Verified
-            </span>
-            <span className="flex items-center gap-1.5">
-              <LockKey size={16} weight="fill" className="text-amber-400" /> 100% Escrow Fee Protection
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Users size={16} weight="fill" className="text-purple-400" /> 1,400+ Active Parents
-            </span>
+              {/* 2. Physical Safety Verified */}
+              <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-white/70 backdrop-blur-md border border-white/90 hover:border-blue-300 shadow-2xs hover:shadow-sm transition-all hover:-translate-y-0.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-100/80 flex items-center justify-center text-blue-600 shrink-0 shadow-2xs">
+                  <ShieldCheck size={20} weight="fill" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-900 leading-tight">Physical Safety Verified</div>
+                  <div className="text-[10px] text-slate-500 font-medium truncate">Audited Centers &amp; CCTV</div>
+                </div>
+              </div>
+
+              {/* 3. 100% Escrow Protection */}
+              <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-white/70 backdrop-blur-md border border-white/90 hover:border-amber-300 shadow-2xs hover:shadow-sm transition-all hover:-translate-y-0.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-100/80 flex items-center justify-center text-amber-600 shrink-0 shadow-2xs">
+                  <LockKey size={20} weight="fill" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-900 leading-tight">100% Escrow Protection</div>
+                  <div className="text-[10px] text-slate-500 font-medium truncate">Money-Back Safety</div>
+                </div>
+              </div>
+
+              {/* 4. 1,400+ Active Parents */}
+              <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-white/70 backdrop-blur-md border border-white/90 hover:border-purple-300 shadow-2xs hover:shadow-sm transition-all hover:-translate-y-0.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-100/80 flex items-center justify-center text-purple-600 shrink-0 shadow-2xs">
+                  <Users size={20} weight="fill" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-900 leading-tight">1,400+ Active Parents</div>
+                  <div className="text-[10px] text-slate-500 font-medium truncate">Verified Community</div>
+                </div>
+              </div>
+
+              {/* 5. Simple 5-Step Parent Journey */}
+              <button
+                type="button"
+                onClick={scrollToJourney}
+                className="col-span-2 sm:col-span-1 flex items-center justify-between gap-2 p-2 rounded-2xl bg-gradient-to-r from-blue-500/15 via-indigo-500/10 to-blue-500/15 backdrop-blur-md border border-blue-200/90 hover:border-blue-400 text-blue-950 shadow-2xs hover:shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 text-left cursor-pointer group"
+                title="Explore the 5-step parent roadmap"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                    <RocketLaunch size={18} weight="bold" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-black text-blue-950 leading-tight">Simple 5-Step</div>
+                    <div className="text-[10px] text-blue-700 font-extrabold truncate">Parent Journey</div>
+                  </div>
+                </div>
+                <ArrowRight size={14} weight="bold" className="text-blue-600 group-hover:translate-x-0.5 transition-transform shrink-0 mr-1" />
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Carousel Slide Progress Bar at the very bottom of Hero Section */}
-        {heroSlides.length > 1 && !isCarouselPaused && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40 overflow-hidden z-20">
-            <div
-              key={slideTimerKey}
-              className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 animate-slide-progress"
-              style={{ animationDuration: `${SLIDE_DURATION_MS}ms` }}
-            />
-          </div>
-        )}
       </section>
 
       {/* ========================================================
-          2. "HOW IT WORKS" (Directly after Hero Section)
+          3. "HOW IT WORKS" (Directly after Search Section)
          ======================================================== */}
-      <HowItWorksSection onSearchClick={scrollToSearch} />
+      <div ref={journeySectionRef}>
+        <HowItWorksSection onSearchClick={scrollToSearch} />
+      </div>
 
       {/* ========================================================
           3. 100% FREE TRIAL GUARANTEE BANNER (ZERO PARENT CHARGES)

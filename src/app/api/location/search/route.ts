@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       attribution,
     });
   } catch (err: any) {
-    console.error('[Location Search API Error]', err);
+    console.error('[LOCATION_ERROR] Failed to search location:', err);
     return NextResponse.json(
       { error: 'Failed to search location', results: [] },
       { status: 500 }

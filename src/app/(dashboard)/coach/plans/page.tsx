@@ -14,6 +14,7 @@ import {
   recordPaymentFailureAction,
 } from '@/lib/actions';
 import { CoachPlansSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   CreditCard,
   Crown,
@@ -78,21 +79,8 @@ export default function CoachPlansPage() {
   const [centreData, setCentreData] = useState<any>(null);
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
-
-  // Razorpay Gateway Modal State (used for fallback sandbox or direct checkout simulation)
-  const [razorpayModal, setRazorpayModal] = useState<{
-    isOpen: boolean;
-    tier: PricingTier | null;
-    paymentMethod: 'upi' | 'card' | 'netbanking';
-    isProcessing: boolean;
-    razorpayOrderId?: string;
-  }>({
-    isOpen: false,
-    tier: null,
-    paymentMethod: 'upi',
-    isProcessing: false,
-  });
 
   // Success Receipt State
   const [receiptData, setReceiptData] = useState<{
@@ -108,29 +96,31 @@ export default function CoachPlansPage() {
 
   const userEmail = session?.user?.email || (user as any)?.email;
 
-  const loadData = async () => {
+  const loadData = React.useCallback(async () => {
     if (!userEmail) {
       setLoading(false);
       return;
     }
     setLoading(true);
+    setDbError(null);
     try {
       const res = await getCoachDashboardData(userEmail);
       if (res.success) {
         if (res.centre) setCentreData(res.centre);
         if (res.config) setConfig(res.config);
       }
-    } catch (err) {
-      console.warn('Could not load coach centre for plans:', err);
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to load coach plans data in CoachPlansPage:', err);
+      setDbError(err?.message || 'Database connection error: Failed to load plan details.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [userEmail]);
 
   useEffect(() => {
     loadData();
     loadRazorpayScript().catch(() => null);
-  }, [userEmail]);
+  }, [loadData]);
 
   const isPlanActive = Boolean(centreData?.planPurchasedAt || centreData?.planPaymentId);
   const activePlan = isPlanActive ? (centreData?.planTier || SubscriptionPlan.FREE) : null;
@@ -261,7 +251,7 @@ export default function CoachPlansPage() {
     }
   };
 
-  // Trigger checkout flow (via Razorpay SDK with fallback modal)
+  // Trigger checkout flow (via Razorpay SDK)
   const handleOpenCheckout = async (tier: PricingTier) => {
     if (!tier.enabled) {
       showToast(`⚠️ The ${tier.name} is currently suspended by platform admin.`);
@@ -397,36 +387,30 @@ export default function CoachPlansPage() {
         rzp.open();
         return;
       } catch (sdkError) {
-        console.warn('Native Razorpay popup open failed, switching to sandbox modal:', sdkError);
+        console.error('[PAYMENT_ERROR] Native Razorpay popup open failed:', sdkError);
+        showToast('⚠️ Unable to open Razorpay checkout. Please check popup blockers or network connection.');
+        return;
       }
     }
 
-    // Fallback: Open in-app Razorpay Secure Sandbox Modal
-    setRazorpayModal({
-      isOpen: true,
-      tier,
-      paymentMethod: 'upi',
-      isProcessing: false,
-      razorpayOrderId: orderId,
-    });
-  };
-
-  // Process payment inside in-app Razorpay Sandbox Modal
-  const handleProcessRazorpayModal = () => {
-    if (!razorpayModal.tier || !centreData?.id) return;
-    setRazorpayModal((prev) => ({ ...prev, isProcessing: true }));
-
-    setTimeout(async () => {
-      const generatedRzpPaymentId = `pay_rzp_${Math.random().toString(36).substring(2, 9).toUpperCase()}${Math.floor(1000 + Math.random() * 9000)}`;
-      const targetTier = razorpayModal.tier!;
-
-      setRazorpayModal((prev) => ({ ...prev, isProcessing: false, isOpen: false }));
-      await handleFinalizeSubscription(targetTier, generatedRzpPaymentId);
-    }, 1500);
+    showToast('⚠️ Razorpay checkout SDK could not be loaded. Please check your internet connection.');
   };
 
   if (loading) {
     return <CoachPlansSkeleton />;
+  }
+
+  if (dbError) {
+    return (
+      <div className="w-full bg-slate-50 min-h-screen py-12 px-4 flex items-center justify-center">
+        <DatabaseErrorView
+          title="Unable to Load Plans"
+          message="We are having trouble loading subscription plans right now. Please try again."
+          error={dbError}
+          onRetry={loadData}
+        />
+      </div>
+    );
   }
 
   const allowFreeListing = config?.allowFreeTierPublicListing ?? true;
@@ -710,184 +694,7 @@ export default function CoachPlansPage() {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════
-          RAZORPAY CHECKOUT MODAL (FALLBACK / SANDBOX)
-         ══════════════════════════════════════════ */}
-      {razorpayModal.isOpen && razorpayModal.tier && (
-        <div
-          className="fixed inset-0 z-[300] flex items-center justify-center p-4 backdrop-blur-md bg-black/60 animate-fade-in"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !razorpayModal.isProcessing) {
-              setRazorpayModal({ ...razorpayModal, isOpen: false });
-            }
-          }}
-        >
-          <div
-            className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200 animate-fade-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Top Bar */}
-            <div className="px-6 py-4 bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-amber-400">
-                  <CreditCard size={18} weight="bold" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-black text-sm text-white">Razorpay Secure Checkout</h3>
-                    <span className="text-[9px] bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded-full uppercase font-mono font-bold">
-                      VERIFIED GATEWAY
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-300 font-medium">
-                    256-Bit Bank Grade SSL Encryption • KnowUrCoach Partner
-                  </p>
-                </div>
-              </div>
-              {!razorpayModal.isProcessing && (
-                <button
-                  type="button"
-                  onClick={() => setRazorpayModal({ ...razorpayModal, isOpen: false })}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  <X size={16} weight="bold" />
-                </button>
-              )}
-            </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-5">
-              {/* Plan Summary Card */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-500">Selected Plan:</span>
-                  <span className="font-black text-slate-900">{razorpayModal.tier.name}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-500">Billing Cycle:</span>
-                  <span className="font-extrabold text-slate-900 capitalize">{billingCycle}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-500">Academy Centre:</span>
-                  <span className="font-bold text-indigo-700">{academyName}</span>
-                </div>
-
-                <div className="pt-2 border-t border-slate-200 flex justify-between items-baseline">
-                  <span className="font-black text-xs text-slate-900">Total Payable to Razorpay:</span>
-                  <span className="text-xl font-black text-slate-900">
-                    ₹{billingCycle === 'annual'
-                      ? razorpayModal.tier.annualPrice.toLocaleString('en-IN')
-                      : razorpayModal.tier.monthlyPrice.toLocaleString('en-IN')}
-                  </span>
-                </div>
-              </div>
-
-              {/* Payment Methods */}
-              <div className="space-y-2">
-                <label className="block text-xs font-black text-slate-900">
-                  Select Razorpay Payment Channel:
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'upi', label: 'UPI / QR Code', icon: QrCode },
-                    { id: 'card', label: 'Credit / Debit Card', icon: CreditCard },
-                    { id: 'netbanking', label: 'Net Banking', icon: Buildings },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() =>
-                        setRazorpayModal((prev) => ({
-                          ...prev,
-                          paymentMethod: m.id as any,
-                        }))
-                      }
-                      className={`p-3 rounded-2xl border text-xs font-black flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                        razorpayModal.paymentMethod === m.id
-                          ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 ring-1 ring-indigo-600'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <m.icon size={20} weight={razorpayModal.paymentMethod === m.id ? 'fill' : 'bold'} />
-                      <span className="text-[11px]">{m.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* UPI QR Display if UPI selected */}
-              {razorpayModal.paymentMethod === 'upi' && (
-                <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex items-center gap-4 text-xs">
-                  <div className="w-16 h-16 bg-white rounded-xl border border-slate-200 flex items-center justify-center p-1.5 shrink-0 shadow-xs">
-                    <QrCode size={44} className="text-slate-800" />
-                  </div>
-                  <div>
-                    <div className="font-black text-indigo-950">Razorpay Dynamic UPI Intent</div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">
-                      Supports Google Pay, PhonePe, Paytm &amp; BHIM. Instant transaction webhook confirmation.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Card Fields if Card selected */}
-              {razorpayModal.paymentMethod === 'card' && (
-                <div className="space-y-2 text-xs">
-                  <input
-                    type="text"
-                    placeholder="Card Number"
-                    defaultValue="4242 •••• •••• 4242"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      placeholder="MM / YY"
-                      defaultValue="12/28"
-                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono"
-                    />
-                    <input
-                      type="password"
-                      placeholder="CVV"
-                      defaultValue="123"
-                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Submit Payment CTA */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  disabled={razorpayModal.isProcessing}
-                  onClick={handleProcessRazorpayModal}
-                  className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs transition-all shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
-                >
-                  {razorpayModal.isProcessing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Verifying with Razorpay Gateway...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock size={15} weight="bold" />
-                      <span>
-                        Complete Razorpay Payment (₹{billingCycle === 'annual'
-                          ? razorpayModal.tier.annualPrice.toLocaleString('en-IN')
-                          : razorpayModal.tier.monthlyPrice.toLocaleString('en-IN')})
-                      </span>
-                    </>
-                  )}
-                </button>
-                <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">
-                  256-Bit SSL Encrypted • Instant Activation • Razorpay Test/Production Gateway
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ══════════════════════════════════════════
           AUTHENTIC SUCCESS & PAYMENT RECEIPT MODAL

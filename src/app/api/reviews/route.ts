@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     const res = await getAcademyReviews(academyId);
     return NextResponse.json(res);
   } catch (err: any) {
-    console.error('[API GET /api/reviews error]', err);
+    console.error('[DB_ERROR] Failed to fetch reviews:', err);
     return NextResponse.json({ error: 'Failed to fetch reviews' }, { status: 500 });
   }
 }
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json(res);
   } catch (err: any) {
-    console.error('[API POST /api/reviews error]', err);
+    console.error('[DB_ERROR] Server error processing review:', err);
     return NextResponse.json({ success: false, message: 'Server error processing review.' }, { status: 500 });
   }
 }

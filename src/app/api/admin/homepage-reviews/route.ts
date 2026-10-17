@@ -17,7 +17,7 @@ export async function GET() {
     const reviews = await getAllHomepageReviewsForAdmin();
     return NextResponse.json({ success: true, reviews });
   } catch (err: any) {
-    console.error('[Admin Homepage Reviews GET error]', err);
+    console.error('[DB_ERROR] Failed to retrieve homepage reviews:', err);
     return NextResponse.json({ error: 'Failed to retrieve homepage reviews' }, { status: 500 });
   }
 }
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json(res);
   } catch (err: any) {
-    console.error('[Admin Homepage Reviews POST error]', err);
+    console.error('[DB_ERROR] Failed to save review:', err);
     return NextResponse.json({ error: 'Failed to save review' }, { status: 500 });
   }
 }
@@ -50,7 +50,7 @@ export async function DELETE(req: NextRequest) {
     }
     return NextResponse.json(res);
   } catch (err: any) {
-    console.error('[Admin Homepage Reviews DELETE error]', err);
+    console.error('[DB_ERROR] Failed to delete review:', err);
     return NextResponse.json({ error: 'Failed to delete review' }, { status: 500 });
   }
 }

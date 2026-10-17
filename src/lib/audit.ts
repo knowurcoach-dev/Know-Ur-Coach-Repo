@@ -29,7 +29,7 @@ export async function logAdminAction(params: LogAdminActionParams) {
       },
     });
   } catch (err) {
-    console.error('[Audit Logging Failed]', err);
+    console.error('[DB_ERROR] Failed to record admin audit log:', err);
     return null;
   }
 }
@@ -44,7 +44,7 @@ export async function getRecentAuditLogs(limit = 50) {
       take: limit,
     });
   } catch (err) {
-    console.error('[Fetch Audit Logs Failed]', err);
-    return [];
+    console.error('[DB_ERROR] Failed to fetch audit logs:', err);
+    throw new Error('Database error: Failed to fetch audit logs');
   }
 }

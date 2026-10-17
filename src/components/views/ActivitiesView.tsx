@@ -2,16 +2,17 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { usePersona } from '@/context/PersonaContext';
 import { useModalStore } from '@/hooks/useModalStore';
 import { getDiscoveryData } from '@/lib/actions';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   getCategoryPillar,
   getCategoryDisplayName,
   getCategoryEmoji,
-  DEFAULT_PLATFORM_CATEGORIES,
   resolveCategoryCoverImage,
+  resolveCategoryFromSearch,
 } from '@/lib/categories';
 import {
   MapPin,
@@ -33,54 +34,89 @@ import {
 
 export function ActivitiesView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { activeCity, activeLocality } = usePersona();
   const { openModal } = useModalStore();
+
+  const rawSearch = searchParams.get('search') || '';
+  const rawCategory = searchParams.get('category');
+  const rawActivity = searchParams.get('activity');
+
+  const inferred = (!rawCategory || rawCategory === 'all') && rawSearch ? resolveCategoryFromSearch(rawSearch) : null;
+  const initialCategory = rawCategory || inferred?.category || '';
+  const initialPillar = rawActivity || (initialCategory ? getCategoryPillar(initialCategory) : (inferred?.pillar || 'all'));
+  const initialSearch = rawSearch || (initialCategory ? getCategoryDisplayName(initialCategory) : '');
 
   const [activitiesList, setActivitiesList] = useState<any[]>([]);
   const [academiesCountMap, setAcademiesCountMap] = useState<Record<string, number>>({});
   const [totalAcademiesCount, setTotalAcademiesCount] = useState<number>(0);
   const [isLoadingDb, setIsLoadingDb] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Filter state for categories on this browse page
-  const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(initialPillar);
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
 
+  // Sync with searchParams if navigated with new query
+  useEffect(() => {
+    const q = searchParams.get('search') || '';
+    const cat = searchParams.get('category');
+    const act = searchParams.get('activity');
+
+    const inf = (!cat || cat === 'all') && q ? resolveCategoryFromSearch(q) : null;
+    const targetCat = cat || inf?.category;
+    const targetPillar = act || (targetCat ? getCategoryPillar(targetCat) : (inf?.pillar || 'all'));
+    const targetSearch = q || (targetCat ? getCategoryDisplayName(targetCat) : '');
+
+    if (targetPillar && targetPillar !== selectedActivityPillar) {
+      setSelectedActivityPillar(targetPillar);
+    }
+    if (targetSearch !== searchQuery) {
+      setSearchQuery(targetSearch);
+    }
+  }, [searchParams]);
+
   const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const searchFormRef = useRef<HTMLFormElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
   // Fetch activities taxonomy & academy distribution
-  useEffect(() => {
-    async function fetchDbData() {
-      setIsLoadingDb(true);
-      try {
-        const res = await getDiscoveryData();
-        if (res.activities) {
-          setActivitiesList(res.activities);
-        }
-        const rawCentres = (res as any).centres || (res as any).academies || [];
-        if (rawCentres.length > 0) {
-          setTotalAcademiesCount(rawCentres.length);
-          const countMap: Record<string, number> = {};
-          rawCentres.forEach((a: any) => {
-            const cat = (a.category || '').toLowerCase();
-            const acts = (a.activities || []).map((x: string) => x.toLowerCase());
-            const allTags = [cat, ...acts];
-            allTags.forEach((t) => {
-              if (t) countMap[t] = (countMap[t] || 0) + 1;
-            });
-          });
-          setAcademiesCountMap(countMap);
-        }
-      } catch (err) {
-        console.warn('Error fetching discovery data:', err);
-      } finally {
-        setIsLoadingDb(false);
+  const fetchDbData = React.useCallback(async () => {
+    setIsLoadingDb(true);
+    setDbError(null);
+    try {
+      const res = await getDiscoveryData();
+      if (res.activities) {
+        setActivitiesList(res.activities);
       }
+      const rawCentres = (res as any).centres || (res as any).academies || [];
+      if (rawCentres.length > 0) {
+        setTotalAcademiesCount(rawCentres.length);
+        const countMap: Record<string, number> = {};
+        rawCentres.forEach((a: any) => {
+          const cat = (a.category || '').toLowerCase();
+          const acts = (a.activities || []).map((x: string) => x.toLowerCase());
+          const allTags = [cat, ...acts];
+          allTags.forEach((t) => {
+            if (t) countMap[t] = (countMap[t] || 0) + 1;
+          });
+        });
+        setAcademiesCountMap(countMap);
+      }
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to fetch discovery data in ActivitiesView:', err);
+      setDbError(err?.message || 'Database connection error: Failed to fetch categories.');
+      setActivitiesList([]);
+    } finally {
+      setIsLoadingDb(false);
     }
-    fetchDbData();
   }, [activeCity]);
+
+  useEffect(() => {
+    fetchDbData();
+  }, [fetchDbData]);
 
   // Check scroll state of activity tabs
   const checkTabsScroll = () => {
@@ -103,17 +139,17 @@ export function ActivitiesView() {
     setTimeout(checkTabsScroll, 250);
   };
 
-  // Compile all display categories based on selected activity tab
+  // Compile all display categories based on selected activity tab & search query
   const displayCategories = useMemo(() => {
+    let list: any[] = [];
     if (selectedActivityPillar === 'all') {
-      const all: any[] = [];
       const seen = new Set<string>();
 
       activitiesList.forEach((act) => {
         (act.categories || []).forEach((cat: any) => {
           if (!seen.has(cat.slug)) {
             seen.add(cat.slug);
-            all.push({
+            list.push({
               ...cat,
               parentSlug: act.slug,
               parentName: act.name,
@@ -122,31 +158,53 @@ export function ActivitiesView() {
           }
         });
       });
-
-      if (all.length === 0) {
-        return DEFAULT_PLATFORM_CATEGORIES.map((cat) => ({
+    } else {
+      const currentAct = activitiesList.find((a) => a.slug === selectedActivityPillar);
+      if (currentAct) {
+        list = (currentAct.categories || []).map((cat: any) => ({
           ...cat,
-          imageUrl: resolveCategoryCoverImage(cat.slug, cat.icon),
+          parentSlug: currentAct.slug,
+          parentName: currentAct.name,
+          imageUrl: resolveCategoryCoverImage(cat.slug, cat.imageUrl),
         }));
       }
-
-      return all;
     }
 
-    const currentAct = activitiesList.find((a) => a.slug === selectedActivityPillar);
-    if (!currentAct) return [];
-    return (currentAct.categories || []).map((cat: any) => ({
-      ...cat,
-      parentSlug: currentAct.slug,
-      parentName: currentAct.name,
-      imageUrl: resolveCategoryCoverImage(cat.slug, cat.imageUrl),
-    }));
-  }, [selectedActivityPillar, activitiesList]);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const filtered = list.filter((c: any) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
+      if (filtered.length > 0) return filtered;
+    }
+
+    return list;
+  }, [selectedActivityPillar, activitiesList, searchQuery]);
+
+  // Close suggestions when clicking outside or pressing Escape
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchFormRef.current && !searchFormRef.current.contains(e.target as Node)) {
+        setIsSuggestionsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsSuggestionsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // Autocomplete matching categories for search bar
   const matchingSuggestions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
+    if (!q) {
+      return displayCategories.slice(0, 6);
+    }
     return displayCategories.filter((c: any) => c.name.toLowerCase().includes(q) || c.slug.includes(q)).slice(0, 6);
   }, [searchQuery, displayCategories]);
 
@@ -173,12 +231,14 @@ export function ActivitiesView() {
       {/* ========================================================
           HERO BANNER & SEARCH HEADER
          ======================================================== */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 text-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-xl border border-slate-800 relative overflow-hidden">
-        {/* Glowing Background Accents */}
-        <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 text-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-xl border border-slate-800 relative z-30">
+        {/* Glowing Background Accents - isolated overflow hidden so it doesn't clip dropdowns */}
+        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+          <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
+        </div>
 
-        <div className="relative z-10 max-w-3xl space-y-4">
+        <div className="relative z-20 max-w-3xl space-y-4">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black uppercase tracking-wider">
             <Sparkle size={14} weight="fill" />
             Browse Verified Categories in {activeCity}
@@ -193,7 +253,7 @@ export function ActivitiesView() {
           </p>
 
           {/* Search Box with Suggestions */}
-          <form onSubmit={handleSearchSubmit} className="pt-2 relative max-w-xl">
+          <form ref={searchFormRef} onSubmit={handleSearchSubmit} className="pt-2 relative z-30 max-w-xl">
             <div className="relative flex items-center bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden p-1.5">
               <MagnifyingGlass size={18} className="text-slate-400 ml-3 shrink-0" />
               <input
@@ -225,30 +285,46 @@ export function ActivitiesView() {
             </div>
 
             {/* Suggestions Dropdown */}
-            {isSuggestionsOpen && matchingSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100 z-50">
-                <div className="px-3.5 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Suggested Categories
-                </div>
-                {matchingSuggestions.map((cat: any) => (
-                  <button
-                    key={cat.slug}
-                    type="button"
-                    onClick={() => {
-                      setIsSuggestionsOpen(false);
-                      handleCategoryClick(cat.slug);
-                    }}
-                    className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-emerald-50 transition-colors cursor-pointer text-slate-800"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-base">{getCategoryEmoji(cat.slug)}</span>
-                      <span className="text-xs font-bold">{cat.name}</span>
+            {isSuggestionsOpen && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100 z-50 max-h-80 overflow-y-auto ring-1 ring-black/5">
+                {matchingSuggestions.length > 0 ? (
+                  <>
+                    <div className="px-3.5 py-2 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-10 flex items-center justify-between">
+                      <span>{searchQuery.trim() ? 'Suggested Categories' : 'Popular Categories'}</span>
+                      <span className="text-[9px] font-medium text-slate-400">Esc to close</span>
                     </div>
-                    <span className="text-[10px] text-emerald-700 font-extrabold flex items-center gap-1">
-                      View Listings <ArrowRight size={11} />
-                    </span>
-                  </button>
-                ))}
+                    {matchingSuggestions.map((cat: any) => (
+                      <button
+                        key={cat.slug}
+                        type="button"
+                        onClick={() => {
+                          setIsSuggestionsOpen(false);
+                          handleCategoryClick(cat.slug);
+                        }}
+                        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-emerald-50 transition-colors cursor-pointer text-slate-800 group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base">{getCategoryEmoji(cat.slug)}</span>
+                          <span className="text-xs font-bold group-hover:text-emerald-700 transition-colors">{cat.name}</span>
+                        </div>
+                        <span className="text-[10px] text-emerald-700 font-extrabold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                          View Listings <ArrowRight size={11} />
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                ) : searchQuery.trim() ? (
+                  <div className="p-4 text-center">
+                    <p className="text-xs font-bold text-slate-600">No categories matching &quot;{searchQuery}&quot;</p>
+                    <button
+                      type="submit"
+                      className="mt-2 text-xs font-extrabold text-emerald-700 hover:text-emerald-800 underline cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <span>Search all centres for &quot;{searchQuery}&quot;</span>
+                      <ArrowRight size={12} weight="bold" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </form>
@@ -356,13 +432,22 @@ export function ActivitiesView() {
         </div>
 
         {/* Categories Grid (Clicking navigates to Blinkit-style listing) */}
-        {isLoadingDb && displayCategories.length === 0 ? (
+        {dbError ? (
+          <div className="py-6">
+            <DatabaseErrorView
+              title="Unable to Load Activities"
+              message="We are having trouble loading sports and learning categories right now. Please try again."
+              error={dbError}
+              onRetry={fetchDbData}
+            />
+          </div>
+        ) : isLoadingDb && displayCategories.length === 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
             {Array.from({ length: 12 }).map((_, idx) => (
               <div key={idx} className="bg-slate-100 rounded-2xl h-44 animate-pulse" />
             ))}
           </div>
-        ) : (
+        ) : displayCategories.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
             {displayCategories.map((cat: any) => {
               const count = academiesCountMap[cat.slug] || 0;
@@ -414,6 +499,14 @@ export function ActivitiesView() {
                 </button>
               );
             })}
+          </div>
+        ) : (
+          <div className="text-center py-12 px-4 bg-slate-50 rounded-2xl border border-slate-200">
+            <SquaresFour size={36} className="text-slate-400 mx-auto mb-2" />
+            <h3 className="font-extrabold text-slate-800 text-sm">No Categories Available</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+              There are currently no activities registered in this category in the database.
+            </p>
           </div>
         )}
       </section>

@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       message: 'OTP verified successfully',
     });
   } catch (error: any) {
-    console.error('[verify-otp API error]:', error);
+    console.error('[AUTH_ERROR] verify-otp API error:', error);
     return NextResponse.json(
       { success: false, valid: false, error: error?.message || 'Verification failed' },
       { status: 500 }

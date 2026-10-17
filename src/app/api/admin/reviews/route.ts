@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const reviews = await getAllReviewsForAdmin(limit);
     return NextResponse.json({ success: true, reviews });
   } catch (err: any) {
-    console.error('[Admin Reviews GET error]', err);
+    console.error('[DB_ERROR] Failed to retrieve admin reviews:', err);
     return NextResponse.json({ error: 'Failed to retrieve reviews' }, { status: 500 });
   }
 }
@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest) {
     }
     return NextResponse.json(res);
   } catch (err: any) {
-    console.error('[Admin Reviews PATCH error]', err);
+    console.error('[DB_ERROR] Failed to update review status:', err);
     return NextResponse.json({ error: 'Failed to update review status' }, { status: 500 });
   }
 }
@@ -58,7 +58,7 @@ export async function DELETE(req: NextRequest) {
     }
     return NextResponse.json(res);
   } catch (err: any) {
-    console.error('[Admin Reviews DELETE error]', err);
+    console.error('[DB_ERROR] Failed to delete review:', err);
     return NextResponse.json({ error: 'Failed to delete review' }, { status: 500 });
   }
 }

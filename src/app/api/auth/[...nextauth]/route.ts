@@ -43,13 +43,21 @@ export const authOptions: AuthOptions = {
         const isStandardAdmin = cleanEmail === 'admin@knowurcoach.in' || cleanEmail === 'admin.rawat@knowurcoach.com';
         if (reqRole === 'ADMIN' && !isStandardAdmin) {
           // Check DB user role
-          const adminCheck = await prisma.user.findFirst({
-            where: { OR: [{ email: cleanEmail }, { phone: cleanEmail }] },
-            select: { role: true },
-          }).catch(() => null);
+          try {
+            const adminCheck = await prisma.user.findFirst({
+              where: { OR: [{ email: cleanEmail }, { phone: cleanEmail }] },
+              select: { role: true },
+            });
 
-          if (!adminCheck || adminCheck.role !== Role.ADMIN) {
-            throw new Error('Access denied: this portal is strictly restricted to Platform Administrators.');
+            if (!adminCheck || adminCheck.role !== Role.ADMIN) {
+              throw new Error('Access denied: this portal is strictly restricted to Platform Administrators.');
+            }
+          } catch (err: any) {
+            if (err?.message?.includes('Access denied')) {
+              throw err;
+            }
+            console.error('[DB_ERROR] Failed to verify admin user:', err);
+            throw new Error('Database error: Unable to verify administrator credentials.');
           }
         }
 
@@ -75,20 +83,25 @@ export const authOptions: AuthOptions = {
               throw new Error('Incorrect password. Please verify your credentials.');
             }
             const hashedAdminPass = await bcrypt.hash(defaultAdminPass, 12);
-            dbUser = await prisma.user.create({
-              data: {
-                id: `usr_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-                email: cleanEmail,
-                phone: '+91 97625 77714',
-                role: Role.ADMIN,
-                passwordHash: hashedAdminPass,
-                isActive: true,
-              },
-              include: {
-                parentProfile: true,
-                coachingCentre: true,
-              },
-            }).catch(() => null);
+            try {
+              dbUser = await prisma.user.create({
+                data: {
+                  id: `usr_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                  email: cleanEmail,
+                  phone: '+91 97625 77714',
+                  role: Role.ADMIN,
+                  passwordHash: hashedAdminPass,
+                  isActive: true,
+                },
+                include: {
+                  parentProfile: true,
+                  coachingCentre: true,
+                },
+              });
+            } catch (err: any) {
+              console.error('[DB_ERROR] Failed to bootstrap initial admin user:', err);
+              throw new Error('Database error: Failed to provision administrator account.');
+            }
           }
 
           if (dbUser) {
@@ -152,7 +165,7 @@ export const authOptions: AuthOptions = {
           if (error?.message && !error.message.includes('Prisma')) {
             throw error;
           }
-          console.error('[NextAuth authorize error]', error);
+          console.error('[AUTH_ERROR] NextAuth authorize error:', error);
           throw error;
         }
       },

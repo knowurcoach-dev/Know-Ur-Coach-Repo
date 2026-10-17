@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const logs = await getRecentAuditLogs(limit);
     return NextResponse.json({ success: true, logs });
   } catch (err: any) {
-    console.error('[Admin Audit Logs GET error]', err);
+    console.error('[DB_ERROR] Failed to retrieve audit logs:', err);
     return NextResponse.json({ error: 'Failed to retrieve audit logs' }, { status: 500 });
   }
 }

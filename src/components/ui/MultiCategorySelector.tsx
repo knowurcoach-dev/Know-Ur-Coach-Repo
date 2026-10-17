@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   TaxonomyGroup,
-  FALLBACK_TAXONOMY_GROUPS,
   getCategoryEmoji,
   getCategoryDisplayName,
 } from '@/lib/categories';
@@ -30,13 +29,13 @@ interface MultiCategorySelectorProps {
 export function MultiCategorySelector({
   selectedCategories,
   onChange,
-  taxonomy = FALLBACK_TAXONOMY_GROUPS,
+  taxonomy = [],
   theme = 'blue',
   minRequired = 1,
   label = 'Activities & Categories Offered',
   sublabel = 'Select your academy coaching programs. Switch the main activity dropdown to add categories across multiple disciplines.',
 }: MultiCategorySelectorProps) {
-  const groups = taxonomy && taxonomy.length > 0 ? taxonomy : FALLBACK_TAXONOMY_GROUPS;
+  const groups = taxonomy || [];
 
   // Active Main Activity selected in Dropdown 1
   const [activeMainSlug, setActiveMainSlug] = useState<string>(groups[0]?.slug || 'sports');
@@ -114,6 +113,19 @@ export function MultiCategorySelector({
   };
 
   const isBlue = theme === 'blue';
+
+  if (groups.length === 0) {
+    return (
+      <div className="space-y-2">
+        <label className="block text-xs font-bold text-slate-800">
+          {label} <span className="text-rose-500">*</span>
+        </label>
+        <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center text-xs text-slate-500 font-medium">
+          No activity categories currently available in the database.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50/90 rounded-2xl p-4 sm:p-5 border border-slate-200/90 space-y-4">

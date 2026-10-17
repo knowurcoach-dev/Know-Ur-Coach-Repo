@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const settings = await getMaskedPaymentSettings();
     return NextResponse.json({ success: true, settings });
   } catch (err: any) {
-    console.error('[Admin Payments GET error]', err);
+    console.error('[DB_ERROR] Failed to retrieve payment configuration:', err);
     return NextResponse.json(
       { error: 'Failed to retrieve payment configuration' },
       { status: 500 }
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       settings: result.settings,
     });
   } catch (err: any) {
-    console.error('[Admin Payments POST error]', err);
+    console.error('[DB_ERROR] Failed to update payment settings:', err);
     return NextResponse.json(
       { error: 'Failed to update payment settings' },
       { status: 500 }

@@ -10,14 +10,14 @@ import { usePersona } from '@/context/PersonaContext';
 import { useModalStore } from '@/hooks/useModalStore';
 import { getDiscoveryData } from '@/lib/actions';
 import { resolveCentreCity } from '@/lib/location';
+import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   getCategoryPillar,
   getCategoryDisplayName,
   getCategoryEmoji,
-  DEFAULT_PLATFORM_CATEGORIES,
   resolveCategoryCoverImage,
+  resolveCategoryFromSearch,
   CATEGORY_SHORT_NAMES,
-  FALLBACK_TAXONOMY_GROUPS,
 } from '@/lib/categories';
 import {
   ArrowLeft,
@@ -263,130 +263,169 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
 export function ActivitiesExploreView() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialCategory = searchParams.get('category') || 'all';
-  const initialSearch = searchParams.get('search') || '';
-  const initialLocality = searchParams.get('locality') || 'all';
-  const initialAge = searchParams.get('age') || 'all';
+  const { activeCity: personaCity, activeLocality, setLocation } = usePersona();
 
-  const { activeCity } = usePersona();
+  const cityParam = searchParams.get('city');
+  const activeCity = cityParam && cityParam.trim() ? cityParam.trim() : personaCity;
+
+  const rawCat = searchParams.get('category');
+  const rawSearch = searchParams.get('search') || '';
+  const rawLocality = searchParams.get('locality') || 'all';
+  const rawAge = searchParams.get('age') || 'all';
+  const rawActivity = searchParams.get('activity');
+
+  // If category wasn't explicit in URL, infer from search term if matching
+  const inferred = (!rawCat || rawCat === 'all') && rawSearch ? resolveCategoryFromSearch(rawSearch) : null;
+  const initialCategory = rawCat || inferred?.category || 'all';
+  const initialActivityPillar = rawActivity || (initialCategory !== 'all' ? getCategoryPillar(initialCategory) : (inferred?.pillar || 'all'));
 
   const [academiesList, setAcademiesList] = useState<Academy[]>([]);
   const [activitiesList, setActivitiesList] = useState<any[]>([]);
   const [isLoadingDb, setIsLoadingDb] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Selected Activity Pillar: 'all' | 'sports' | 'brain-booster' | 'arts'
-  const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(() => {
-    if (initialCategory && initialCategory !== 'all') {
-      return getCategoryPillar(initialCategory);
-    }
-    return 'all';
-  });
+  const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(initialActivityPillar);
 
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
-  const [searchQuery, setSearchQuery] = useState<string>(initialSearch);
-  const [selectedLocality, setSelectedLocality] = useState<string>(initialLocality);
-  const [selectedAge, setSelectedAge] = useState<string>(initialAge);
+  const [searchQuery, setSearchQuery] = useState<string>(rawSearch);
+  const [selectedLocality, setSelectedLocality] = useState<string>(rawLocality);
+  const [selectedAge, setSelectedAge] = useState<string>(rawAge);
   const [onlyTopInArea, setOnlyTopInArea] = useState<boolean>(false);
   const [onlyVerified, setOnlyVerified] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'top' | 'rating' | 'distance' | 'fee-low'>('top');
 
   const resultsContainerRef = useRef<HTMLDivElement>(null);
 
-  // Sync category from URL parameter changes
+  // Sync category, search, locality, age, and pillar from URL parameter changes
   useEffect(() => {
     const cat = searchParams.get('category');
-    if (cat && cat !== selectedCategory) {
-      setSelectedCategory(cat);
-      if (cat !== 'all') {
-        setSelectedActivityPillar(getCategoryPillar(cat));
+    const act = searchParams.get('activity');
+    const q = searchParams.get('search');
+    const loc = searchParams.get('locality');
+    const age = searchParams.get('age');
+    const city = searchParams.get('city');
+
+    let targetCat = cat;
+    let targetPillar = act;
+
+    if ((!targetCat || targetCat === 'all') && q) {
+      const match = resolveCategoryFromSearch(q);
+      if (match) {
+        targetCat = match.category;
+        if (!targetPillar || targetPillar === 'all') {
+          targetPillar = match.pillar;
+        }
       }
     }
-    const q = searchParams.get('search');
+
+    if (targetCat && targetCat !== selectedCategory) {
+      setSelectedCategory(targetCat);
+      if (targetCat !== 'all' && (!targetPillar || targetPillar === 'all')) {
+        setSelectedActivityPillar(getCategoryPillar(targetCat));
+      }
+    }
+    if (targetPillar && targetPillar !== selectedActivityPillar) {
+      setSelectedActivityPillar(targetPillar);
+    }
     if (q !== null && q !== searchQuery) {
       setSearchQuery(q);
+    }
+    if (loc && loc !== selectedLocality) {
+      setSelectedLocality(loc);
+    }
+    if (age && age !== selectedAge) {
+      setSelectedAge(age);
+    }
+    if (city && city !== personaCity) {
+      setLocation({ city, locality: activeLocality || '' });
     }
   }, [searchParams]);
 
   // Fetch verified academies and taxonomy from DB
-  useEffect(() => {
-    async function fetchDbData() {
-      setIsLoadingDb(true);
-      try {
-        const res = await getDiscoveryData();
-        if (res.activities) {
-          setActivitiesList(res.activities);
-        }
-        const rawCentres = (res as any).centres || (res as any).academies || [];
-        if (rawCentres.length > 0) {
-          const mapped: Academy[] = rawCentres.map((c: any) => {
-            const locName = c.locality
-              ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-              : c.city || activeCity || 'City Center';
-
-            const catSlug = (c.category || 'sports').toLowerCase();
-
-            return {
-              id: c.id,
-              name: c.name,
-              tagline: c.tagline || 'Leading Academy for Youth',
-              category: catSlug,
-              activities: Array.isArray(c.activities) && c.activities.length > 0 ? c.activities : [catSlug],
-              activitiesText: Array.isArray(c.activities) && c.activities.length > 0
-                ? c.activities.join(', ')
-                : getCategoryDisplayName(catSlug),
-              locality: c.locality,
-              localityName: locName,
-              city: c.city,
-              lat: c.latitude,
-              lon: c.longitude,
-              address: c.address,
-              phone: c.phone,
-              distance: 2.5,
-              distanceText: '2.5 km away',
-              age: ['u8', 'u12', 'u16'] as any,
-              ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
-              fee: Number(c.monthlyTuitionFee || c.fee || 1800),
-              trialFee: Number(c.trialFee || 0),
-              rating: Number(c.rating || 5.0),
-              reviewsCount: Number(c.reviewsCount || 0),
-              verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : (c.isVerifiedBatch ? 'Verified Batch' : 'Safety Inspected'),
-              image: c.image || resolveCategoryCoverImage(catSlug, ''),
-              coachName: c.headCoachName || c.coachName || 'NIS Certified Coach',
-              coachTitle: c.headCoachBio || c.coachTitle || '',
-              coachesCount: c.coachesCount || 2,
-              ratio: c.studentCoachRatio || '1 : 8',
-              facilities: (c.facilities || []).map((f: any) => f.description || f),
-              safety: '24/7 CCTV • First Aid • Police Verified',
-              isTopInArea: Boolean(c.isTopInArea),
-              planTier: c.planTier,
-              isVerifiedBatch: Boolean(c.isVerifiedBatch),
-              kycStatus: c.kycStatus,
-              safetyGrade: c.safetyGrade,
-              coachType: c.coachType,
-              batches: (c.batches || []).map((b: any) => ({
-                id: b.id,
-                name: b.name,
-                time: b.schedule || b.time,
-                schedule: b.schedule,
-                ageGroup: b.ageGroup,
-                seats: `${b.seatsFilled || 0}/${b.totalSeats || 20} Enrolled`,
-                monthlyFee: Number(b.monthlyFee || c.monthlyTuitionFee || 1800),
-              })),
-            };
-          });
-          setAcademiesList(mapped);
-        } else {
-          setAcademiesList([]);
-        }
-      } catch (err) {
-        console.warn('Error fetching discovery data:', err);
-      } finally {
-        setIsLoadingDb(false);
+  const fetchDbData = React.useCallback(async () => {
+    setIsLoadingDb(true);
+    setDbError(null);
+    try {
+      const res = await getDiscoveryData();
+      if (res.activities) {
+        setActivitiesList(res.activities);
       }
+      const rawCentres = (res as any).centres || (res as any).academies || [];
+      if (rawCentres.length > 0) {
+        const mapped: Academy[] = rawCentres.map((c: any) => {
+          const locName = c.locality
+            ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+            : c.city || activeCity || 'City Center';
+
+          const catSlug = (c.category || 'sports').toLowerCase();
+
+          return {
+            id: c.id,
+            name: c.name,
+            tagline: c.tagline || 'Leading Academy for Youth',
+            category: catSlug,
+            activities: Array.isArray(c.activities) && c.activities.length > 0 ? c.activities : [catSlug],
+            activitiesText: Array.isArray(c.activities) && c.activities.length > 0
+              ? c.activities.join(', ')
+              : getCategoryDisplayName(catSlug),
+            locality: c.locality,
+            localityName: locName,
+            city: c.city,
+            lat: c.latitude,
+            lon: c.longitude,
+            address: c.address,
+            phone: c.phone,
+            distance: 2.5,
+            distanceText: '2.5 km away',
+            age: ['u8', 'u12', 'u16'] as any,
+            ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
+            fee: Number(c.monthlyTuitionFee || c.fee || 1800),
+            trialFee: Number(c.trialFee || 0),
+            rating: Number(c.rating || 5.0),
+            reviewsCount: Number(c.reviewsCount || 0),
+            verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : (c.isVerifiedBatch ? 'Verified Batch' : 'Safety Inspected'),
+            image: c.image || resolveCategoryCoverImage(catSlug, ''),
+            coachName: c.headCoachName || c.coachName || 'NIS Certified Coach',
+            coachTitle: c.headCoachBio || c.coachTitle || '',
+            coachesCount: c.coachesCount || 2,
+            ratio: c.studentCoachRatio || '1 : 8',
+            facilities: (c.facilities || []).map((f: any) => f.description || f),
+            safety: '24/7 CCTV • First Aid • Police Verified',
+            isTopInArea: Boolean(c.isTopInArea),
+            planTier: c.planTier,
+            isVerifiedBatch: Boolean(c.isVerifiedBatch),
+            kycStatus: c.kycStatus,
+            safetyGrade: c.safetyGrade,
+            coachType: c.coachType,
+            batches: (c.batches || []).map((b: any) => ({
+              id: b.id,
+              name: b.name,
+              time: b.schedule || b.time,
+              schedule: b.schedule,
+              ageGroup: b.ageGroup,
+              seats: `${b.seatsFilled || 0}/${b.totalSeats || 20} Enrolled`,
+              monthlyFee: Number(b.monthlyFee || c.monthlyTuitionFee || 1800),
+            })),
+          };
+        });
+        setAcademiesList(mapped);
+      } else {
+        setAcademiesList([]);
+      }
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to fetch discovery data in ActivitiesExploreView:', err);
+      setDbError(err?.message || 'Database connection error: Failed to fetch discovery data.');
+      setAcademiesList([]);
+    } finally {
+      setIsLoadingDb(false);
     }
-    fetchDbData();
   }, [activeCity]);
+
+  useEffect(() => {
+    fetchDbData();
+  }, [fetchDbData]);
 
   // City-filtered academies
   const cityAcademies = useMemo(() => {
@@ -406,7 +445,7 @@ export function ActivitiesExploreView() {
     });
   }, [academiesList, activeCity]);
 
-  // Master list of all 18 categories compiled from DB or canonical platform definition
+  // Master list of categories compiled from DB activities
   const masterCategoriesList = useMemo(() => {
     const list: Array<{
       slug: string;
@@ -436,20 +475,6 @@ export function ActivitiesExploreView() {
         });
       });
     }
-
-    // Ensure all 18 categories from DEFAULT_PLATFORM_CATEGORIES are present
-    DEFAULT_PLATFORM_CATEGORIES.forEach((cat) => {
-      if (!seenSlugs.has(cat.slug)) {
-        seenSlugs.add(cat.slug);
-        list.push({
-          slug: cat.slug,
-          name: cat.name,
-          shortName: CATEGORY_SHORT_NAMES[cat.slug] || cat.name,
-          imageUrl: resolveCategoryCoverImage(cat.slug, null),
-          pillar: getCategoryPillar(cat.slug),
-        });
-      }
-    });
 
     return list;
   }, [activitiesList]);
@@ -557,22 +582,44 @@ export function ActivitiesExploreView() {
     // Search query keyword filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      result = result.filter((a) => {
-        return (
-          a.name.toLowerCase().includes(q) ||
-          (a.locality && a.locality.toLowerCase().includes(q)) ||
-          (a.localityName && a.localityName.toLowerCase().includes(q)) ||
-          (a.tagline && a.tagline.toLowerCase().includes(q)) ||
-          (a.activitiesText && a.activitiesText.toLowerCase().includes(q)) ||
-          (a.coachName && a.coachName.toLowerCase().includes(q))
-        );
-      });
+      const isCategoryKeyword = selectedCategory && selectedCategory !== 'all' && (
+        selectedCategory.toLowerCase() === q ||
+        getCategoryDisplayName(selectedCategory).toLowerCase().includes(q) ||
+        q.includes(selectedCategory.toLowerCase()) ||
+        (q === 'dance' && (selectedCategory === 'dance' || selectedCategory === 'western-dance'))
+      );
+
+      if (!isCategoryKeyword) {
+        result = result.filter((a) => {
+          return (
+            a.name.toLowerCase().includes(q) ||
+            (a.category && a.category.toLowerCase().includes(q)) ||
+            (a.locality && a.locality.toLowerCase().includes(q)) ||
+            (a.localityName && a.localityName.toLowerCase().includes(q)) ||
+            (a.tagline && a.tagline.toLowerCase().includes(q)) ||
+            (a.activitiesText && a.activitiesText.toLowerCase().includes(q)) ||
+            (a.coachName && a.coachName.toLowerCase().includes(q)) ||
+            (Array.isArray(a.activities) && a.activities.some((act: string) => act.toLowerCase().includes(q)))
+          );
+        });
+      }
     }
 
     // Locality filter
     if (selectedLocality && selectedLocality !== 'all') {
       const targetLoc = selectedLocality.toLowerCase().replace(/\s+/g, '-');
-      result = result.filter((a) => (a.locality || '').toLowerCase().replace(/\s+/g, '-') === targetLoc);
+      const targetLocClean = selectedLocality.toLowerCase().replace(/-/g, ' ');
+      result = result.filter((a) => {
+        const aLoc = (a.locality || '').toLowerCase().replace(/\s+/g, '-');
+        const aLocName = (a.localityName || '').toLowerCase();
+        const aAddr = (a.address || '').toLowerCase();
+        return (
+          aLoc === targetLoc ||
+          aLoc.includes(targetLoc) ||
+          aLocName.includes(targetLocClean) ||
+          aAddr.includes(targetLocClean)
+        );
+      });
     }
 
     // Age Group filter
@@ -671,6 +718,19 @@ export function ActivitiesExploreView() {
         ? 'Cultural & Fine Arts Studios'
         : 'All Kids Activities & Academies'
       : activeCategoryObj?.name || getCategoryDisplayName(selectedCategory);
+
+  if (dbError) {
+    return (
+      <div className="w-full min-h-[70vh] flex items-center justify-center p-6 bg-slate-50">
+        <DatabaseErrorView
+          title="Unable to Load Directory"
+          message="We are having trouble loading academy listings right now. Please try again."
+          error={dbError}
+          onRetry={fetchDbData}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-[calc(100vh-104px)] md:h-[calc(100vh-65px)] bg-slate-50 flex flex-col overflow-hidden">

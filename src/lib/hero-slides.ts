@@ -11,6 +11,11 @@ export interface HeroSlideData {
   accentGradient?: string | null;
   order: number;
   isActive: boolean;
+  showBadge?: boolean;
+  showTitle?: boolean;
+  showSubtitle?: boolean;
+  showPrimaryCta?: boolean;
+  showSecondaryCta?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -29,6 +34,11 @@ export const DEFAULT_HERO_SLIDES: HeroSlideData[] = [
     accentGradient: "from-blue-600 via-indigo-600 to-emerald-600",
     order: 1,
     isActive: true,
+    showBadge: true,
+    showTitle: true,
+    showSubtitle: true,
+    showPrimaryCta: true,
+    showSecondaryCta: true,
   },
   {
     id: 'slide-stem',
@@ -43,6 +53,11 @@ export const DEFAULT_HERO_SLIDES: HeroSlideData[] = [
     accentGradient: "from-purple-600 via-pink-600 to-amber-500",
     order: 2,
     isActive: true,
+    showBadge: true,
+    showTitle: true,
+    showSubtitle: true,
+    showPrimaryCta: true,
+    showSecondaryCta: true,
   },
   {
     id: 'slide-arts',
@@ -57,6 +72,11 @@ export const DEFAULT_HERO_SLIDES: HeroSlideData[] = [
     accentGradient: "from-rose-500 via-orange-500 to-amber-500",
     order: 3,
     isActive: true,
+    showBadge: true,
+    showTitle: true,
+    showSubtitle: true,
+    showPrimaryCta: true,
+    showSecondaryCta: true,
   },
   {
     id: 'slide-racquet',
@@ -71,5 +91,10 @@ export const DEFAULT_HERO_SLIDES: HeroSlideData[] = [
     accentGradient: "from-emerald-600 via-teal-600 to-cyan-600",
     order: 4,
     isActive: true,
+    showBadge: true,
+    showTitle: true,
+    showSubtitle: true,
+    showPrimaryCta: true,
+    showSecondaryCta: true,
   },
 ];
