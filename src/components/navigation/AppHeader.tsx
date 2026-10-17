@@ -20,10 +20,12 @@ import {
   User,
   SignOut,
   List,
+  WhatsappLogo,
 } from '@phosphor-icons/react';
 
 import { BrandLogo } from '@/components/brand/BrandLogo';
 import { HeaderMenuDrawer } from './HeaderMenuDrawer';
+import { SUPPORT_WHATSAPP_URL } from '@/components/ui/WhatsAppSupportWidget';
 
 interface AppHeaderProps {
   onOpenLocality?: () => void;
@@ -197,6 +199,20 @@ export function AppHeader({
               )}
             </button>
 
+            {/* WhatsApp Support Direct Chat (Desktop) */}
+            <a
+              id="desktop-header-whatsapp-btn"
+              href={SUPPORT_WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-emerald-200/90 bg-emerald-50/80 hover:bg-emerald-100/80 text-emerald-800 transition-all cursor-pointer shrink-0 shadow-2xs group"
+              title="Chat with KnowUrCoach Support on WhatsApp"
+              aria-label="WhatsApp Support Chat"
+            >
+              <WhatsappLogo size={18} weight="fill" className="text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
+              <span className="hidden xl:inline text-xs font-extrabold text-emerald-800">Support</span>
+            </a>
+
             {/* Menu Breadcrumb Button (Beside notification bell) */}
             <button
               id="desktop-header-menu-btn"
@@ -276,6 +292,19 @@ export function AppHeader({
               </span>
             )}
           </button>
+
+          {/* Mobile WhatsApp Support Icon */}
+          <a
+            id="mobile-header-whatsapp-btn"
+            href={SUPPORT_WHATSAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 text-emerald-600 hover:text-emerald-700 bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-200/80 rounded-xl transition-colors cursor-pointer shrink-0"
+            title="Chat with KnowUrCoach Support on WhatsApp"
+            aria-label="WhatsApp Support"
+          >
+            <WhatsappLogo size={20} weight="fill" />
+          </a>
 
           {/* Mobile Menu Breadcrumb Button (Beside notification bell) */}
           <button

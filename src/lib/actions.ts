@@ -7,6 +7,8 @@ import { KycStatus, SafetyGrade, SubscriptionPlan, CoachType, Role, PassType, Es
 import { logAdminAction } from "@/lib/audit";
 import { PlatformCategory, getCategoryDisplayName } from "@/lib/categories";
 import { DEFAULT_HERO_SLIDES, HeroSlideData } from "@/lib/hero-slides";
+import { DEFAULT_HERO_CAROUSEL_THEME, HeroCarouselTheme } from "@/lib/hero-theme";
+import { readHeroCarouselTheme, writeHeroCarouselTheme } from "@/lib/hero-theme-server";
 import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail } from "@/lib/mail";
 import { buildStatusNotesWithDocs, parseDocsPayload, updateDocStatusInStatusNotes } from "@/lib/coach-docs";
 import { formatBatchItem, serializeBatchSchedule } from "@/lib/batch-helpers";
@@ -2136,7 +2138,7 @@ export async function getAdminDashboardData() {
 export async function getDiscoveryData() {
   try {
     // Public discovery: only active, non-suspended centres on Standard or Premium/Premier plan tiers are publicly visible
-    const [centres, competitions, majorActivities, config, heroSlides] = await Promise.all([
+    const [centres, competitions, majorActivities, config, heroSlides, heroCarouselTheme] = await Promise.all([
       prisma.coachingCentre.findMany({
         where: {
           isSuspended: false,
@@ -2183,6 +2185,7 @@ export async function getDiscoveryData() {
         where: { isActive: true },
         orderBy: { order: 'asc' },
       }),
+      readHeroCarouselTheme(),
     ]);
 
     const mappedActivities = (majorActivities || []).map((act: any) => ({
@@ -2223,6 +2226,7 @@ export async function getDiscoveryData() {
       categories: allCategories,
       config,
       heroSlides: heroSlides || [],
+      heroCarouselTheme: heroCarouselTheme || DEFAULT_HERO_CAROUSEL_THEME,
     });
   } catch (err) {
     console.error("[DB_ERROR] Failed to fetch discovery data from database:", err);
@@ -2566,6 +2570,7 @@ export async function registerParentAccount(data: {
   pincode?: string;
   city?: string;
   password?: string;
+  otp?: string;
   children: Array<{
     name: string;
     age: number | string;
@@ -2576,6 +2581,22 @@ export async function registerParentAccount(data: {
     const cleanEmail = data.email.trim().toLowerCase();
     const cleanPhone = data.phone.trim();
     const cleanCity = data.city?.trim() || 'Agra';
+
+    // Mandatory Email OTP verification for parent registration just like academy/coaches
+    if (!data.otp || !data.otp.trim()) {
+      return {
+        success: false,
+        message: 'A 6-digit email verification code (OTP) is required to complete parent registration.',
+      };
+    }
+
+    const otpResult = verifyOtp(cleanEmail, data.otp.trim());
+    if (!otpResult.valid) {
+      return {
+        success: false,
+        message: otpResult.error || 'Invalid or expired OTP code. Please request a new verification code.',
+      };
+    }
 
     // Strict duplicate and cross-role check:
     const existingUser = await prisma.user.findFirst({
@@ -4754,6 +4775,62 @@ export async function seedDefaultHeroSlides() {
   }
 }
 
+export async function getHeroCarouselThemeAction() {
+  try {
+    const theme = await readHeroCarouselTheme();
+    return { success: true, theme };
+  } catch (err: any) {
+    console.error("getHeroCarouselThemeAction error:", err);
+    return { success: false, theme: DEFAULT_HERO_CAROUSEL_THEME, message: err?.message };
+  }
+}
 
+export async function updateHeroCarouselThemeAction(themeData: Partial<HeroCarouselTheme>) {
+  try {
+    const adminSession = await requireAdminSession();
+    const updated = await writeHeroCarouselTheme(themeData);
 
+    await logAdminAction({
+      actorEmail: adminSession.user?.email || 'admin@knowurcoach.in',
+      actorRole: 'ADMIN',
+      action: 'CONFIG_UPDATED',
+      targetModel: 'HeroCarouselTheme',
+      targetId: 'carousel-theme',
+      details: themeData as Record<string, any>,
+    });
 
+    revalidatePath('/');
+    revalidatePath('/admin/theme');
+    revalidatePath('/admin/hero-slides');
+
+    return { success: true, theme: updated, message: "Hero carousel theme and visual styling saved successfully!" };
+  } catch (err: any) {
+    console.error("updateHeroCarouselThemeAction error:", err);
+    return { success: false, message: err?.message || "Failed to save hero carousel theme." };
+  }
+}
+
+export async function resetHeroCarouselThemeAction() {
+  try {
+    const adminSession = await requireAdminSession();
+    const reset = await writeHeroCarouselTheme(DEFAULT_HERO_CAROUSEL_THEME);
+
+    await logAdminAction({
+      actorEmail: adminSession.user?.email || 'admin@knowurcoach.in',
+      actorRole: 'ADMIN',
+      action: 'CONFIG_UPDATED',
+      targetModel: 'HeroCarouselTheme',
+      targetId: 'carousel-theme',
+      details: { action: 'RESET_TO_DEFAULTS' },
+    });
+
+    revalidatePath('/');
+    revalidatePath('/admin/theme');
+    revalidatePath('/admin/hero-slides');
+
+    return { success: true, theme: reset, message: "Hero carousel theme reset to recommended defaults!" };
+  } catch (err: any) {
+    console.error("resetHeroCarouselThemeAction error:", err);
+    return { success: false, message: err?.message || "Failed to reset hero carousel theme." };
+  }
+}

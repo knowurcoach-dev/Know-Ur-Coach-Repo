@@ -11,6 +11,13 @@ import { getDiscoveryData } from '@/lib/actions';
 import { ActivityCardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { HeroSlideData } from '@/lib/hero-slides';
 import {
+  HeroCarouselTheme,
+  DEFAULT_HERO_CAROUSEL_THEME,
+  getHeroOverlayGradient,
+  getHeroCardHeightClass,
+  hexToRgba,
+} from '@/lib/hero-theme';
+import {
   PlatformCategory,
   TaxonomyGroup,
   getCategoryDisplayName,
@@ -76,6 +83,7 @@ export function HomeView() {
   const [platformCategories, setPlatformCategories] = useState<PlatformCategory[]>([]);
   const [activitiesList, setActivitiesList] = useState<TaxonomyGroup[]>([]);
   const [heroSlides, setHeroSlides] = useState<HeroSlideData[]>([]);
+  const [carouselTheme, setCarouselTheme] = useState<HeroCarouselTheme>(DEFAULT_HERO_CAROUSEL_THEME);
   const [dbError, setDbError] = useState<string | null>(null);
 
   // Carousel State & Timing
@@ -96,6 +104,9 @@ export function HomeView() {
     setDbError(null);
     try {
       const data: any = await getDiscoveryData();
+      if (data.heroCarouselTheme) {
+        setCarouselTheme(data.heroCarouselTheme);
+      }
       if (data.heroSlides && Array.isArray(data.heroSlides)) {
         setHeroSlides(data.heroSlides);
       } else {
@@ -334,16 +345,16 @@ export function HomeView() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar: string }> = {
-  '🏸 Badminton': { category: 'badminton', search: 'Badminton', pillar: 'sports' },
-  '🤖 Robotics': { category: 'robotics', search: 'Robotics', pillar: 'brain-booster' },
-  '🎾 Tennis': { category: 'tennis', search: 'Tennis', pillar: 'sports' },
-  '🥋 Martial Arts': { category: 'martial-arts', search: 'Martial Arts', pillar: 'sports' },
-  '💃 Dance': { category: 'dance', search: 'Dance', pillar: 'arts' },
-  '♟️ Chess': { category: 'chess', search: 'Chess', pillar: 'brain-booster' },
-  '🏊 Swimming': { category: 'swimming', search: 'Swimming', pillar: 'sports' },
-  '🎨 Art & Painting': { category: 'arts', search: 'Art & Painting', pillar: 'arts' },
-};
+  const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar: string }> = {
+    '🏸 Badminton': { category: 'badminton', search: 'Badminton', pillar: 'sports' },
+    '🤖 Robotics': { category: 'robotics', search: 'Robotics', pillar: 'brain-booster' },
+    '🎾 Tennis': { category: 'tennis', search: 'Tennis', pillar: 'sports' },
+    '🥋 Martial Arts': { category: 'martial-arts', search: 'Martial Arts', pillar: 'sports' },
+    '💃 Dance': { category: 'dance', search: 'Dance', pillar: 'arts' },
+    '♟️ Chess': { category: 'chess', search: 'Chess', pillar: 'brain-booster' },
+    '🏊 Swimming': { category: 'swimming', search: 'Swimming', pillar: 'sports' },
+    '🎨 Art & Painting': { category: 'arts', search: 'Art & Painting', pillar: 'arts' },
+  };
 
   const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
     if (suggestion.type === 'category') {
@@ -515,7 +526,7 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
           {/* Dedicated Carousel Banner if slides exist */}
           {hasSlides && activeSlide ? (
             <div
-              className="relative rounded-3xl overflow-hidden shadow-2xl shadow-indigo-500/10 bg-slate-900/95 border border-white/60 backdrop-blur-md h-[290px] sm:h-[350px] md:h-[390px] flex items-center"
+              className={`relative ${carouselTheme.borderRadius || 'rounded-3xl'} overflow-hidden shadow-2xl shadow-indigo-500/10 bg-slate-900/95 border border-white/60 backdrop-blur-md ${getHeroCardHeightClass(carouselTheme)} flex items-center transition-all duration-300`}
               onMouseEnter={() => setIsCarouselPaused(true)}
               onMouseLeave={() => setIsCarouselPaused(false)}
             >
@@ -524,20 +535,33 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
                 {heroSlides.map((slide, idx) => (
                   <div
                     key={slide.id || idx}
-                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-                      idx === currentSlideIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'
-                    } transition-transform duration-7000`}
+                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === currentSlideIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'
+                      } transition-transform duration-7000`}
                   >
                     <img
                       src={slide.imageUrl}
                       alt={slide.title}
-                      className="w-full h-full object-cover object-center brightness-95"
+                      className="w-full h-full object-cover object-center transition-all duration-500"
+                      style={{
+                        filter: `brightness(${carouselTheme.imageBrightness ?? 100}%)`,
+                      }}
                     />
                   </div>
                 ))}
 
-                {/* Balanced Gradient: Vivid photography visible on right, crisp text on left */}
-                <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-slate-950 via-slate-950/85 md:via-slate-950/70 to-slate-950/30 md:to-transparent" />
+                {/* Dynamic Translucent Scrim / Overlay configured from Admin Panel */}
+                <div
+                  className="hidden md:block absolute inset-0 pointer-events-none transition-all duration-500"
+                  style={{
+                    background: getHeroOverlayGradient(carouselTheme, true),
+                  }}
+                />
+                <div
+                  className="block md:hidden absolute inset-0 pointer-events-none transition-all duration-500"
+                  style={{
+                    background: getHeroOverlayGradient(carouselTheme, false),
+                  }}
+                />
               </div>
 
               {/* Carousel Side Navigation Arrows */}
@@ -566,18 +590,43 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
               )}
 
               {/* Slide Content: Left Aligned on Desktop for maximum image visibility */}
-              <div className="relative z-10 w-full max-w-2xl px-6 sm:px-10 lg:px-12 py-6 space-y-2.5 sm:space-y-3 text-left">
+              <div className="relative z-10 w-full max-w-2xl px-4 sm:px-10 lg:px-12 py-4 sm:py-6 space-y-2 sm:space-y-3 text-left">
                 {/* Badge Pill */}
                 {activeSlide.showBadge !== false && (activeSlide.badge || "India's Verified Kids Coaching Network") && (
-                  <div className="inline-flex items-center gap-1.5 bg-black/50 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full text-xs font-black text-white shadow-md">
-                    <Sparkle size={13} weight="fill" className="text-emerald-400" />
+                  <div
+                    className="inline-flex items-center gap-1.5 backdrop-blur-md border border-white/20 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-black shadow-md transition-all duration-300"
+                    style={{
+                      backgroundColor: hexToRgba(carouselTheme.badgeBgColor || '#000000', (carouselTheme.badgeBgOpacity ?? 50) / 100),
+                      color: carouselTheme.badgeTextColor || '#ffffff',
+                    }}
+                  >
+                    <Sparkle size={12} weight="fill" style={{ color: carouselTheme.badgeAccentColor || '#34d399' }} />
                     <span>{activeSlide.badge || "India's Verified Kids Coaching Network"}</span>
                   </div>
                 )}
 
                 {/* Inspiring Headline */}
                 {activeSlide.showTitle !== false && (
-                  <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tight leading-tight sm:leading-tight text-white drop-shadow-lg">
+                  <h1
+                    className={`font-black tracking-tight leading-snug sm:leading-tight line-clamp-2 sm:line-clamp-none transition-all duration-300 ${
+                      carouselTheme.titleFontSizeMobile === 'sm' ? 'text-sm' :
+                      carouselTheme.titleFontSizeMobile === 'base' ? 'text-base' :
+                      carouselTheme.titleFontSizeMobile === 'xl' ? 'text-xl' :
+                      carouselTheme.titleFontSizeMobile === '2xl' ? 'text-2xl' : 'text-lg'
+                    } ${
+                      carouselTheme.titleFontSizeDesktop === '3xl' ? 'md:text-3xl lg:text-3xl' :
+                      carouselTheme.titleFontSizeDesktop === '4xl' ? 'md:text-3xl lg:text-4xl' :
+                      carouselTheme.titleFontSizeDesktop === '6xl' ? 'md:text-4xl lg:text-6xl' : 'md:text-3xl lg:text-4xl xl:text-5xl'
+                    } ${
+                      carouselTheme.titleFontWeight === 'bold' ? 'font-bold' :
+                      carouselTheme.titleFontWeight === 'extrabold' ? 'font-extrabold' : 'font-black'
+                    } ${
+                      carouselTheme.titleDropShadow === 'none' ? '' :
+                      carouselTheme.titleDropShadow === 'subtle' ? 'drop-shadow-sm' :
+                      carouselTheme.titleDropShadow === 'strong' ? 'drop-shadow-2xl' : 'drop-shadow-lg'
+                    }`}
+                    style={{ color: carouselTheme.titleColor || '#ffffff' }}
+                  >
                     {activeSlide.title}{' '}
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400">
                       {activeCity.toLowerCase().includes('india') ? 'Across India' : `in ${activeCity}`}
@@ -587,21 +636,32 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
 
                 {/* Subtitle */}
                 {activeSlide.showSubtitle !== false && activeSlide.subtitle && (
-                  <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium max-w-lg drop-shadow-md line-clamp-2 sm:line-clamp-none">
+                  <p
+                    className={`leading-normal sm:leading-relaxed max-w-lg line-clamp-2 sm:line-clamp-none transition-all duration-300 ${
+                      carouselTheme.subtitleFontSizeMobile === 'sm' ? 'text-xs sm:text-sm' : 'text-[11px] sm:text-xs'
+                    } ${
+                      carouselTheme.subtitleFontSizeDesktop === 'base' ? 'md:text-base' :
+                      carouselTheme.subtitleFontSizeDesktop === 'xs' ? 'md:text-xs' : 'md:text-sm'
+                    } ${
+                      carouselTheme.subtitleFontWeight === 'normal' ? 'font-normal' :
+                      carouselTheme.subtitleFontWeight === 'semibold' ? 'font-semibold' : 'font-medium'
+                    }`}
+                    style={{ color: carouselTheme.subtitleColor || '#e2e8f0' }}
+                  >
                     {activeSlide.subtitle}
                   </p>
                 )}
 
                 {/* Slide Action Buttons */}
                 {(activeSlide.showPrimaryCta !== false || activeSlide.showSecondaryCta !== false) && (
-                  <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 pt-0.5 sm:pt-1">
                     {activeSlide.showPrimaryCta !== false && (
                       <Link
                         href={activeSlide.ctaLink || '/activities'}
-                        className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 transition-all transform hover:scale-105 active:scale-95 cursor-pointer group"
+                        className="inline-flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-[11px] sm:text-xs md:text-sm px-3.5 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl shadow-lg shadow-blue-500/25 transition-all transform hover:scale-105 active:scale-95 cursor-pointer group"
                       >
                         <span>{activeSlide.ctaText || 'Explore Academies'}</span>
-                        <ArrowRight size={15} weight="bold" className="group-hover:translate-x-1 transition-transform" />
+                        <ArrowRight size={14} weight="bold" className="group-hover:translate-x-1 transition-transform" />
                       </Link>
                     )}
 
@@ -609,18 +669,18 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
                       activeSlide.secondaryCtaLink && !activeSlide.secondaryCtaLink.startsWith('#') && activeSlide.secondaryCtaLink !== '/activities#search' ? (
                         <Link
                           href={activeSlide.secondaryCtaLink}
-                          className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl border border-white/25 backdrop-blur-md shadow-md transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                          className="inline-flex items-center gap-1 sm:gap-1.5 bg-white/15 hover:bg-white/25 text-white font-bold text-[11px] sm:text-xs md:text-sm px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl border border-white/25 backdrop-blur-md shadow-md transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
                         >
-                          <MagnifyingGlass size={14} weight="bold" className="text-blue-300" />
+                          <MagnifyingGlass size={13} weight="bold" className="text-blue-300" />
                           <span>{activeSlide.secondaryCtaText || 'Search Below'}</span>
                         </Link>
                       ) : (
                         <button
                           type="button"
                           onClick={scrollToSearch}
-                          className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl border border-white/25 backdrop-blur-md shadow-md transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                          className="inline-flex items-center gap-1 sm:gap-1.5 bg-white/15 hover:bg-white/25 text-white font-bold text-[11px] sm:text-xs md:text-sm px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl border border-white/25 backdrop-blur-md shadow-md transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
                         >
-                          <MagnifyingGlass size={14} weight="bold" className="text-blue-300" />
+                          <MagnifyingGlass size={13} weight="bold" className="text-blue-300" />
                           <span>{activeSlide.secondaryCtaText || 'Search Below'}</span>
                         </button>
                       )
@@ -641,18 +701,18 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
               )}
             </div>
           ) : (
-            <div className="relative rounded-3xl overflow-hidden shadow-lg bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 border border-white/60 backdrop-blur-md p-6 sm:p-10 text-left">
-              <div className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full text-xs font-black text-white shadow-md mb-2">
-                <Sparkle size={13} weight="fill" className="text-emerald-400" />
+            <div className="relative rounded-3xl overflow-hidden shadow-lg bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 border border-white/60 backdrop-blur-md p-4 sm:p-8 md:p-10 text-left">
+              <div className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/20 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-black text-white shadow-md mb-2">
+                <Sparkle size={12} weight="fill" className="text-emerald-400" />
                 <span>India&apos;s Verified Kids Coaching Network</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-tight">
+              <h1 className="text-lg sm:text-2xl md:text-3xl lg:text-4xl font-black text-white tracking-tight leading-snug sm:leading-tight">
                 Discover Verified Sports, Arts &amp; STEM Coaching{' '}
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400">
                   {activeCity.toLowerCase().includes('india') ? 'Across India' : `in ${activeCity}`}
                 </span>
               </h1>
-              <p className="text-xs sm:text-sm text-slate-200 mt-2 max-w-xl font-medium leading-relaxed">
+              <p className="text-[11px] sm:text-xs md:text-sm text-slate-200 mt-1.5 sm:mt-2 max-w-xl font-medium leading-normal sm:leading-relaxed">
                 Hyperlocal verified academies, background-checked NIS trainers, CCTV audits &amp; free trial sessions with 100% money-back escrow protection.
               </p>
             </div>
@@ -715,9 +775,8 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
                           key={`${item.type}-${item.title}-${idx}`}
                           onClick={() => handleSelectSuggestion(item)}
                           onMouseEnter={() => setActiveSuggestionIndex(idx)}
-                          className={`px-3.5 py-2.5 flex items-center justify-between cursor-pointer transition-colors ${
-                            isSelected ? 'bg-blue-50/90 text-blue-900' : 'hover:bg-slate-50/80 text-slate-800'
-                          }`}
+                          className={`px-3.5 py-2.5 flex items-center justify-between cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/90 text-blue-900' : 'hover:bg-slate-50/80 text-slate-800'
+                            }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="text-base shrink-0">{item.icon || (item.type === 'category' ? '🎯' : '🏫')}</span>
@@ -799,7 +858,10 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
             </form>
 
             {/* 1. Popular Activity Tags */}
-            <div className="flex items-center gap-1.5 pt-1 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap">
+            <div
+              className="flex items-center gap-1.5 pt-1 overflow-x-auto scrollbar-none no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-0.5 flex-nowrap sm:flex-wrap"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide shrink-0 mr-0.5">
                 Popular:
               </span>
@@ -826,7 +888,10 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
 
             {/* 2. Popular Localities in City/State/India with +more Toggle */}
             {popularNeighbourhoods.length > 0 && (
-              <div className="pt-2 sm:pt-2.5 border-t border-slate-200/50 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap">
+              <div
+                className="pt-2 sm:pt-2.5 border-t border-slate-200/50 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-0.5 flex-nowrap sm:flex-wrap"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
                 <div className="flex items-center gap-1 shrink-0 mr-0.5">
                   <MapPin size={13} weight="fill" className="text-emerald-600" />
                   <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-800 uppercase tracking-wide shrink-0">
@@ -868,7 +933,10 @@ const POPULAR_TAG_MAP: Record<string, { category: string; search: string; pillar
             )}
 
             {/* 3. Age Wise Discovery */}
-            <div className="border-t border-slate-200/50 pt-2 sm:pt-2.5 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none pb-0.5 flex-nowrap sm:flex-wrap">
+            <div
+              className="border-t border-slate-200/50 pt-2 sm:pt-2.5 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-0.5 flex-nowrap sm:flex-wrap"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide shrink-0 mr-0.5">
                 Age Wise Discovery:
               </span>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useTransition } from 'react';
+import Link from 'next/link';
 import {
   getAdminHeroSlides,
   createHeroSlide,
@@ -8,8 +9,15 @@ import {
   deleteHeroSlide,
   reorderHeroSlides,
   seedDefaultHeroSlides,
+  getHeroCarouselThemeAction,
 } from '@/lib/actions';
 import { HeroSlideData, DEFAULT_HERO_SLIDES } from '@/lib/hero-slides';
+import {
+  HeroCarouselTheme,
+  DEFAULT_HERO_CAROUSEL_THEME,
+  getHeroOverlayGradient,
+  hexToRgba,
+} from '@/lib/hero-theme';
 import { usePersona } from '@/context/PersonaContext';
 import { ConfirmationModal } from '@/components/modals/ConfirmationModal';
 import { AdminTableSkeleton } from '@/components/dashboard/DashboardSkeleton';
@@ -37,6 +45,7 @@ import {
   Tag,
   MagnifyingGlass,
   Check,
+  Palette,
 } from '@phosphor-icons/react';
 
 const IMAGE_PRESETS = [
@@ -61,6 +70,7 @@ const GRADIENT_PRESETS = [
 export default function AdminHeroSlidesPage() {
   const { showToast } = usePersona();
   const [slides, setSlides] = useState<HeroSlideData[]>([]);
+  const [carouselTheme, setCarouselTheme] = useState<HeroCarouselTheme>(DEFAULT_HERO_CAROUSEL_THEME);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
@@ -101,11 +111,17 @@ export default function AdminHeroSlidesPage() {
     setIsLoading(true);
     setDbError(null);
     try {
-      const res = await getAdminHeroSlides();
+      const [res, themeRes] = await Promise.all([
+        getAdminHeroSlides(),
+        getHeroCarouselThemeAction(),
+      ]);
       if (res.success && res.slides) {
         setSlides(res.slides);
       } else {
         setSlides([]);
+      }
+      if (themeRes.success && themeRes.theme) {
+        setCarouselTheme(themeRes.theme);
       }
     } catch (err: any) {
       console.error('[DB_ERROR] Failed to load hero slides in AdminHeroSlidesPage:', err);
@@ -330,6 +346,14 @@ export default function AdminHeroSlidesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/admin/theme#hero-carousel"
+              className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-95"
+            >
+              <Palette size={16} weight="fill" />
+              <span>Theme, Overlay &amp; Font Styling</span>
+            </Link>
+
             <button
               onClick={handleResetDefaults}
               disabled={isPending}
@@ -712,21 +736,31 @@ export default function AdminHeroSlidesPage() {
                   <img
                     src={formData.imageUrl || IMAGE_PRESETS[0].url}
                     alt="Preview"
-                    className="absolute inset-0 w-full h-full object-cover brightness-90"
+                    className="absolute inset-0 w-full h-full object-cover transition-all"
+                    style={{ filter: `brightness(${carouselTheme.imageBrightness ?? 100}%)` }}
                     onError={(e) => {
                       (e.target as HTMLImageElement).src =
                         'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?q=80&w=800&auto=format&fit=crop';
                     }}
                   />
-                  {/* Gradient Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/80 to-slate-950/20" />
+                  {/* Gradient Overlay using active theme */}
+                  <div
+                    className="absolute inset-0 pointer-events-none transition-all"
+                    style={{ background: getHeroOverlayGradient(carouselTheme, true) }}
+                  />
 
                   {/* Content Container */}
                   <div className="relative z-10 max-w-xl space-y-2.5">
                     {/* Badge Pill Preview */}
                     {formData.showBadge ? (
-                      <div className="inline-flex items-center gap-1.5 bg-black/60 backdrop-blur-md border border-white/20 px-3 py-0.5 rounded-full text-xs font-black text-white shadow-md">
-                        <Sparkle size={12} weight="fill" className="text-emerald-400" />
+                      <div
+                        className="inline-flex items-center gap-1.5 backdrop-blur-md border border-white/20 px-3 py-0.5 rounded-full text-xs font-black shadow-md transition-all"
+                        style={{
+                          backgroundColor: hexToRgba(carouselTheme.badgeBgColor || '#000000', (carouselTheme.badgeBgOpacity ?? 50) / 100),
+                          color: carouselTheme.badgeTextColor || '#ffffff',
+                        }}
+                      >
+                        <Sparkle size={12} weight="fill" style={{ color: carouselTheme.badgeAccentColor || '#34d399' }} />
                         <span>{formData.badge || "India's Verified Kids Coaching Network"}</span>
                       </div>
                     ) : (
@@ -738,7 +772,10 @@ export default function AdminHeroSlidesPage() {
 
                     {/* Title Preview */}
                     {formData.showTitle ? (
-                      <h4 className="text-xl sm:text-2xl font-black text-white leading-tight drop-shadow-md">
+                      <h4
+                        className="text-xl sm:text-2xl font-black leading-tight drop-shadow-md transition-all"
+                        style={{ color: carouselTheme.titleColor || '#ffffff' }}
+                      >
                         {formData.title || 'Slide Title Headline Goes Here'}{' '}
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400">
                           Across India
@@ -753,7 +790,10 @@ export default function AdminHeroSlidesPage() {
 
                     {/* Subtitle Preview */}
                     {formData.showSubtitle ? (
-                      <p className="text-xs text-slate-200 line-clamp-2 leading-relaxed drop-shadow">
+                      <p
+                        className="text-xs line-clamp-2 leading-relaxed transition-all"
+                        style={{ color: carouselTheme.subtitleColor || '#e2e8f0' }}
+                      >
                         {formData.subtitle || 'Discover verified sports academies, dance studios, and STEM robotics labs with 100% free trial sessions.'}
                       </p>
                     ) : (

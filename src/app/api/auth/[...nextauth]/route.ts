@@ -31,6 +31,11 @@ export const authOptions: AuthOptions = {
           throw new Error('Please enter your password or request an Email OTP verification code.');
         }
 
+        // Platform Administrators must strictly authenticate via password
+        if (reqRole === 'ADMIN' && otp) {
+          throw new Error('OTP authentication is disabled for Platform Administrators. Please sign in with your password.');
+        }
+
         // If OTP is provided, verify it first
         if (otp) {
           const otpResult = verifyOtp(cleanEmail, otp);

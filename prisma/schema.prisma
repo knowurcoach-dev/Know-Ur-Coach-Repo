@@ -443,6 +443,7 @@ model PlatformConfig {
   freePlanFeatures    String?  // JSON string or comma list of features
   standardPlanFeatures String? // JSON string or comma list of features
   premiumPlanFeatures  String? // JSON string or comma list of features
+  heroCarouselTheme   String?  // JSON string for hero carousel theme, overlay & typography styling
   updatedAt           DateTime @updatedAt
 }
 

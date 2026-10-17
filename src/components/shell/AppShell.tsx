@@ -18,6 +18,7 @@ import { TournamentRegisterModal } from '@/components/modals/TournamentRegisterM
 import { AttendanceLogModal } from '@/components/modals/AttendanceLogModal';
 import { useModalStore } from '@/hooks/useModalStore';
 import { AppFooter } from '@/components/navigation/AppFooter';
+import { WhatsAppSupportWidget } from '@/components/ui/WhatsAppSupportWidget';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -141,6 +142,9 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Floating Toast */}
       <Toast />
+
+      {/* Floating WhatsApp Support (Desktop and Mobile) */}
+      <WhatsAppSupportWidget />
     </div>
   );
 }

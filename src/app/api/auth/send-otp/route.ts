@@ -17,52 +17,110 @@ export async function POST(request: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
 
+    // Disable OTP for ADMIN role completely
+    if (role === 'ADMIN') {
+      return NextResponse.json(
+        { success: false, error: 'OTP authentication is disabled for Platform Administrators. Please sign in using your password.' },
+        { status: 403 }
+      );
+    }
+
     // Verify user is registered when logging in (not signing up)
     if (!isSignup) {
       const isStandardAdmin =
         cleanEmail === 'admin@knowurcoach.in' || cleanEmail === 'admin.rawat@knowurcoach.com';
 
       if (!isStandardAdmin) {
-        const existingUser = await prisma.user.findFirst({
-          where: {
-            OR: [
-              { email: { equals: cleanEmail, mode: 'insensitive' } },
-              { phone: cleanEmail },
-            ],
-          },
-        });
-
-        if (!existingUser) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: 'No registered account found with this email. Please sign up or register first.',
+        try {
+          const existingUser = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: { equals: cleanEmail, mode: 'insensitive' } },
+                { phone: cleanEmail },
+              ],
             },
-            { status: 404 }
-          );
+          });
+
+          if (!existingUser) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'No registered account found with this email. Please sign up or register first.',
+              },
+              { status: 404 }
+            );
+          }
+        } catch (dbErr) {
+          console.warn('[DB_NOTICE] send-otp login pre-check skipped due to DB connection:', dbErr);
         }
       }
     } else {
+      // Pre-validation for parent registration
+      if (role === 'PARENT') {
+        try {
+          const existingUser = await prisma.user.findFirst({
+            where: {
+              email: { equals: cleanEmail, mode: 'insensitive' },
+            },
+          });
+
+          if (existingUser) {
+            if (existingUser.role === 'COACH') {
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: 'This email is already registered as a Coach / Academy account. Please use a different email or sign in to your Coach portal.',
+                },
+                { status: 409 }
+              );
+            }
+            if (existingUser.role === 'ADMIN') {
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: 'This email address is reserved for Platform Administration.',
+                },
+                { status: 400 }
+              );
+            }
+            return NextResponse.json(
+              {
+                success: false,
+                alreadyExists: true,
+                error: `A parent account with this email (${cleanEmail}) is already registered. Please sign in to your parent dashboard.`,
+              },
+              { status: 409 }
+            );
+          }
+        } catch (dbErr) {
+          console.warn('[DB_NOTICE] send-otp parent pre-check skipped due to DB connection:', dbErr);
+        }
+      }
+
       // Pre-validation for coach registration
       if (role === 'COACH') {
-        const existingCoach = await prisma.user.findFirst({
-          where: {
-            email: { equals: cleanEmail, mode: 'insensitive' },
-            role: 'COACH',
-            coachingCentre: { isNot: null },
-          },
-          include: { coachingCentre: true },
-        });
-
-        if (existingCoach) {
-          return NextResponse.json(
-            {
-              success: false,
-              alreadyExists: true,
-              error: `An academy account with this email (${cleanEmail}) is already registered. Please sign in to your Coach portal.`,
+        try {
+          const existingCoach = await prisma.user.findFirst({
+            where: {
+              email: { equals: cleanEmail, mode: 'insensitive' },
+              role: 'COACH',
+              coachingCentre: { isNot: null },
             },
-            { status: 409 }
-          );
+            include: { coachingCentre: true },
+          });
+
+          if (existingCoach) {
+            return NextResponse.json(
+              {
+                success: false,
+                alreadyExists: true,
+                error: `An academy account with this email (${cleanEmail}) is already registered. Please sign in to your Coach portal.`,
+              },
+              { status: 409 }
+            );
+          }
+        } catch (dbErr) {
+          console.warn('[DB_NOTICE] send-otp coach pre-check skipped due to DB connection:', dbErr);
         }
 
         if (cleanEmail === 'admin@knowurcoach.in' || cleanEmail === 'admin.rawat@knowurcoach.com') {
@@ -110,6 +168,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: `Verification code sent to ${cleanEmail}`,
+      ...(process.env.NODE_ENV !== 'production' ? { devOtp: otp } : {}),
     });
   } catch (error: any) {
     console.error('[AUTH_ERROR] send-otp API error:', error);

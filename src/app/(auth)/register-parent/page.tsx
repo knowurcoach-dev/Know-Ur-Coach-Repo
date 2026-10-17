@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BrandLogo } from '@/components/brand/BrandLogo';
@@ -17,6 +17,7 @@ import {
   Trash,
   CheckCircle,
   ArrowRight,
+  ArrowLeft,
   Question,
   MapPin,
   Phone,
@@ -31,6 +32,8 @@ import {
   Spinner,
   Heart,
   Ticket,
+  Clock,
+  Check,
 } from '@phosphor-icons/react';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 
@@ -84,12 +87,38 @@ const PARENT_TESTIMONIALS = [
   },
 ];
 
+const WIZARD_STEPS = [
+  { step: 1, title: 'Parent & Child Profiles', shortTitle: 'Family Details', icon: User },
+  { step: 2, title: 'Email Verification', shortTitle: 'Verify Email', icon: ShieldCheck },
+];
+
 export default function RegisterParentPage() {
   const router = useRouter();
   const { showToast } = usePersona();
 
+  // Wizard Step (1: Family Details, 2: Email Security & OTP Verification)
+  const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [alreadyExists, setAlreadyExists] = useState(false);
+
+  // OTP Verification States
+  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Timer for OTP Resend cooldown
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // Form Fields
   const [parentName, setParentName] = useState('');
@@ -208,18 +237,205 @@ export default function RegisterParentPage() {
       confirmPassword: true,
     });
 
-    return !Object.values(newErrors).some((msg) => Boolean(msg));
+    const hasError = Object.values(newErrors).some((msg) => Boolean(msg));
+    if (hasError) {
+      const firstKey = Object.keys(newErrors).find((k) => Boolean(newErrors[k]));
+      if (firstKey) {
+        setTimeout(() => {
+          const el = document.getElementById(firstKey);
+          if (el) {
+            el.focus();
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 50);
+      }
+      return false;
+    }
+
+    return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Step 1 -> Step 2: Request Email OTP Verification Code
+  const handleInitiateOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     if (!validateAll()) {
       showToast('⚠️ Please fill in all required fields correctly.');
       return;
     }
 
+    if (!agreedToTerms) {
+      setFormError('Please accept the KnowUrCoach Parent Terms of Service to proceed.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setFormError(null);
+    setAlreadyExists(false);
+
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          role: 'PARENT',
+          isSignup: true,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setFormError(data.error || 'Failed to dispatch verification code. Please try again.');
+        if (data.alreadyExists) {
+          setAlreadyExists(true);
+        }
+        showToast('⚠️ ' + (data.error || 'Could not send verification code'));
+        setIsSendingOtp(false);
+        setTimeout(() => {
+          document.getElementById('form-error-banner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 50);
+        return;
+      }
+
+      // Transition to Step 2
+      setCurrentStep(2);
+      setResendCooldown(30);
+      setDevOtpHint(data.devOtp || null);
+      setOtp(['', '', '', '', '', '']);
+      setOtpError(null);
+      showToast(`✉️ 6-digit verification code sent to ${cleanEmail}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Focus first OTP input box after render
+      setTimeout(() => {
+        otpInputRefs.current[0]?.focus();
+      }, 150);
+    } catch (err) {
+      console.error('Error sending parent registration OTP:', err);
+      setFormError('Network error while requesting verification code. Please check your connection.');
+      showToast('⚠️ Network error. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Resend OTP on Step 2
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || isSendingOtp) return;
+
+    setIsSendingOtp(true);
+    setOtpError(null);
+
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          role: 'PARENT',
+          isSignup: true,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setOtpError(data.error || 'Failed to resend code. Please try again.');
+        showToast('⚠️ ' + (data.error || 'Could not resend code'));
+        return;
+      }
+
+      setResendCooldown(30);
+      setDevOtpHint(data.devOtp || null);
+      showToast(`✉️ Fresh verification code sent to ${cleanEmail}`);
+    } catch (err) {
+      setOtpError('Network error while resending verification code.');
+      showToast('⚠️ Network error. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // OTP 6-Digit Input Handlers
+  const handleOtpChange = (index: number, val: string) => {
+    const cleanDigits = val.replace(/\D/g, '');
+
+    // Handle pasting multi-digit string into an individual input
+    if (cleanDigits.length > 1) {
+      const chars = cleanDigits.slice(0, 6).split('');
+      const updatedOtp = [...otp];
+      for (let i = 0; i < 6; i++) {
+        updatedOtp[i] = chars[i] || '';
+      }
+      setOtp(updatedOtp);
+      setOtpError(null);
+      const nextFocus = Math.min(chars.length, 5);
+      otpInputRefs.current[nextFocus]?.focus();
+      return;
+    }
+
+    const updatedOtp = [...otp];
+    updatedOtp[index] = cleanDigits.slice(-1);
+    setOtp(updatedOtp);
+    setOtpError(null);
+
+    if (cleanDigits && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      if (!otp[index] && index > 0) {
+        const updatedOtp = [...otp];
+        updatedOtp[index - 1] = '';
+        setOtp(updatedOtp);
+        otpInputRefs.current[index - 1]?.focus();
+      }
+    } else if (e.key === 'ArrowLeft' && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      handleVerifyAndSubmit();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    const chars = pasted.split('');
+    const updatedOtp = [...otp];
+    for (let i = 0; i < 6; i++) {
+      updatedOtp[i] = chars[i] || '';
+    }
+    setOtp(updatedOtp);
+    setOtpError(null);
+    const nextFocus = Math.min(chars.length, 5);
+    otpInputRefs.current[nextFocus]?.focus();
+  };
+
+  // Step 2: Verify OTP & Complete Parent Registration Atomically
+  const handleVerifyAndSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    const enteredOtp = otp.join('').trim();
+    if (enteredOtp.length !== 6) {
+      setOtpError('Please enter all 6 digits of the verification code.');
+      showToast('⚠️ Please enter the complete 6-digit code');
+      return;
+    }
+
     setIsSubmitting(true);
+    setOtpError(null);
+    setFormError(null);
+
     const newParentId = `KUC-PAR-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     setParentId(newParentId);
 
@@ -237,14 +453,16 @@ export default function RegisterParentPage() {
     }
 
     try {
+      const cleanEmail = email.trim().toLowerCase();
       const res = await registerParentAccount({
         fullName: parentName.trim(),
-        email: email.trim().toLowerCase(),
+        email: cleanEmail,
         phone: phone.trim(),
         locality: locality.trim(),
         pincode: pincode.trim(),
         city: city.trim() || 'Agra',
         password: password.trim(),
+        otp: enteredOtp,
         children: children.map((c) => ({
           name: c.name.trim(),
           age: parseInt(c.age, 10) || 8,
@@ -253,7 +471,8 @@ export default function RegisterParentPage() {
       });
 
       if (!res.success) {
-        showToast('⚠️ ' + (res.message || 'Registration failed'));
+        setOtpError(res.message || 'Verification could not be completed.');
+        showToast('⚠️ ' + (res.message || 'Verification failed'));
         setIsSubmitting(false);
         return;
       }
@@ -261,7 +480,7 @@ export default function RegisterParentPage() {
       // Auto sign-in
       try {
         await signIn('credentials', {
-          email: email.trim().toLowerCase(),
+          email: cleanEmail,
           password: password.trim(),
           role: 'PARENT',
           redirect: false,
@@ -271,9 +490,11 @@ export default function RegisterParentPage() {
       }
 
       setIsSubmitted(true);
-      showToast('🎉 Free Parent Account Created! Zero Platform Fee Guarantee active.');
+      showToast('🎉 Free Parent Account Created! Email verified successfully.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error('Parent registration error:', err);
+      setOtpError('Registration error. Please check your details and try again.');
       showToast('⚠️ Registration error. Please try again.');
       setIsSubmitting(false);
     }
@@ -325,6 +546,45 @@ export default function RegisterParentPage() {
                   <div className="text-xs font-black text-slate-900">Zero Parent Fee Guarantee</div>
                   <div className="text-[11px] text-slate-500 font-medium">100% Free Trial Passes for all verified coaching centers</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Multi-Step Guide in Left Panel */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-2xs space-y-3 hidden sm:block">
+              <div className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                Registration Progress
+              </div>
+              <div className="space-y-2.5">
+                {WIZARD_STEPS.map(({ step, title, icon: Icon }) => {
+                  const isDone = currentStep > step;
+                  const isCurrent = currentStep === step;
+                  return (
+                    <div
+                      key={step}
+                      className={`flex items-center gap-3 p-2.5 rounded-xl text-xs font-bold transition-all ${
+                        isCurrent
+                          ? 'bg-blue-50 text-[#0066ff] border border-blue-200'
+                          : isDone
+                          ? 'text-emerald-700 bg-emerald-50/60'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      <span
+                        className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                          isDone
+                            ? 'bg-emerald-600 text-white'
+                            : isCurrent
+                            ? 'bg-[#0066ff] text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {isDone ? <Check size={14} weight="bold" /> : step}
+                      </span>
+                      <span className="flex-1">{title}</span>
+                      {isDone && <CheckCircle size={16} weight="fill" className="text-emerald-600" />}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -380,18 +640,62 @@ export default function RegisterParentPage() {
           <div className="flex-1 w-full min-w-0">
             {!isSubmitted ? (
               <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xl shadow-slate-200/40 overflow-hidden">
-                {/* Form Header */}
-                <div className="bg-gradient-to-r from-slate-50 to-blue-50/40 px-6 sm:px-8 py-5 border-b border-slate-100 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-black text-slate-900 tracking-tight">Create Free Parent Account</h2>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">Takes less than 45 seconds • Instant digital access</p>
+                {/* Stepper Progress Bar Header */}
+                <div className="bg-gradient-to-r from-slate-50 via-blue-50/30 to-slate-50 p-6 border-b border-slate-100">
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <div>
+                      <span className="text-[11px] font-black uppercase tracking-wider text-blue-600">
+                        Step {currentStep} of {WIZARD_STEPS.length}: {WIZARD_STEPS[currentStep - 1]?.title}
+                      </span>
+                      <h2 className="text-xl font-black text-slate-900 tracking-tight mt-0.5">
+                        {currentStep === 1 && '1. Family Details & Child Profiles'}
+                        {currentStep === 2 && '2. Email Security & OTP Verification'}
+                      </h2>
+                    </div>
+                    <span className="bg-blue-100 text-[#0066ff] text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider border border-blue-200 shrink-0">
+                      Step {currentStep}/{WIZARD_STEPS.length}
+                    </span>
                   </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-emerald-200">
-                    Free Forever
-                  </span>
+
+                  {/* Horizontal Stepper Progress Bar */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {WIZARD_STEPS.map(({ step, shortTitle }) => (
+                      <div key={step} className="space-y-1">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            currentStep >= step ? 'bg-[#0066ff]' : 'bg-slate-200'
+                          }`}
+                        />
+                        <span
+                          className={`text-[10px] font-bold block truncate text-center ${
+                            currentStep === step
+                              ? 'text-[#0066ff] font-extrabold'
+                              : currentStep > step
+                              ? 'text-emerald-700'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {step}. {shortTitle}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <form onSubmit={handleSubmit} noValidate className="p-6 sm:p-8 space-y-6">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (currentStep === 1) handleInitiateOtp();
+                    else handleVerifyAndSubmit();
+                  }}
+                  noValidate
+                  className="p-6 sm:p-8 space-y-6"
+                >
+                  {/* ──────────────────────────────────────────────────────────
+                      STEP 1: FAMILY DETAILS & CHILD PROFILES
+                     ────────────────────────────────────────────────────────── */}
+                  {currentStep === 1 && (
+                    <div className="space-y-6 animate-fade-in">
                   {/* Parent Details Section */}
                   <div className="space-y-4">
                     <div className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -768,25 +1072,223 @@ export default function RegisterParentPage() {
                       </span>
                     </label>
 
-                    {/* Submit CTA */}
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || !agreedToTerms}
-                      className="w-full bg-[#0066ff] hover:bg-blue-700 text-white font-extrabold py-3.5 px-6 rounded-2xl shadow-lg shadow-blue-500/25 active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer disabled:opacity-50"
-                    >
-                      {isSubmitting ? (
-                        <span className="inline-flex items-center gap-2">
-                          <Spinner size={18} className="animate-spin" />
-                          <span>Creating Your Free Account...</span>
-                        </span>
-                      ) : (
-                        <>
-                          <span>Create Free Parent Account & Get Pass</span>
-                          <ArrowRight size={18} weight="bold" />
-                        </>
+                      {/* Persistent Error Banner */}
+                      {formError && (
+                        <div
+                          id="form-error-banner"
+                          className="p-4 rounded-2xl bg-rose-50 border border-rose-200/90 text-rose-900 text-xs sm:text-sm font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-fade-in"
+                        >
+                          <div className="flex items-center gap-2">
+                            <WarningCircle size={20} weight="fill" className="text-rose-600 shrink-0" />
+                            <span>{formError}</span>
+                          </div>
+                          {alreadyExists && (
+                            <Link
+                              href={`/login?role=parent&email=${encodeURIComponent(email.trim())}`}
+                              className="shrink-0 bg-[#0066ff] hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
+                            >
+                              <span>Sign In to Parent Portal</span>
+                              <ArrowRight size={14} weight="bold" />
+                            </Link>
+                          )}
+                        </div>
                       )}
-                    </button>
+
+                      {/* Submit CTA */}
+                      <button
+                        type="button"
+                        onClick={handleInitiateOtp}
+                        disabled={isSendingOtp || !agreedToTerms}
+                        className="w-full bg-[#0066ff] hover:bg-blue-700 text-white font-black py-3.5 px-6 rounded-2xl shadow-lg shadow-blue-500/25 active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer disabled:opacity-50"
+                      >
+                        {isSendingOtp ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Spinner size={18} className="animate-spin" />
+                            <span>Sending Verification Code...</span>
+                          </span>
+                        ) : (
+                          <>
+                            <span>Continue to Email Verification</span>
+                            <ArrowRight size={18} weight="bold" />
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
+                )}
+
+                  {/* ──────────────────────────────────────────────────────────
+                      STEP 2: EMAIL SECURITY & OTP VERIFICATION
+                     ────────────────────────────────────────────────────────── */}
+                  {currentStep === 2 && (
+                    <div className="space-y-6 animate-fade-in">
+                      {/* Security Header Banner */}
+                      <div className="bg-gradient-to-r from-blue-50 via-indigo-50/50 to-blue-50 rounded-2xl p-5 sm:p-6 border border-blue-200 shadow-2xs space-y-3">
+                        <div className="flex items-start gap-3.5">
+                          <div className="w-11 h-11 rounded-2xl bg-[#0066ff] text-white flex items-center justify-center shrink-0 shadow-md">
+                            <EnvelopeSimple size={24} weight="bold" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="inline-flex items-center gap-1.5 bg-blue-100 text-[#0066ff] font-extrabold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-1">
+                              Two-Factor Verification
+                            </div>
+                            <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                              Verify Parent Email Address
+                            </h3>
+                            <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                              We sent a 6-digit one-time password (OTP) to{' '}
+                              <strong className="text-slate-900 font-extrabold bg-white px-2 py-0.5 rounded-md border border-blue-200 inline-block my-0.5 break-all">
+                                {email}
+                              </strong>
+                              . Please enter the code below to complete parent account registration.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-xs border-t border-blue-100">
+                          <span className="text-slate-500 font-medium">Entered incorrect email address?</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentStep(1);
+                              setTimeout(() => {
+                                document.getElementById('email')?.focus();
+                              }, 50);
+                            }}
+                            className="text-[#0066ff] hover:text-blue-700 font-bold underline cursor-pointer"
+                          >
+                            Change Email Address →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* OTP Digits Input Card */}
+                      <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200/90 shadow-sm space-y-6">
+                        <div className="text-center space-y-1">
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
+                            Enter 6-Digit Verification Code
+                          </label>
+                          <p className="text-xs text-slate-500">
+                            Code is valid for 10 minutes. Check your inbox and spam folder.
+                          </p>
+                        </div>
+
+                        {/* 6 Digit Input Boxes */}
+                        <div className="flex items-center justify-center gap-2 sm:gap-3.5 max-w-sm mx-auto">
+                          {otp.map((digit, i) => (
+                            <input
+                              key={i}
+                              ref={(el) => {
+                                otpInputRefs.current[i] = el;
+                              }}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={6}
+                              value={digit}
+                              onChange={(e) => handleOtpChange(i, e.target.value)}
+                              onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                              onPaste={handleOtpPaste}
+                              className={`w-11 h-14 sm:w-13 sm:h-16 text-center text-xl sm:text-2xl font-black font-mono rounded-2xl border-2 transition-all outline-none ${
+                                digit
+                                  ? 'border-[#0066ff] bg-blue-50/30 text-blue-900 shadow-sm'
+                                  : 'border-slate-200 bg-slate-50/50 text-slate-900 hover:border-slate-300 focus:border-[#0066ff] focus:bg-white focus:ring-4 focus:ring-blue-500/10'
+                              } ${otpError ? 'border-rose-400 bg-rose-50/30' : ''}`}
+                              placeholder="•"
+                              autoComplete="one-time-code"
+                            />
+                          ))}
+                        </div>
+
+                        {/* Dev Mode Simulated OTP Helper */}
+                        {devOtpHint && (
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-3 max-w-sm mx-auto">
+                            <div className="flex items-center gap-2 font-medium">
+                              <Sparkle size={16} className="text-amber-600 shrink-0" weight="fill" />
+                              <span>Dev Code: <strong className="font-mono font-black">{devOtpHint}</strong></span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const chars = devOtpHint.slice(0, 6).split('');
+                                const updated = [...otp];
+                                for (let i = 0; i < 6; i++) updated[i] = chars[i] || '';
+                                setOtp(updated);
+                                setOtpError(null);
+                              }}
+                              className="text-[11px] font-bold text-amber-900 underline hover:text-amber-950 cursor-pointer"
+                            >
+                              Auto-fill
+                            </button>
+                          </div>
+                        )}
+
+                        {/* OTP Specific Error */}
+                        {otpError && (
+                          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-bold flex items-center justify-center gap-2 animate-fade-in max-w-sm mx-auto">
+                            <WarningCircle size={16} weight="fill" className="text-rose-600 shrink-0" />
+                            <span>{otpError}</span>
+                          </div>
+                        )}
+
+                        {/* Resend OTP Bar */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-center text-xs text-slate-600">
+                          {resendCooldown > 0 ? (
+                            <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                              <Clock size={15} />
+                              <span>Resend code in <strong>{resendCooldown}s</strong></span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span>Didn't receive the email?</span>
+                              <button
+                                type="button"
+                                disabled={isSendingOtp}
+                                onClick={handleResendOtp}
+                                className="text-[#0066ff] hover:text-blue-700 font-black underline cursor-pointer disabled:opacity-50"
+                              >
+                                {isSendingOtp ? 'Sending fresh code…' : 'Resend Code Now'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Navigation CTA Controls */}
+                      <div className="pt-2 flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentStep(1);
+                            setOtpError(null);
+                          }}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs sm:text-sm px-5 py-3 rounded-2xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <ArrowLeft size={16} weight="bold" />
+                          <span>Previous Step</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleVerifyAndSubmit()}
+                          disabled={isSubmitting}
+                          className="bg-[#0066ff] hover:bg-blue-700 text-white font-black text-xs sm:text-sm px-7 py-3.5 rounded-2xl shadow-lg shadow-blue-500/25 active:scale-[0.99] transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ml-auto"
+                        >
+                          {isSubmitting ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Spinner size={18} className="animate-spin" />
+                              <span>Verifying & Creating Account...</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span>Verify & Create Account</span>
+                              <CheckCircle size={18} weight="fill" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </form>
 
                 {/* Switch to Login */}
