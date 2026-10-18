@@ -12,9 +12,6 @@ import {
   ArrowRight,
   CaretLeft,
   CaretRight,
-  ShieldCheck,
-  LockKey,
-  WhatsappLogo,
   CheckCircle,
 } from '@phosphor-icons/react';
 
@@ -277,49 +274,6 @@ export function HowItWorksSection({ onSearchClick }: { onSearchClick?: () => voi
               </div>
             );
           })}
-        </div>
-
-        {/* Integrated Light-Themed Trust & Assurance Bar (Enhanced Mobile Readability) */}
-        <div className="relative z-10 pt-4 sm:pt-5 border-t border-slate-200/80 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 text-xs">
-          <div className="flex items-center gap-2.5 p-3 sm:p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs hover:border-emerald-300 transition-colors">
-            <div className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
-              <ShieldCheck size={20} weight="fill" />
-            </div>
-            <div>
-              <div className="font-black text-slate-900 text-xs sm:text-[11px] lg:text-xs">100% Verified Mentors</div>
-              <div className="text-[11px] sm:text-[10px] text-slate-500 font-medium">NIS &amp; Police audited</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 p-3 sm:p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs hover:border-blue-300 transition-colors">
-            <div className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-[#0066ff] flex items-center justify-center shrink-0 border border-blue-100">
-              <Ticket size={20} weight="fill" />
-            </div>
-            <div>
-              <div className="font-black text-slate-900 text-xs sm:text-[11px] lg:text-xs">Free Trial Passes</div>
-              <div className="text-[11px] sm:text-[10px] text-slate-500 font-medium">Zero platform fees</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 p-3 sm:p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs hover:border-purple-300 transition-colors">
-            <div className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 border border-purple-100">
-              <LockKey size={20} weight="fill" />
-            </div>
-            <div>
-              <div className="font-black text-slate-900 text-xs sm:text-[11px] lg:text-xs">Escrow Protection</div>
-              <div className="text-[11px] sm:text-[10px] text-slate-500 font-medium">Tuition held safely</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 p-3 sm:p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs hover:border-emerald-300 transition-colors">
-            <div className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
-              <WhatsappLogo size={20} weight="fill" />
-            </div>
-            <div>
-              <div className="font-black text-slate-900 text-xs sm:text-[11px] lg:text-xs">Instant WhatsApp Pass</div>
-              <div className="text-[11px] sm:text-[10px] text-slate-500 font-medium">QR pass on phone</div>
-            </div>
-          </div>
         </div>
       </div>
     </section>

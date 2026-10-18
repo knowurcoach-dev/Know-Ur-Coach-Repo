@@ -185,13 +185,13 @@ describe('Phase 60: Home Activity Showcase and Journey Suite', () => {
       assert.strictEqual(state.modalData?.acadId, 'acad-ace');
     });
 
-    it('should render 4 trust assurance highlights at bottom', () => {
+    it('should not render trust assurance highlights bar at bottom', () => {
       const el = HowItWorksSection({});
       const trustHeadings = findAllInChildren(el, (n) =>
         n?.type === 'div' &&
         ['100% Verified Mentors', 'Free Trial Passes', 'Escrow Protection', 'Instant WhatsApp Pass'].includes(n?.props?.children)
       );
-      assert.strictEqual(trustHeadings.length, 4);
+      assert.strictEqual(trustHeadings.length, 0);
     });
   });
 
