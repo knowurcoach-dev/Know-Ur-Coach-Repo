@@ -167,24 +167,36 @@ async function main() {
 
   for (let i = 0; i < categories.length; i++) {
     const cat = categories[i];
-    await prisma.category.upsert({
-      where: { slug: cat.slug },
-      update: {
-        name: cat.name,
-        icon: cat.icon,
-        description: cat.description,
-        order: i + 1,
-        isActive: true,
-      },
-      create: {
-        name: cat.name,
-        slug: cat.slug,
-        icon: cat.icon,
-        description: cat.description,
-        order: i + 1,
-        isActive: true,
+    const existingCat = await prisma.category.findFirst({
+      where: {
+        OR: [{ slug: cat.slug }, { name: cat.name }],
       },
     });
+
+    if (existingCat) {
+      await prisma.category.update({
+        where: { id: existingCat.id },
+        data: {
+          name: cat.name,
+          slug: cat.slug,
+          icon: cat.icon,
+          description: cat.description,
+          order: i + 1,
+          isActive: true,
+        },
+      });
+    } else {
+      await prisma.category.create({
+        data: {
+          name: cat.name,
+          slug: cat.slug,
+          icon: cat.icon,
+          description: cat.description,
+          order: i + 1,
+          isActive: true,
+        },
+      });
+    }
   }
   console.log(`🏷️ ${categories.length} System Categories verified.`);
 
@@ -258,12 +270,17 @@ async function main() {
   ];
 
   for (const act of majorActivities) {
-    const existing = await prisma.majorActivity.findUnique({ where: { slug: act.slug } });
+    const existing = await prisma.majorActivity.findFirst({
+      where: {
+        OR: [{ slug: act.slug }, { name: act.name }],
+      },
+    });
     const activity = existing
       ? await prisma.majorActivity.update({
-          where: { slug: act.slug },
+          where: { id: existing.id },
           data: {
             name: act.name,
+            slug: act.slug,
             icon: act.icon,
             accentColor: act.accentColor,
             description: act.description,
@@ -287,13 +304,17 @@ async function main() {
 
     for (const d of act.disciplines) {
       const existingDisc = await prisma.discipline.findFirst({
-        where: { slug: d.slug, activityId: activity.id },
+        where: {
+          OR: [{ slug: d.slug }, { name: d.name, activityId: activity.id }],
+        },
       });
       if (existingDisc) {
         await prisma.discipline.update({
           where: { id: existingDisc.id },
           data: {
+            activityId: activity.id,
             name: d.name,
+            slug: d.slug,
             shortDesc: d.shortDesc,
             imageUrl: (d as any).imageUrl || act.imageUrl || 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?auto=format&fit=crop&w=600&q=80',
             icon: d.icon,
