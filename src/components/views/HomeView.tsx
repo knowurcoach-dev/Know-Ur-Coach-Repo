@@ -159,7 +159,6 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
   // Carousel State & Timing
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isCarouselPaused, setIsCarouselPaused] = useState(false);
-  const [slideTimerKey, setSlideTimerKey] = useState(0); // Triggers visual progress bar restart
 
   // Autocomplete Suggestions State
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
@@ -223,25 +222,21 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
 
     const timer = setTimeout(() => {
       setCurrentSlideIndex((prev) => (prev + 1) % heroSlides.length);
-      setSlideTimerKey((k) => k + 1);
     }, SLIDE_DURATION_MS);
 
     return () => clearTimeout(timer);
-  }, [heroSlides.length, isCarouselPaused, currentSlideIndex, slideTimerKey]);
+  }, [heroSlides.length, isCarouselPaused, currentSlideIndex]);
 
   const handlePrevSlide = useCallback(() => {
     setCurrentSlideIndex((prev) => (prev <= 0 ? heroSlides.length - 1 : prev - 1));
-    setSlideTimerKey((k) => k + 1);
   }, [heroSlides.length]);
 
   const handleNextSlide = useCallback(() => {
     setCurrentSlideIndex((prev) => (prev + 1) % heroSlides.length);
-    setSlideTimerKey((k) => k + 1);
   }, [heroSlides.length]);
 
   const handleJumpToSlide = useCallback((index: number) => {
     setCurrentSlideIndex(index);
-    setSlideTimerKey((k) => k + 1);
   }, []);
 
   // Check if India is selected or a State is selected
@@ -769,17 +764,6 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
                   </div>
                 )}
               </div>
-
-              {/* Carousel Slide Progress Bar at the bottom */}
-              {heroSlides.length > 1 && !isCarouselPaused && (
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40 overflow-hidden z-20">
-                  <div
-                    key={slideTimerKey}
-                    className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 animate-slide-progress"
-                    style={{ animationDuration: `${SLIDE_DURATION_MS}ms` }}
-                  />
-                </div>
-              )}
             </div>
           ) : (
             <div className="relative rounded-3xl overflow-hidden shadow-lg bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 border border-white/60 backdrop-blur-md p-4 sm:p-8 md:p-10 text-left">
