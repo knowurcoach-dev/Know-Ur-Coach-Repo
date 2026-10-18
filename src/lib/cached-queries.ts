@@ -22,10 +22,26 @@ const fetchDiscoveryData = async () => {
   });
 
   const allowFreeListing = config?.allowFreeTierPublicListing ?? true;
-  const allowedTiers: SubscriptionPlan[] = [SubscriptionPlan.STANDARD, SubscriptionPlan.PREMIUM];
-  if (allowFreeListing) {
-    allowedTiers.push(SubscriptionPlan.FREE);
-  }
+
+  const validSubscriptionOrTrialFilter = [
+    // Paid tiers: active if unexpired or if set to lifetime (planExpiresAt: null)
+    {
+      planTier: { in: [SubscriptionPlan.STANDARD, SubscriptionPlan.PREMIUM] },
+      OR: [
+        { planExpiresAt: null },
+        { planExpiresAt: { gt: now } },
+      ],
+    },
+    // Free tier: only eligible if platform allows free listing AND trial is actively unexpired
+    ...(allowFreeListing
+      ? [
+          {
+            planTier: SubscriptionPlan.FREE,
+            planExpiresAt: { gt: now },
+          },
+        ]
+      : []),
+  ];
 
   const [centres, competitions, majorActivities, heroSlides, heroCarouselTheme] =
     await Promise.all([
@@ -34,11 +50,7 @@ const fetchDiscoveryData = async () => {
           isSuspended: false,
           isActive: true,
           kycStatus: KycStatus.APPROVED,
-          planTier: { in: allowedTiers },
-          OR: [
-            { planExpiresAt: null },
-            { planExpiresAt: { gt: now } },
-          ],
+          OR: validSubscriptionOrTrialFilter,
         },
         include: {
           facilities: true,

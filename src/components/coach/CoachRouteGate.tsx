@@ -93,7 +93,7 @@ export function CoachRouteGate({ children }: CoachRouteGateProps) {
   }
 
   // If expired specifically, show high-urgency renewal gate
-  if (subStatus.isExpired) {
+  if (subStatus.status === 'EXPIRED') {
     return (
       <div className="w-full bg-slate-50 min-h-[85vh] p-4 sm:p-8 flex items-center justify-center">
         <div className="w-full max-w-xl bg-white rounded-3xl p-6 sm:p-9 border-2 border-red-200 shadow-xl space-y-6 text-center animate-fade-scale-in">

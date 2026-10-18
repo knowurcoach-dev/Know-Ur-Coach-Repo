@@ -686,8 +686,8 @@ export default function CoachDashboardPage() {
             DYNAMIC APPLICATION & SUBSCRIPTION STATUS ALERT BANNERS
            ══════════════════════════════════════════ */}
 
-        {/* 0. SUBSCRIPTION EXPIRED / WARNING ALERTS */}
-        {subStatus.isExpired && (
+        {/* 0. SUBSCRIPTION EXPIRED / LOCKED / WARNING ALERTS */}
+        {subStatus.status === 'EXPIRED' && (
           <div className="bg-gradient-to-r from-red-500/10 via-rose-500/15 to-red-500/10 border-2 border-red-400 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-3 animate-fade-in overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3.5 min-w-0 flex-1">
@@ -712,6 +712,37 @@ export default function CoachDashboardPage() {
               >
                 <CreditCard size={16} weight="bold" />
                 <span>Renew Subscription Now</span>
+                <ArrowRight size={14} weight="bold" />
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {subStatus.status === 'LOCKED' && (
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-amber-500/10 border-2 border-amber-400 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-3 animate-fade-in overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-md">
+                  <Lock size={26} weight="bold" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="inline-flex items-center gap-1.5 bg-amber-200 text-amber-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-1">
+                    Subscription Required
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-amber-950 leading-snug">
+                    Activate a Partner Plan to Unlock Academy Operations
+                  </h3>
+                  <p className="text-xs text-amber-900 font-medium leading-relaxed mt-0.5">
+                    {subStatus.subtext || 'Choose a subscription plan to unlock student attendance rosters, lead CRM, batch management, and live national directory listing.'}
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/coach/plans"
+                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white text-xs font-black px-5 py-3 rounded-xl shadow-md transition-all shrink-0 flex items-center justify-center gap-2"
+              >
+                <CreditCard size={16} weight="bold" />
+                <span>Explore Partner Plans</span>
                 <ArrowRight size={14} weight="bold" />
               </Link>
             </div>

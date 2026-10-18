@@ -438,19 +438,24 @@ export async function verifyAndActivateSubscription(params: {
       };
     }
 
-    // Signature verified! Update centre subscription
-    const cyclePricing = calculateCyclePrice(1, billingCycle);
+    // Signature verified! Fetch platform config & compute cycle pricing
+    const config = await prisma.platformConfig.findUnique({ where: { id: 'default' } });
+    const baseMonthlyPrice = planTier === SubscriptionPlan.PREMIUM
+      ? (Number(config?.premiumPlanPrice) || 3999)
+      : (Number(config?.standardPlanPrice) || 1499);
+    const cyclePricing = calculateCyclePrice(baseMonthlyPrice, billingCycle);
     const durationDays = cyclePricing.days;
     const now = new Date();
 
     const existingCentre = await prisma.coachingCentre.findUnique({
       where: { id: centreId },
-      select: { planExpiresAt: true, planTier: true },
+      select: { planExpiresAt: true, planTier: true, isTrialActive: true },
     });
     const hasUnexpiredPlan = Boolean(
       existingCentre?.planExpiresAt &&
       new Date(existingCentre.planExpiresAt).getTime() > now.getTime() &&
-      existingCentre.planTier === planTier
+      existingCentre.planTier === planTier &&
+      !existingCentre.isTrialActive
     );
     const baseDate = hasUnexpiredPlan ? new Date(existingCentre!.planExpiresAt!) : now;
     const expiresAt = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
@@ -490,7 +495,7 @@ export async function verifyAndActivateSubscription(params: {
         userId: updatedCentre.ownerUserId,
         planTier,
         billingCycle,
-        amount: planTier === SubscriptionPlan.PREMIUM ? 3999 : 1499,
+        amount: cyclePricing.total,
         currency: 'INR',
         status: 'SUCCESS',
         isTestMode: creds.isTestMode,

@@ -2474,7 +2474,7 @@ export async function registerCoachAcademy(data: {
         isTrialActive = true;
         planBillingCycle = 'trial';
       } else {
-        planExpiresAt = now; // Expired immediately if platform free plan is disabled
+        planExpiresAt = null;
         isTrialActive = false;
         planBillingCycle = 'none';
       }
@@ -2576,11 +2576,21 @@ export async function registerCoachAcademy(data: {
     }
 
     // Send welcome email to coach (non-blocking)
-    sendWelcomeEmail({
-      to: cleanEmail,
-      name: data.founder || data.acadName,
-      role: 'Coach',
-    }).catch(err => console.warn('Non-blocking welcome email error:', err));
+    if (isTrialActive && planExpiresAt) {
+      sendCoachTrialWelcomeEmail({
+        to: cleanEmail,
+        coachName: data.founder || data.acadName,
+        centreName: data.acadName,
+        trialDurationDays,
+        expiresAt: planExpiresAt,
+      }).catch(err => console.warn('Non-blocking trial welcome email error:', err));
+    } else {
+      sendWelcomeEmail({
+        to: cleanEmail,
+        name: data.founder || data.acadName,
+        role: 'Coach',
+      }).catch(err => console.warn('Non-blocking welcome email error:', err));
+    }
 
     // Non-blocking revalidation
     try {
@@ -4280,6 +4290,16 @@ export async function updateCoachSubscriptionPlan(
           type: 'subscription',
         },
       }).catch(() => null);
+    }
+
+    if (planTier === SubscriptionPlan.FREE && centre.owner?.email) {
+      sendCoachTrialWelcomeEmail({
+        to: centre.owner.email,
+        coachName: centre.headCoachName || centre.name,
+        centreName: centre.name,
+        trialDurationDays: config?.freeTierDurationDays || 90,
+        expiresAt,
+      }).catch((err) => console.warn('Non-blocking trial email error in updateCoachSubscriptionPlan:', err));
     }
 
     await logAdminAction({

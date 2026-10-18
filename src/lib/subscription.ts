@@ -120,7 +120,7 @@ export function getCentreSubscriptionStatus(
     return {
       tier: SubscriptionPlan.FREE,
       isActive: false,
-      isExpired: true,
+      isExpired: false,
       isTrial: false,
       daysRemaining: 0,
       expiresAt: null,
@@ -154,27 +154,6 @@ export function getCentreSubscriptionStatus(
 
   // Case 1: FREE Tier
   if (tier === SubscriptionPlan.FREE) {
-    // If platform admin completely disabled Free Tier and centre does not have a valid active trial
-    if (!enableFreePlan && !centre.isTrialActive && !centre.isCustomExpiry) {
-      return {
-        tier: SubscriptionPlan.FREE,
-        isActive: false,
-        isExpired: true,
-        isTrial: false,
-        daysRemaining: 0,
-        expiresAt,
-        formattedExpiry,
-        billingCycle: centre.planBillingCycle || 'free',
-        statusBadge: 'LOCKED',
-        status: 'LOCKED',
-        canOperate: false,
-        canListPublicly: false,
-        canPublicList: false,
-        headline: 'Platform Free Trial Inactive',
-        subtext: 'Free trial is currently disabled on this platform. Please choose a partner plan to unlock operations.',
-      };
-    }
-
     // If Free Tier has an expiration date and it has passed
     if (expiresAt && isExpired) {
       return {
@@ -193,6 +172,48 @@ export function getCentreSubscriptionStatus(
         canPublicList: false,
         headline: 'Free Trial Expired',
         subtext: `Your free trial ended on ${formattedExpiry}. Choose a subscription plan to resume operations.`,
+      };
+    }
+
+    // If platform admin completely disabled Free Tier and centre does not have a valid active trial
+    if (!enableFreePlan && !centre.isTrialActive && !centre.isCustomExpiry) {
+      return {
+        tier: SubscriptionPlan.FREE,
+        isActive: false,
+        isExpired: false,
+        isTrial: false,
+        daysRemaining: 0,
+        expiresAt,
+        formattedExpiry,
+        billingCycle: centre.planBillingCycle || 'none',
+        statusBadge: 'LOCKED',
+        status: 'LOCKED',
+        canOperate: false,
+        canListPublicly: false,
+        canPublicList: false,
+        headline: 'Platform Free Trial Inactive',
+        subtext: 'Free trial is currently disabled on this platform. Please choose a partner plan to unlock operations.',
+      };
+    }
+
+    // If centre is on Free tier but never had a trial activated or has no expiry date
+    if (!centre.isTrialActive && !centre.isCustomExpiry && !expiresAt) {
+      return {
+        tier: SubscriptionPlan.FREE,
+        isActive: false,
+        isExpired: false,
+        isTrial: false,
+        daysRemaining: 0,
+        expiresAt: null,
+        formattedExpiry: 'N/A',
+        billingCycle: centre.planBillingCycle || 'none',
+        statusBadge: 'LOCKED',
+        status: 'LOCKED',
+        canOperate: false,
+        canListPublicly: false,
+        canPublicList: false,
+        headline: 'Subscription Required',
+        subtext: 'Please activate your complimentary trial or choose a subscription plan to unlock operations.',
       };
     }
 
