@@ -15,6 +15,7 @@ import {
 import { parseDocsPayload } from '@/lib/coach-docs';
 import { getCategoryEmoji, getCategoryDisplayName } from '@/lib/categories';
 import { CoachDashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { getCentreSubscriptionStatus } from '@/lib/subscription';
 import {
   SealCheck,
   PencilSimple,
@@ -569,10 +570,8 @@ export default function CoachDashboardPage() {
   const isRejected = kycStatus === 'REJECTED';
   const isPendingOnboarding = kycStatus === 'PENDING';
 
-  const isPlanActive =
-    centreData?.planTier === 'STANDARD' ||
-    centreData?.planTier === 'PREMIUM' ||
-    Boolean(centreData?.planPurchasedAt || centreData?.planPaymentId);
+  const subStatus = getCentreSubscriptionStatus(centreData, platformConfig);
+  const isPlanActive = subStatus.canOperate;
   const isOperationsUnlocked = isPlanActive;
   const isPublicLive = isApproved && isPlanActive;
 
@@ -684,8 +683,71 @@ export default function CoachDashboardPage() {
         </div>
 
         {/* ══════════════════════════════════════════
-            DYNAMIC APPLICATION STATUS ALERT BANNERS
+            DYNAMIC APPLICATION & SUBSCRIPTION STATUS ALERT BANNERS
            ══════════════════════════════════════════ */}
+
+        {/* 0. SUBSCRIPTION EXPIRED / WARNING ALERTS */}
+        {subStatus.isExpired && (
+          <div className="bg-gradient-to-r from-red-500/10 via-rose-500/15 to-red-500/10 border-2 border-red-400 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-3 animate-fade-in overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div className="w-11 h-11 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <WarningCircle size={26} weight="bold" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="inline-flex items-center gap-1.5 bg-red-200 text-red-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-1">
+                    Subscription Inactive
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-red-950 leading-snug">
+                    {subStatus.isTrial ? 'Free Partner Trial Has Expired' : 'Academy Subscription Has Expired'}
+                  </h3>
+                  <p className="text-xs text-red-900 font-medium leading-relaxed mt-0.5">
+                    Your subscription expired on <span className="font-bold underline">{subStatus.formattedExpiry}</span>. Operational tools (attendance rosters, student leads, batch schedules) and public search listings are currently locked. Renew your plan to immediately resume academy activities.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/coach/plans"
+                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white text-xs font-black px-5 py-3 rounded-xl shadow-md transition-all shrink-0 flex items-center justify-center gap-2"
+              >
+                <CreditCard size={16} weight="bold" />
+                <span>Renew Subscription Now</span>
+                <ArrowRight size={14} weight="bold" />
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {subStatus.status === 'EXPIRING_SOON' && (
+          <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-400 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm space-y-3 animate-fade-in overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-md">
+                  <Clock size={24} weight="bold" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="inline-flex items-center gap-1.5 bg-amber-200 text-amber-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-1">
+                    Expiring in {subStatus.daysRemaining} {subStatus.daysRemaining === 1 ? 'Day' : 'Days'}
+                  </div>
+                  <h3 className="text-sm sm:text-base font-black text-amber-950 leading-snug">
+                    {subStatus.isTrial ? 'Free Partner Trial Ending Soon' : 'Subscription Renewal Approaching'}
+                  </h3>
+                  <p className="text-xs text-amber-900 font-medium leading-relaxed mt-0.5">
+                    Your plan will expire on <strong className="text-amber-950">{subStatus.formattedExpiry}</strong>. Renew or upgrade early to prevent interruptions to your public listing and attendance rosters.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/coach/plans"
+                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md transition-all shrink-0 flex items-center justify-center gap-1.5"
+              >
+                <CreditCard size={15} weight="bold" />
+                <span>Renew / Extend Plan</span>
+                <ArrowRight size={14} weight="bold" />
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* 1. PENDING PROFILE ONBOARDING BANNER */}
         {isPendingOnboarding && (
@@ -926,8 +988,9 @@ export default function CoachDashboardPage() {
         {(() => {
           const isProPlan = centreData?.planTier === 'PREMIUM';
           const isStandardPlan = centreData?.planTier === 'STANDARD';
-          const isPaidPlan = isProPlan || isStandardPlan;
-          const isPubliclyListed = isPaidPlan && isApproved;
+          const isTrial = subStatus.isTrial;
+          const isPaidPlan = (isProPlan || isStandardPlan) && !isTrial;
+          const isPubliclyListed = subStatus.canPublicList && isApproved;
 
           return (
             <div className="bg-gradient-to-br from-[#0a1128] via-[#101f42] to-[#0d1b3e] text-white rounded-3xl p-6 sm:p-7 shadow-xl border border-indigo-900/50 space-y-5 relative overflow-hidden">
@@ -940,37 +1003,55 @@ export default function CoachDashboardPage() {
                       Partner Membership Tier
                     </span>
 
-                    {isProPlan ? (
+                    {subStatus.isExpired ? (
+                      <span className="inline-flex items-center gap-1.5 bg-red-500 text-white font-black text-xs px-3 py-1 rounded-full shadow-sm">
+                        <WarningCircle size={14} weight="fill" />
+                        Subscription Expired ({subStatus.formattedExpiry})
+                      </span>
+                    ) : isProPlan ? (
                       <span className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black text-xs px-3 py-1 rounded-full shadow-sm">
                         <Crown size={14} weight="fill" />
-                        Verified Premier Partner Active
+                        Verified Premier Partner Active ({subStatus.daysRemaining}d left)
                       </span>
                     ) : isStandardPlan ? (
                       <span className="inline-flex items-center gap-1.5 bg-indigo-500 text-white font-black text-xs px-3 py-1 rounded-full shadow-sm">
                         <Sparkle size={14} weight="fill" />
-                        Standard Growth Partner Active
+                        Standard Growth Partner Active ({subStatus.daysRemaining}d left)
+                      </span>
+                    ) : isTrial ? (
+                      <span className="inline-flex items-center gap-1.5 bg-blue-500 text-white font-black text-xs px-3 py-1 rounded-full shadow-sm">
+                        <Clock size={14} weight="fill" />
+                        Free Partner Trial Active ({subStatus.daysRemaining}d left)
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 bg-rose-500/20 text-rose-300 font-extrabold text-xs px-3 py-1 rounded-full border border-rose-500/30">
                         <EyeSlash size={14} weight="bold" />
-                        Unlisted Profile • No Active Plan
+                        Unlisted Profile • Subscription Required
                       </span>
                     )}
                   </div>
 
                   <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                    {isProPlan
-                      ? 'Premier Pro Academy Tier (₹3,999/mo)'
+                    {subStatus.isExpired
+                      ? 'Plan Expired — Renewal Required'
+                      : isProPlan
+                      ? 'Premier Pro Academy Tier'
                       : isStandardPlan
-                      ? 'Standard Growth Partner Tier (₹1,499/mo)'
+                      ? 'Standard Growth Partner Tier'
+                      : isTrial
+                      ? `Free Starter Partner Trial (${subStatus.daysRemaining} Days Left)`
                       : 'Subscription Required to Go Public'}
                   </h2>
 
                   <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                    {isProPlan
-                      ? 'Your academy receives #1 top priority locality placement in Agra, instant WhatsApp lead alerts, and unlimited batch rosters.'
+                    {subStatus.isExpired
+                      ? 'Your subscription period has ended. Operational rosters and public listings are paused. Renew your subscription below to restore instant WhatsApp leads and attendance management.'
+                      : isProPlan
+                      ? 'Your academy receives #1 top priority placement, instant WhatsApp lead alerts, and unlimited batch rosters.'
                       : isStandardPlan
-                      ? 'Your academy is listed in the Agra activities directory with priority search ranking and unlimited trial booking leads.'
+                      ? 'Your academy is listed in the activities directory with priority search ranking and unlimited trial booking leads.'
+                      : isTrial
+                      ? 'You are enjoying complimentary free access to KnowUrCoach operations. Upgrade anytime to Standard or Premier to secure continuous visibility and enhanced rankings.'
                       : '⚠️ Newly registered academies are unlisted by default. Purchase either the Standard Plan or Premier Plan to make your academy live to parents across India.'}
                   </p>
 
@@ -979,23 +1060,26 @@ export default function CoachDashboardPage() {
                     {centreData?.planPaymentId && (
                       <div className="flex items-center gap-1.5 font-mono text-[11px] bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
                         <CreditCard size={13} className="text-emerald-400" />
-                        <span>Razorpay ID: {centreData.planPaymentId}</span>
+                        <span>Ref ID: {centreData.planPaymentId}</span>
                       </div>
                     )}
                     {centreData?.planExpiresAt && (
                       <div className="flex items-center gap-1.5 font-medium text-[11px]">
-                        <Clock size={13} className="text-amber-400" />
-                        <span>Renews: {new Date(centreData.planExpiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <Clock size={13} className={subStatus.isExpired ? "text-red-400" : "text-amber-400"} />
+                        <span>
+                          {subStatus.isExpired ? 'Expired: ' : 'Valid Until: '}
+                          {subStatus.formattedExpiry}
+                        </span>
                       </div>
                     )}
                     <div className="flex items-center gap-1.5 font-medium text-[11px]">
                       {isPubliclyListed ? (
                         <span className="text-emerald-400 flex items-center gap-1 font-extrabold">
-                          <Eye size={13} weight="bold" /> Public Directory: Live in Agra
+                          <Eye size={13} weight="bold" /> Public Directory: Live in Directory
                         </span>
                       ) : (
                         <span className="text-rose-400 flex items-center gap-1 font-extrabold">
-                          <EyeSlash size={13} weight="bold" /> Public Directory: Unlisted (Requires Standard or Premier Plan)
+                          <EyeSlash size={13} weight="bold" /> Public Directory: Unlisted ({subStatus.isExpired ? 'Expired Plan' : 'Requires Active Subscription'})
                         </span>
                       )}
                     </div>
@@ -1009,7 +1093,7 @@ export default function CoachDashboardPage() {
                     className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black text-xs px-5 py-3 rounded-xl shadow-lg transition-all text-center flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Crown size={16} weight="bold" />
-                    <span>{isPaidPlan ? 'Change / Upgrade Plan' : 'Choose Plan to Go Live'}</span>
+                    <span>{subStatus.isExpired ? 'Renew Subscription' : subStatus.canOperate ? 'Change / Upgrade Plan' : 'Choose Plan to Go Live'}</span>
                   </Link>
                   <Link
                     href="/coach/plans"

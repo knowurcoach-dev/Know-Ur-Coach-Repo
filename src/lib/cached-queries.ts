@@ -16,15 +16,29 @@ function toPlainObject<T>(data: T): T {
  * on-demand cache tag invalidation via revalidateTag('discovery').
  */
 const fetchDiscoveryData = async () => {
-  // Public discovery: only active, non-suspended centres on Standard or Premium/Premier plan tiers are publicly visible
-  const [centres, competitions, majorActivities, config, heroSlides, heroCarouselTheme] =
+  const now = new Date();
+  const config = await prisma.platformConfig.findUnique({
+    where: { id: 'default' },
+  });
+
+  const allowFreeListing = config?.allowFreeTierPublicListing ?? true;
+  const allowedTiers: SubscriptionPlan[] = [SubscriptionPlan.STANDARD, SubscriptionPlan.PREMIUM];
+  if (allowFreeListing) {
+    allowedTiers.push(SubscriptionPlan.FREE);
+  }
+
+  const [centres, competitions, majorActivities, heroSlides, heroCarouselTheme] =
     await Promise.all([
       prisma.coachingCentre.findMany({
         where: {
           isSuspended: false,
           isActive: true,
           kycStatus: KycStatus.APPROVED,
-          planTier: { in: [SubscriptionPlan.STANDARD, SubscriptionPlan.PREMIUM] },
+          planTier: { in: allowedTiers },
+          OR: [
+            { planExpiresAt: null },
+            { planExpiresAt: { gt: now } },
+          ],
         },
         include: {
           facilities: true,
@@ -57,9 +71,6 @@ const fetchDiscoveryData = async () => {
           },
         },
         orderBy: { order: 'asc' },
-      }),
-      prisma.platformConfig.findUnique({
-        where: { id: 'default' },
       }),
       prisma.heroSlide.findMany({
         where: { isActive: true },

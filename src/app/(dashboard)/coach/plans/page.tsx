@@ -16,6 +16,12 @@ import {
 import { CoachPlansSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
+  BILLING_CYCLES,
+  BillingCycleKey,
+  calculateCyclePrice,
+  getCentreSubscriptionStatus,
+} from '@/lib/subscription';
+import {
   CreditCard,
   Crown,
   CheckCircle,
@@ -80,7 +86,7 @@ export default function CoachPlansPage() {
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<BillingCycleKey>('monthly');
 
   // Success Receipt State
   const [receiptData, setReceiptData] = useState<{
@@ -122,8 +128,8 @@ export default function CoachPlansPage() {
     loadRazorpayScript().catch(() => null);
   }, [loadData]);
 
-  const isPlanActive = Boolean(centreData?.planPurchasedAt || centreData?.planPaymentId);
-  const activePlan = isPlanActive ? (centreData?.planTier || SubscriptionPlan.FREE) : null;
+  const subStatus = getCentreSubscriptionStatus(centreData, config);
+  const activePlan = subStatus.canOperate ? (centreData?.planTier || SubscriptionPlan.FREE) : null;
   const academyName = centreData?.name || 'Your Coaching Academy';
 
   // Dynamic Prices from PlatformConfig (fallback to defaults)
@@ -170,9 +176,9 @@ export default function CoachPlansPage() {
       ? [
           {
             id: SubscriptionPlan.FREE,
-            name: 'Starter Partner (Free Tier)',
-            tagline: 'Basic public academy listing and in-app dashboard access',
-            badge: 'STARTER',
+            name: `Starter Partner (${config?.freeTierDurationDays || 90}-Day Trial)`,
+            tagline: `Complimentary ${config?.freeTierDurationDays || 90}-day access to academy dashboard operations`,
+            badge: 'STARTER TRIAL',
             monthlyPrice: 0,
             annualPrice: 0,
             enabled: true,
@@ -218,15 +224,18 @@ export default function CoachPlansPage() {
       );
 
       if (res.success) {
-        const renewalDays = billingCycle === 'annual' ? 365 : 30;
-        const expiryDate = new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000);
+        const cycleConfig = (BILLING_CYCLES as any)[billingCycle] || BILLING_CYCLES.monthly;
+        const renewalDays = tier.id === SubscriptionPlan.FREE ? (config?.freeTierDurationDays || 90) : cycleConfig.days;
+        const expiryDate = res.centre?.planExpiresAt
+          ? new Date(res.centre.planExpiresAt)
+          : new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000);
 
         setReceiptData({
           isOpen: true,
           tierName: tier.name,
           tierId: tier.id,
-          billingCycle,
-          amount: billingCycle === 'annual' ? tier.annualPrice : tier.monthlyPrice,
+          billingCycle: tier.id === SubscriptionPlan.FREE ? 'trial' : billingCycle,
+          amount: tier.id === SubscriptionPlan.FREE ? 0 : calculateCyclePrice(tier.monthlyPrice, billingCycle).totalPrice,
           paymentId,
           date: new Date().toLocaleDateString('en-IN', {
             day: 'numeric',
@@ -258,14 +267,13 @@ export default function CoachPlansPage() {
       return;
     }
 
-    if (tier.id === activePlan) {
-      showToast(`Your academy is already active on the ${tier.name} plan.`);
-      return;
-    }
-
     if (tier.id === SubscriptionPlan.FREE) {
-      showToast('⏳ Activating Starter Free Partner plan...');
-      await handleFinalizeSubscription(tier, `free_tier_${Date.now()}`);
+      if (subStatus.isTrial && !subStatus.isExpired) {
+        showToast(`Your academy already has an active Free Trial (${subStatus.daysRemaining} days remaining).`);
+        return;
+      }
+      showToast('⏳ Activating Starter Free Partner trial...');
+      await handleFinalizeSubscription(tier, `free_trial_${Date.now()}`);
       return;
     }
 
@@ -327,8 +335,11 @@ export default function CoachPlansPage() {
             });
 
             if (verifyRes.success) {
-              const renewalDays = billingCycle === 'annual' ? 365 : 30;
-              const expiryDate = new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000);
+              const cycleConfig = (BILLING_CYCLES as any)[billingCycle] || BILLING_CYCLES.monthly;
+              const renewalDays = cycleConfig.days;
+              const expiryDate = verifyRes.centre?.planExpiresAt
+                ? new Date(verifyRes.centre.planExpiresAt)
+                : new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000);
 
               setReceiptData({
                 isOpen: true,
@@ -442,16 +453,28 @@ export default function CoachPlansPage() {
             </div>
           </div>
 
-          {/* Current Active Plan Badge & Details */}
-          <div className="bg-slate-900 text-white px-4 py-2 rounded-2xl flex items-center gap-3 shadow-sm text-xs">
-            <Crown size={20} weight="fill" className="text-amber-400 shrink-0" />
+          {/* Current Active Plan Badge & Status */}
+          <div className={`text-white px-4 py-2.5 rounded-2xl flex items-center gap-3 shadow-sm text-xs ${
+            subStatus.isExpired ? 'bg-red-900 border border-red-700' : 'bg-slate-900'
+          }`}>
+            <Crown size={20} weight="fill" className={subStatus.isExpired ? 'text-red-400 shrink-0' : 'text-amber-400 shrink-0'} />
             <div>
-              <div className="text-[10px] text-slate-400 font-extrabold uppercase">Current Active Plan</div>
+              <div className="text-[10px] text-slate-400 font-extrabold uppercase">
+                {subStatus.isExpired ? 'Subscription Expired' : 'Current Active Plan'}
+              </div>
               <div className="font-black text-white flex items-center gap-1.5">
-                <span>{activePlan} Partner</span>
-                {centreData?.planPaymentId && (
-                  <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
-                    Paid
+                <span>
+                  {subStatus.isTrial
+                    ? `Free Partner Trial`
+                    : `${centreData?.planTier || 'Starter'} Partner`}
+                </span>
+                {subStatus.isExpired ? (
+                  <span className="text-[9px] bg-red-500/30 text-red-300 border border-red-500/40 px-1.5 py-0.5 rounded font-bold uppercase">
+                    Expired ({subStatus.formattedExpiry})
+                  </span>
+                ) : (
+                  <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono">
+                    {subStatus.daysRemaining}d left
                   </span>
                 )}
               </div>
@@ -460,7 +483,7 @@ export default function CoachPlansPage() {
         </div>
 
         {/* Public Listing Platform Policy Notice */}
-        {activePlan === SubscriptionPlan.FREE && (
+        {!subStatus.canPublicList && (
           <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-amber-300 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-amber-950 shadow-sm">
             <div className="flex items-start sm:items-center gap-3.5">
               <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -468,10 +491,14 @@ export default function CoachPlansPage() {
               </div>
               <div className="space-y-0.5 text-xs">
                 <span className="font-black text-sm text-slate-900 block">
-                  Action Required: Your Academy is Currently Unlisted
+                  {subStatus.isExpired
+                    ? 'Subscription Expired: Academy Currently Unlisted'
+                    : 'Action Required: Your Academy is Currently Unlisted'}
                 </span>
                 <p className="text-slate-600 leading-relaxed max-w-2xl">
-                  Newly registered academies are hidden from the public directory by default. Purchase either the <strong>Standard Plan</strong> or <strong>Premier Plan</strong> below to publish <strong>{academyName}</strong> live to parents and start receiving trial bookings.
+                  {subStatus.isExpired
+                    ? `Your subscription expired on ${subStatus.formattedExpiry}. Public directory listing and parent discovery are paused. Renew your subscription below to immediately go live again.`
+                    : `Active subscription is required to publish ${academyName} live to parents and start receiving trial bookings.`}
                 </p>
               </div>
             </div>
@@ -496,42 +523,49 @@ export default function CoachPlansPage() {
             </p>
           </div>
 
-          {/* Billing Interval Switcher */}
-          <div className="bg-white/10 p-1.5 rounded-2xl border border-white/20 flex items-center shrink-0">
-            <button
-              type="button"
-              onClick={() => setBillingCycle('monthly')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                billingCycle === 'monthly'
-                  ? 'bg-white text-slate-900 shadow-md'
-                  : 'text-white hover:text-slate-200'
-              }`}
-            >
-              Monthly Billing
-            </button>
-            <button
-              type="button"
-              onClick={() => setBillingCycle('annual')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                billingCycle === 'annual'
-                  ? 'bg-emerald-500 text-white shadow-md'
-                  : 'text-white hover:text-slate-200'
-              }`}
-            >
-              <span>Annual Billing</span>
-              <span className="bg-amber-400 text-slate-950 text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">
-                Save 20%
-              </span>
-            </button>
+          {/* Billing Interval Switcher (4 Cycles) */}
+          <div className="bg-white/10 p-1.5 rounded-2xl border border-white/20 flex flex-wrap items-center gap-1 shrink-0">
+            {(['monthly', 'quarterly', 'half-yearly', 'annual'] as BillingCycleKey[]).map((cycleKey) => {
+              const cycle = BILLING_CYCLES[cycleKey];
+              const isSelected = billingCycle === cycleKey;
+              return (
+                <button
+                  key={cycleKey}
+                  type="button"
+                  onClick={() => setBillingCycle(cycleKey)}
+                  className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-white text-slate-900 shadow-md'
+                      : 'text-white hover:text-slate-200'
+                  }`}
+                >
+                  <span>{cycle.label}</span>
+                  {cycle.discountPercent > 0 && (
+                    <span
+                      className={`text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase ${
+                        isSelected
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-400 text-slate-950'
+                      }`}
+                    >
+                      Save {cycle.discountPercent}%
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* Pricing Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 max-w-4xl mx-auto gap-8 pt-2">
+        <div className={`grid grid-cols-1 ${tiers.length >= 3 ? 'md:grid-cols-3 max-w-6xl' : 'md:grid-cols-2 max-w-4xl'} mx-auto gap-6 sm:gap-8 pt-2`}>
           {tiers.map((tier) => {
-            const isCurrent = activePlan === tier.id;
-            const price = billingCycle === 'annual' ? tier.annualPrice : tier.monthlyPrice;
-            const period = billingCycle === 'annual' ? '/ year' : '/ month';
+            const isCurrent = centreData?.planTier === tier.id && subStatus.canOperate;
+            const cycleCalc = calculateCyclePrice(tier.monthlyPrice, billingCycle);
+            const price = tier.id === SubscriptionPlan.FREE ? 0 : cycleCalc.totalPrice;
+            const periodLabel = tier.id === SubscriptionPlan.FREE
+              ? `/${config?.freeTierDurationDays || 90}d trial`
+              : `/${(BILLING_CYCLES[billingCycle as BillingCycleKey]?.label || '1 Month').toLowerCase()}`;
 
             return (
               <div
@@ -580,19 +614,39 @@ export default function CoachPlansPage() {
                       <span className="text-3xl sm:text-4xl font-black text-slate-900">
                         {price === 0 ? '₹0' : `₹${price.toLocaleString('en-IN')}`}
                       </span>
-                      <span className="text-xs text-slate-500 font-semibold">{period}</span>
+                      <span className="text-xs text-slate-500 font-semibold">{periodLabel}</span>
                     </div>
-                    {billingCycle === 'annual' && price > 0 && (
+
+                    {tier.id === SubscriptionPlan.FREE ? (
+                      <div className="text-[10px] text-blue-700 font-bold mt-1">
+                        Complimentary {config?.freeTierDurationDays || 90}-day platform access
+                      </div>
+                    ) : cycleCalc.durationMonths > 1 ? (
                       <div className="text-[10px] text-emerald-700 font-bold mt-1">
-                        Billed annually (Equivalent to ₹{Math.round(price / 12)}/mo)
+                        Billed as ₹{price.toLocaleString('en-IN')} for {cycleCalc.durationMonths} months (₹{cycleCalc.effectiveMonthlyPrice.toLocaleString('en-IN')}/mo)
+                        {cycleCalc.savings > 0 && (
+                          <span className="block text-emerald-800 font-extrabold">Save ₹{cycleCalc.savings.toLocaleString('en-IN')} ({cycleCalc.discountPercent}% off)</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-500 font-medium mt-1">
+                        Billed monthly at standard rate
                       </div>
                     )}
                   </div>
 
                   {/* Public Listing Status Tag */}
-                  <div className="p-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-2 bg-emerald-50 text-emerald-800 border-emerald-200">
+                  <div className={`p-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-2 ${
+                    tier.id === SubscriptionPlan.FREE && !allowFreeListing
+                      ? 'bg-amber-50 text-amber-900 border-amber-200'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}>
                     <Globe size={15} weight="bold" className="shrink-0" />
-                    <span>Public Directory Listing: Live &amp; Verified</span>
+                    <span>
+                      {tier.id === SubscriptionPlan.FREE && !allowFreeListing
+                        ? 'Directory: Unlisted (Trial Dashboard Access)'
+                        : 'Public Directory Listing: Live & Verified'}
+                    </span>
                   </div>
 
                   {/* Configurable Features list ("what we get and what not") */}
@@ -630,13 +684,13 @@ export default function CoachPlansPage() {
                 <div className="pt-6 mt-6 border-t border-slate-100">
                   <button
                     type="button"
-                    disabled={isCurrent || isPending || !tier.enabled}
+                    disabled={isPending || !tier.enabled}
                     onClick={() => handleOpenCheckout(tier)}
                     className={`w-full py-3 rounded-2xl font-extrabold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm ${
                       !tier.enabled
                         ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         : isCurrent
-                        ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-default'
+                        ? 'bg-slate-900 hover:bg-slate-800 text-white active:scale-98'
                         : tier.popular
                         ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20 shadow-lg active:scale-98'
                         : 'bg-slate-900 hover:bg-slate-800 text-white active:scale-98'
@@ -644,15 +698,28 @@ export default function CoachPlansPage() {
                   >
                     {!tier.enabled ? (
                       <span>Tier Suspended by Admin</span>
+                    ) : tier.id === SubscriptionPlan.FREE ? (
+                      subStatus.isTrial && !subStatus.isExpired ? (
+                        <>
+                          <Check size={14} weight="bold" />
+                          <span>Trial Active ({subStatus.daysRemaining}d left)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkle size={14} weight="bold" />
+                          <span>Activate Free Starter Trial</span>
+                          <ArrowRight size={14} weight="bold" />
+                        </>
+                      )
                     ) : isCurrent ? (
                       <>
-                        <Check size={14} weight="bold" />
-                        <span>Currently Active Plan</span>
+                        <ArrowsClockwise size={14} weight="bold" />
+                        <span>Extend Plan (+{BILLING_CYCLES[billingCycle as BillingCycleKey]?.label || '1 Month'})</span>
                       </>
-                    ) : tier.id === SubscriptionPlan.FREE ? (
+                    ) : subStatus.isExpired ? (
                       <>
-                        <Sparkle size={14} weight="bold" />
-                        <span>Activate Free Partner Plan</span>
+                        <CreditCard size={14} weight="bold" />
+                        <span>Renew via Razorpay • ₹{price.toLocaleString('en-IN')}</span>
                         <ArrowRight size={14} weight="bold" />
                       </>
                     ) : (

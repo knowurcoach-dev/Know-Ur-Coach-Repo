@@ -452,3 +452,194 @@ export async function sendWelcomeEmail(options: WelcomeEmailOptions): Promise<Se
     return { success: false, error: error?.message || 'Failed to deliver welcome email' };
   }
 }
+
+export interface CoachTrialWelcomeOptions {
+  to: string;
+  coachName: string;
+  centreName: string;
+  trialDurationDays: number;
+  expiresAt: Date;
+}
+
+/**
+ * Sends notification email when coach registers with an active Free Partner Trial.
+ */
+export async function sendCoachTrialWelcomeEmail(options: CoachTrialWelcomeOptions): Promise<SendEmailResult> {
+  const transporter = createTransporter();
+  const { from } = getSenderInfo();
+  const { to, coachName, centreName, trialDurationDays, expiresAt } = options;
+
+  const expiryFormatted = expiresAt.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const monthsCount = Math.round(trialDurationDays / 30);
+  const durationLabel = monthsCount >= 1 ? `${monthsCount} Month${monthsCount > 1 ? 's' : ''}` : `${trialDurationDays} Days`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>Free Trial Activated</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; color: #1e293b; }
+        .wrapper { max-width: 560px; margin: 30px auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e2e8f0; }
+        .header { background: linear-gradient(135deg, #064e3b 0%, #0f172a 100%); padding: 36px 28px; text-align: center; color: #ffffff; }
+        .badge { display: inline-block; background: #10b981; color: #ffffff; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+        .content { padding: 32px 28px; }
+        .card { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 14px; padding: 18px 20px; margin: 20px 0; }
+        .btn { display: inline-block; background: #10b981; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 12px 24px; border-radius: 10px; margin-top: 16px; }
+        .footer { background: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
+      </style>
+    </head>
+    <body>
+      <div class="wrapper">
+        <div class="header">
+          <span class="badge">Partner Onboarding</span>
+          <div style="font-size: 24px; font-weight: 900;">Welcome to KnowUr<span style="color: #34d399;">Coach</span></div>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.9;">Your Free Partner Trial is Now Active!</p>
+        </div>
+        <div class="content">
+          <p style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 0;">Hello ${coachName},</p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Congratulations on registering <strong>${centreName}</strong> on KnowUrCoach. To help you launch and explore all platform capabilities, your complimentary <strong>${durationLabel} Free Partner Trial</strong> has been activated.
+          </p>
+          <div class="card">
+            <div style="font-size: 13px; font-weight: 700; color: #166534; margin-bottom: 6px;">Your Trial Details:</div>
+            <div style="font-size: 13px; color: #15803d; line-height: 1.5;">
+              • <strong>Status:</strong> Active Complimentary Trial<br>
+              • <strong>Duration:</strong> ${durationLabel} (${trialDurationDays} Days)<br>
+              • <strong>Valid Until:</strong> ${expiryFormatted}<br>
+              • <strong>Includes:</strong> Batches, Student Roster, Trial Booking Leads & Operations
+            </div>
+          </div>
+          <p style="font-size: 13px; color: #64748b; line-height: 1.6;">
+            You can manage schedules, record QR attendance, and receive parent trial bookings directly in your coach portal during this period.
+          </p>
+          <div style="text-align: center;">
+            <a href="${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/coach/dashboard" class="btn">Open Coach Dashboard</a>
+          </div>
+        </div>
+        <div class="footer">
+          KnowUrCoach Partner Network • Need assistance? Write to <a href="mailto:knowurcoach@gmail.com" style="color: #10b981;">knowurcoach@gmail.com</a>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  if (!transporter) {
+    console.log(`[KnowUrCoach Mail Service (DEV MODE)] ✉️ Simulated Coach Trial Welcome Email to ${to} (Expires: ${expiryFormatted})`);
+    return { success: true, simulated: true };
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject: `🎉 Your ${durationLabel} Free Partner Trial is Active — KnowUrCoach`,
+      html: htmlContent,
+      text: `Hello ${coachName},\n\nYour ${durationLabel} Free Partner Trial for ${centreName} is now active until ${expiryFormatted}.\nLog in to your coach dashboard to get started.`,
+    });
+    console.log(`[KnowUrCoach Mail Service] ✅ Coach trial welcome email delivered to ${to}. Message ID: ${info.messageId}`);
+    return { success: true, simulated: false, messageId: info.messageId };
+  } catch (error: any) {
+    console.error(`[KnowUrCoach Mail Service] ❌ Failed to send coach trial welcome email:`, error?.message || error);
+    return { success: false, error: error?.message || 'Failed to deliver trial welcome email' };
+  }
+}
+
+export interface SubscriptionExpiryWarningOptions {
+  to: string;
+  coachName: string;
+  centreName: string;
+  planName: string;
+  daysRemaining: number;
+  expiresAt: Date;
+  renewalUrl?: string;
+}
+
+/**
+ * Sends a reminder email when a coach's trial or subscription is expiring in <= 7 days.
+ */
+export async function sendSubscriptionExpiryWarningEmail(options: SubscriptionExpiryWarningOptions): Promise<SendEmailResult> {
+  const transporter = createTransporter();
+  const { from } = getSenderInfo();
+  const { to, coachName, centreName, planName, daysRemaining, expiresAt, renewalUrl } = options;
+
+  const expiryFormatted = expiresAt.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const link = renewalUrl || `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/coach/plans`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>Subscription Expiring Soon</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; color: #1e293b; }
+        .wrapper { max-width: 560px; margin: 30px auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e2e8f0; }
+        .header { background: linear-gradient(135deg, #78350f 0%, #0f172a 100%); padding: 36px 28px; text-align: center; color: #ffffff; }
+        .badge { display: inline-block; background: #f59e0b; color: #000000; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+        .content { padding: 32px 28px; }
+        .card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 14px; padding: 18px 20px; margin: 20px 0; }
+        .btn { display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 12px 24px; border-radius: 10px; margin-top: 16px; }
+        .footer { background: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
+      </style>
+    </head>
+    <body>
+      <div class="wrapper">
+        <div class="header">
+          <span class="badge">Urgent Notice</span>
+          <div style="font-size: 24px; font-weight: 900;">Plan Expiring in ${daysRemaining} Days</div>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.9;">${centreName}</p>
+        </div>
+        <div class="content">
+          <p style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 0;">Hello ${coachName},</p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            This is a courtesy reminder that your <strong>${planName}</strong> on KnowUrCoach will expire on <strong>${expiryFormatted}</strong> (${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining).
+          </p>
+          <div class="card">
+            <div style="font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 6px;">To Avoid Disruption:</div>
+            <div style="font-size: 13px; color: #b45309; line-height: 1.5;">
+              Renew your subscription before <strong>${expiryFormatted}</strong> to keep your academy listed on the public directory and preserve continuous access to attendance tracking and lead management.
+            </div>
+          </div>
+          <div style="text-align: center;">
+            <a href="${link}" class="btn">Renew Subscription Now</a>
+          </div>
+        </div>
+        <div class="footer">
+          KnowUrCoach Partner Network • Need assistance? Write to <a href="mailto:knowurcoach@gmail.com" style="color: #4f46e5;">knowurcoach@gmail.com</a>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  if (!transporter) {
+    console.log(`[KnowUrCoach Mail Service (DEV MODE)] ✉️ Simulated Subscription Expiry Warning to ${to} (${daysRemaining}d left)`);
+    return { success: true, simulated: true };
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject: `⚠️ Action Required: Your KnowUrCoach Subscription Expires in ${daysRemaining} Days`,
+      html: htmlContent,
+      text: `Hello ${coachName},\n\nYour ${planName} for ${centreName} expires on ${expiryFormatted} (${daysRemaining} days left). Renew now: ${link}`,
+    });
+    return { success: true, simulated: false, messageId: info.messageId };
+  } catch (error: any) {
+    console.error(`[KnowUrCoach Mail Service] ❌ Failed to send expiry warning email:`, error?.message || error);
+    return { success: false, error: error?.message || 'Failed to deliver expiry warning email' };
+  }
+}
+

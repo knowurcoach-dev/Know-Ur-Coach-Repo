@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { revalidatePath } from 'next/cache';
 import { logAdminAction } from '@/lib/audit';
+import { calculateCyclePrice, BillingCycle } from '@/lib/subscription';
 
 export interface MaskedPaymentSettings {
   id: string;
@@ -272,7 +273,7 @@ export async function updatePaymentSettings(
 export async function createSubscriptionOrder(params: {
   centreId: string;
   planTier: SubscriptionPlan;
-  billingCycle?: 'monthly' | 'annual';
+  billingCycle?: BillingCycle;
 }) {
   const { centreId, planTier, billingCycle = 'monthly' } = params;
 
@@ -306,12 +307,9 @@ export async function createSubscriptionOrder(params: {
       baseMonthlyPrice = config ? Number(config.standardPlanPrice) : 1499;
     }
 
-    // Annual pricing: 10 months fee (2 months free discount)
-    const priceInRupees =
-      billingCycle === 'annual'
-        ? Math.round(baseMonthlyPrice * 10)
-        : Math.round(baseMonthlyPrice);
-
+    // Multi-cycle pricing calculation with cycle discount
+    const cyclePricing = calculateCyclePrice(baseMonthlyPrice, billingCycle);
+    const priceInRupees = cyclePricing.total;
     const amountInPaise = Math.round(priceInRupees * 100);
 
     // Instantiate Razorpay with active credentials
@@ -389,7 +387,7 @@ export async function verifyAndActivateSubscription(params: {
   razorpaySignature: string;
   centreId: string;
   planTier: SubscriptionPlan;
-  billingCycle?: 'monthly' | 'annual';
+  billingCycle?: BillingCycle;
 }) {
   const {
     razorpayPaymentId,
@@ -441,9 +439,21 @@ export async function verifyAndActivateSubscription(params: {
     }
 
     // Signature verified! Update centre subscription
-    const durationDays = billingCycle === 'annual' ? 365 : 30;
+    const cyclePricing = calculateCyclePrice(1, billingCycle);
+    const durationDays = cyclePricing.days;
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+    const existingCentre = await prisma.coachingCentre.findUnique({
+      where: { id: centreId },
+      select: { planExpiresAt: true, planTier: true },
+    });
+    const hasUnexpiredPlan = Boolean(
+      existingCentre?.planExpiresAt &&
+      new Date(existingCentre.planExpiresAt).getTime() > now.getTime() &&
+      existingCentre.planTier === planTier
+    );
+    const baseDate = hasUnexpiredPlan ? new Date(existingCentre!.planExpiresAt!) : now;
+    const expiresAt = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
     const updatedCentre = await prisma.coachingCentre.update({
       where: { id: centreId },
@@ -454,6 +464,8 @@ export async function verifyAndActivateSubscription(params: {
         planPurchasedAt: now,
         planExpiresAt: expiresAt,
         planBillingCycle: billingCycle,
+        isTrialActive: false,
+        isCustomExpiry: false,
       },
       include: { owner: true },
     });

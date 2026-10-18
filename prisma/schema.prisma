@@ -143,7 +143,9 @@ model CoachingCentre {
   planPaymentId       String?          // e.g. "pay_xxxx" or "razorpay_order_xxxx"
   planPurchasedAt     DateTime?
   planExpiresAt       DateTime?
-  planBillingCycle    String?          // "monthly" | "annual"
+  planBillingCycle    String?          // "monthly" | "quarterly" | "half-yearly" | "annual" | "trial"
+  isTrialActive       Boolean          @default(false)
+  isCustomExpiry      Boolean          @default(false)
   isTopInArea         Boolean          @default(false)
   isVerifiedBatch     Boolean          @default(false)
   rejectionReason     String?
@@ -465,8 +467,9 @@ model PlatformConfig {
   borderRadius        String   @default("rounded-xl") // rounded-lg, rounded-xl, rounded-2xl, rounded-3xl
   allowTrialBookings  Boolean  @default(true)
   allowFreeTierPublicListing Boolean @default(true) // Whether free tier academies show in public directory
-  enableFreePlan             Boolean @default(true) // Whether free tier is available
-  enableStandardPlan         Boolean @default(true)
+  enableFreePlan             Boolean  @default(true) // Whether free tier is available
+  freeTierDurationDays       Int      @default(90)   // Trial duration in days (e.g. 30, 60, 90, or custom)
+  enableStandardPlan         Boolean  @default(true)
   enablePremiumPlan          Boolean @default(true)
   standardPlanPrice   Decimal  @default(1499.00) @db.Decimal(10, 2)
   premiumPlanPrice    Decimal  @default(3999.00) @db.Decimal(10, 2)

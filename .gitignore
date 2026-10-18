@@ -18,7 +18,7 @@
 !.env.example
 
 # Local Administrative & Database Reset Scripts
-prisma/clean-prod.ts
+# prisma/clean-prod.ts
 prisma/*.local.ts
 prisma/local-*
 scripts/local-*

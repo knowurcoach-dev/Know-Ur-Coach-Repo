@@ -22,7 +22,8 @@ import { PlatformCategory, getCategoryDisplayName } from "@/lib/categories";
 import { DEFAULT_HERO_SLIDES, HeroSlideData } from "@/lib/hero-slides";
 import { DEFAULT_HERO_CAROUSEL_THEME, HeroCarouselTheme } from "@/lib/hero-theme";
 import { readHeroCarouselTheme, writeHeroCarouselTheme } from "@/lib/hero-theme-server";
-import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail } from "@/lib/mail";
+import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail, sendCoachTrialWelcomeEmail } from "@/lib/mail";
+import { calculateCyclePrice, BillingCycle, BILLING_CYCLES } from "@/lib/subscription";
 import { buildStatusNotesWithDocs, parseDocsPayload, updateDocStatusInStatusNotes } from "@/lib/coach-docs";
 import { formatBatchItem, serializeBatchSchedule } from "@/lib/batch-helpers";
 import { verifyOtp } from "@/lib/otp";
@@ -1971,6 +1972,7 @@ export async function updatePlatformConfig(data: {
   allowTrialBookings?: boolean;
   allowFreeTierPublicListing?: boolean;
   enableFreePlan?: boolean;
+  freeTierDurationDays?: number;
   enableStandardPlan?: boolean;
   enablePremiumPlan?: boolean;
   freePlanFeatures?: string;
@@ -1988,6 +1990,7 @@ export async function updatePlatformConfig(data: {
         ...(data.allowTrialBookings !== undefined && { allowTrialBookings: data.allowTrialBookings }),
         ...(data.allowFreeTierPublicListing !== undefined && { allowFreeTierPublicListing: data.allowFreeTierPublicListing }),
         ...(data.enableFreePlan !== undefined && { enableFreePlan: data.enableFreePlan }),
+        ...(data.freeTierDurationDays !== undefined && { freeTierDurationDays: Number(data.freeTierDurationDays) }),
         ...(data.enableStandardPlan !== undefined && { enableStandardPlan: data.enableStandardPlan }),
         ...(data.enablePremiumPlan !== undefined && { enablePremiumPlan: data.enablePremiumPlan }),
         ...(data.freePlanFeatures !== undefined && { freePlanFeatures: data.freePlanFeatures }),
@@ -2007,6 +2010,7 @@ export async function updatePlatformConfig(data: {
         allowTrialBookings: data.allowTrialBookings ?? true,
         allowFreeTierPublicListing: data.allowFreeTierPublicListing ?? true,
         enableFreePlan: data.enableFreePlan ?? true,
+        freeTierDurationDays: data.freeTierDurationDays ? Number(data.freeTierDurationDays) : 90,
         enableStandardPlan: data.enableStandardPlan ?? true,
         enablePremiumPlan: data.enablePremiumPlan ?? true,
         freePlanFeatures: data.freePlanFeatures ?? null,
@@ -2026,6 +2030,7 @@ export async function updatePlatformConfig(data: {
         premiumPlanPrice: data.premiumPlanPrice,
         allowFreeTierPublicListing: data.allowFreeTierPublicListing,
         enableFreePlan: data.enableFreePlan,
+        freeTierDurationDays: data.freeTierDurationDays,
       },
     });
 
@@ -2185,6 +2190,7 @@ export async function getAdminDashboardData() {
         allowTrialBookings: true,
         allowFreeTierPublicListing: false,
         enableFreePlan: false,
+        freeTierDurationDays: 90,
         enableStandardPlan: true,
         enablePremiumPlan: true,
         freePlanFeatures: null,
@@ -2452,6 +2458,33 @@ export async function registerCoachAcademy(data: {
 
     const categoryHeadline = categoryList.map(getCategoryDisplayName).slice(0, 2).join(' & ');
 
+    // Query platform configuration for Free Plan policy
+    const config = await prisma.platformConfig.findUnique({ where: { id: 'default' } });
+    const isFreePlanEnabled = config?.enableFreePlan ?? true;
+    const trialDurationDays = config?.freeTierDurationDays || 90;
+
+    const now = new Date();
+    let planExpiresAt: Date | null = null;
+    let isTrialActive = false;
+    let planBillingCycle = 'free';
+
+    if (planTier === SubscriptionPlan.FREE) {
+      if (isFreePlanEnabled) {
+        planExpiresAt = new Date(now.getTime() + trialDurationDays * 24 * 60 * 60 * 1000);
+        isTrialActive = true;
+        planBillingCycle = 'trial';
+      } else {
+        planExpiresAt = now; // Expired immediately if platform free plan is disabled
+        isTrialActive = false;
+        planBillingCycle = 'none';
+      }
+    } else {
+      const durationDays = 30;
+      planExpiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+      isTrialActive = false;
+      planBillingCycle = 'monthly';
+    }
+
     if (centre) {
       centre = await prisma.coachingCentre.update({
         where: { id: centre.id },
@@ -2465,6 +2498,10 @@ export async function registerCoachAcademy(data: {
           latitude: data.latitude,
           longitude: data.longitude,
           planTier,
+          planPurchasedAt: now,
+          planExpiresAt,
+          planBillingCycle,
+          isTrialActive,
           ...(initialKycStatus === KycStatus.DOCS_REVIEW && {
             kycStatus: KycStatus.DOCS_REVIEW,
             statusNotes: statusNotesWithPayload,
@@ -2506,10 +2543,25 @@ export async function registerCoachAcademy(data: {
           firstAidAvailable: Boolean(data.safetyChecklist?.firstAidAvailable),
           coachType: CoachType.INSTITUTE,
           planTier,
+          planPurchasedAt: now,
+          planExpiresAt,
+          planBillingCycle,
+          isTrialActive,
           isTopInArea: false,
           isVerifiedBatch: false,
         },
       });
+    }
+
+    // Trigger Free Trial welcome email if trial is active
+    if (isTrialActive && planExpiresAt) {
+      sendCoachTrialWelcomeEmail({
+        to: cleanEmail,
+        coachName: data.founder || data.acadName,
+        centreName: data.acadName,
+        trialDurationDays,
+        expiresAt: planExpiresAt,
+      }).catch((err) => console.warn('[MAIL_WARNING] Failed to send trial welcome email:', err));
     }
 
     if (initialKycStatus === KycStatus.DOCS_REVIEW && user?.id) {
@@ -4125,7 +4177,7 @@ export async function verifyCoachDocument(
 export async function updateCoachSubscriptionPlan(
   centreId: string,
   planTier: SubscriptionPlan,
-  billingCycle: 'monthly' | 'annual' = 'monthly',
+  billingCycle: string = 'monthly',
   paymentId?: string
 ) {
   try {
@@ -4172,9 +4224,28 @@ export async function updateCoachSubscriptionPlan(
     }
 
     const now = new Date();
-    const durationDays = billingCycle === 'annual' ? 365 : 30;
-    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-    const finalPaymentId = paymentId || (planTier === SubscriptionPlan.FREE ? `free_tier_${Date.now()}` : `pay_rzp_${Date.now()}`);
+    let expiresAt: Date;
+    let isTrialActive = false;
+    let effectiveBillingCycle = billingCycle || 'monthly';
+
+    if (planTier === SubscriptionPlan.FREE) {
+      const freeTrialDays = config?.freeTierDurationDays && config.freeTierDurationDays > 0 ? config.freeTierDurationDays : 90;
+      expiresAt = new Date(now.getTime() + freeTrialDays * 24 * 60 * 60 * 1000);
+      isTrialActive = true;
+      effectiveBillingCycle = 'trial';
+    } else {
+      const cycleKey = (effectiveBillingCycle in BILLING_CYCLES ? effectiveBillingCycle : 'monthly') as keyof typeof BILLING_CYCLES;
+      const cycleConfig = BILLING_CYCLES[cycleKey] || BILLING_CYCLES.monthly;
+      const durationDays = cycleConfig.days;
+      
+      const currentExpiry = centre.planExpiresAt ? new Date(centre.planExpiresAt) : null;
+      const isCurrentActive = currentExpiry && currentExpiry > now && centre.planTier === planTier && !centre.isTrialActive;
+      const baseDate = isCurrentActive ? currentExpiry : now;
+      expiresAt = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+      isTrialActive = false;
+    }
+
+    const finalPaymentId = paymentId || (planTier === SubscriptionPlan.FREE ? `free_trial_${Date.now()}` : `pay_manual_${Date.now()}`);
 
     const updated = await prisma.coachingCentre.update({
       where: { id: centreId },
@@ -4183,8 +4254,10 @@ export async function updateCoachSubscriptionPlan(
         isTopInArea: planTier === SubscriptionPlan.PREMIUM,
         planPaymentId: finalPaymentId,
         planPurchasedAt: now,
-        planExpiresAt: planTier === SubscriptionPlan.FREE ? null : expiresAt,
-        planBillingCycle: billingCycle,
+        planExpiresAt: expiresAt,
+        planBillingCycle: effectiveBillingCycle,
+        isTrialActive,
+        isCustomExpiry: false,
       },
       include: { owner: true, batches: true, facilities: true },
     });
@@ -4202,8 +4275,8 @@ export async function updateCoachSubscriptionPlan(
           userId: centre.ownerUserId,
           title: `Subscription Plan Active: ${planName} 🚀`,
           message: planTier === SubscriptionPlan.FREE
-            ? `Your Free Partner plan is now active! All academy operations are unlocked.`
-            : `Your ${planName} subscription (${billingCycle}) is active via Razorpay! Payment Ref: ${finalPaymentId}. All features unlocked!`,
+            ? `Your Free Partner plan is now active for ${config?.freeTierDurationDays || 90} days! Valid until ${expiresAt.toLocaleDateString('en-IN')}. All academy operations are unlocked.`
+            : `Your ${planName} subscription (${effectiveBillingCycle}) is active! Valid until ${expiresAt.toLocaleDateString('en-IN')}. Payment Ref: ${finalPaymentId}.`,
           type: 'subscription',
         },
       }).catch(() => null);
@@ -4218,9 +4291,10 @@ export async function updateCoachSubscriptionPlan(
       details: {
         centreName: centre.name,
         planTier,
-        billingCycle,
+        billingCycle: effectiveBillingCycle,
         paymentId: finalPaymentId,
         expiresAt,
+        isTrialActive,
       },
     });
 
@@ -4247,6 +4321,159 @@ export async function updateCoachSubscriptionPlan(
     return { success: false, message: 'Could not update subscription plan in database.' };
   }
 }
+
+export async function adminExtendCoachSubscription(centreId: string, daysToAdd: number, reason?: string) {
+  try {
+    await requireAdminSession();
+    if (!centreId || typeof daysToAdd !== 'number' || daysToAdd <= 0) {
+      return { success: false, message: 'Invalid extension parameters.' };
+    }
+
+    const centre = await prisma.coachingCentre.findUnique({
+      where: { id: centreId },
+      include: { owner: true },
+    });
+    if (!centre) return { success: false, message: 'Academy not found.' };
+
+    const now = new Date();
+    const currentExpiry = centre.planExpiresAt ? new Date(centre.planExpiresAt) : now;
+    const baseDate = currentExpiry > now ? currentExpiry : now;
+    const newExpiresAt = new Date(baseDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+
+    const updated = await prisma.coachingCentre.update({
+      where: { id: centreId },
+      data: {
+        planExpiresAt: newExpiresAt,
+        isCustomExpiry: true,
+      },
+      include: { owner: true },
+    });
+
+    if (centre.ownerUserId) {
+      await prisma.notification.create({
+        data: {
+          userId: centre.ownerUserId,
+          title: 'Subscription Extended by Admin 🎉',
+          message: `Your academy subscription validity has been extended by ${daysToAdd} days until ${newExpiresAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.${reason ? ` Reason: ${reason}` : ''}`,
+          type: 'subscription',
+        },
+      }).catch(() => null);
+    }
+
+    const session = await getServerSession(authOptions);
+    await logAdminAction({
+      actorEmail: (session?.user as any)?.email || 'admin@knowurcoach.in',
+      actorRole: 'ADMIN',
+      action: 'ADMIN_EXTENDED_SUBSCRIPTION',
+      targetModel: 'CoachingCentre',
+      targetId: centreId,
+      details: {
+        centreName: centre.name,
+        daysAdded: daysToAdd,
+        previousExpiry: centre.planExpiresAt,
+        newExpiresAt,
+        reason,
+      },
+    });
+
+    revalidatePath('/admin/plans');
+    revalidatePath('/admin/academies');
+    revalidatePath('/coach/dashboard');
+    revalidatePath('/coach/plans');
+
+    return {
+      success: true,
+      message: `Subscription for "${centre.name}" extended by ${daysToAdd} days (until ${newExpiresAt.toLocaleDateString('en-IN')})!`,
+      expiresAt: newExpiresAt,
+      centre: toPlainObject(updated),
+    };
+  } catch (err: any) {
+    console.error('adminExtendCoachSubscription error:', err);
+    return { success: false, message: err?.message || 'Failed to extend subscription.' };
+  }
+}
+
+export async function adminSetCoachCustomExpiry(
+  centreId: string,
+  newExpiryDate: string | Date,
+  planTier?: SubscriptionPlan,
+  reason?: string
+) {
+  try {
+    await requireAdminSession();
+    if (!centreId || !newExpiryDate) {
+      return { success: false, message: 'Invalid expiry parameters.' };
+    }
+
+    const centre = await prisma.coachingCentre.findUnique({
+      where: { id: centreId },
+      include: { owner: true },
+    });
+    if (!centre) return { success: false, message: 'Academy not found.' };
+
+    const parsedDate = new Date(newExpiryDate);
+    if (isNaN(parsedDate.getTime())) {
+      return { success: false, message: 'Invalid date format provided.' };
+    }
+
+    const updateData: any = {
+      planExpiresAt: parsedDate,
+      isCustomExpiry: true,
+    };
+    if (planTier && Object.values(SubscriptionPlan).includes(planTier)) {
+      updateData.planTier = planTier;
+      updateData.isTopInArea = planTier === SubscriptionPlan.PREMIUM;
+    }
+
+    const updated = await prisma.coachingCentre.update({
+      where: { id: centreId },
+      data: updateData,
+      include: { owner: true },
+    });
+
+    if (centre.ownerUserId) {
+      await prisma.notification.create({
+        data: {
+          userId: centre.ownerUserId,
+          title: 'Subscription Adjusted by Admin ℹ️',
+          message: `Your academy subscription validity has been updated to ${parsedDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.${reason ? ` Note: ${reason}` : ''}`,
+          type: 'subscription',
+        },
+      }).catch(() => null);
+    }
+
+    const session = await getServerSession(authOptions);
+    await logAdminAction({
+      actorEmail: (session?.user as any)?.email || 'admin@knowurcoach.in',
+      actorRole: 'ADMIN',
+      action: 'ADMIN_CUSTOM_EXPIRY_SET',
+      targetModel: 'CoachingCentre',
+      targetId: centreId,
+      details: {
+        centreName: centre.name,
+        newExpiry: parsedDate,
+        planTier: planTier || centre.planTier,
+        reason,
+      },
+    });
+
+    revalidatePath('/admin/plans');
+    revalidatePath('/admin/academies');
+    revalidatePath('/coach/dashboard');
+    revalidatePath('/coach/plans');
+
+    return {
+      success: true,
+      message: `Subscription validity for "${centre.name}" updated to ${parsedDate.toLocaleDateString('en-IN')}!`,
+      expiresAt: parsedDate,
+      centre: toPlainObject(updated),
+    };
+  } catch (err: any) {
+    console.error('adminSetCoachCustomExpiry error:', err);
+    return { success: false, message: err?.message || 'Failed to update subscription validity.' };
+  }
+}
+
 
 export async function getUserNotifications(userEmailOrId: string) {
   try {
@@ -4406,7 +4633,7 @@ export async function updatePaymentSettingsAction(data: {
 export async function createRazorpayOrderAction(params: {
   centreId: string;
   planTier: SubscriptionPlan;
-  billingCycle?: 'monthly' | 'annual';
+  billingCycle?: BillingCycle;
 }) {
   try {
     const session = await getServerSession(authOptions);
@@ -4439,7 +4666,7 @@ export async function verifyRazorpayPaymentAction(params: {
   razorpaySignature: string;
   centreId: string;
   planTier: SubscriptionPlan;
-  billingCycle?: 'monthly' | 'annual';
+  billingCycle?: BillingCycle;
 }) {
   try {
     const session = await getServerSession(authOptions);

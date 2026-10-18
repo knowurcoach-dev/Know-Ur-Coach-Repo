@@ -3,10 +3,19 @@
 import React, { useState, useEffect, useTransition } from 'react';
 import Link from 'next/link';
 import { usePersona } from '@/context/PersonaContext';
-import { getAdminDashboardData, updatePlatformConfig } from '@/lib/actions';
+import {
+  getAdminDashboardData,
+  updatePlatformConfig,
+  adminExtendCoachSubscription,
+  adminSetCoachCustomExpiry,
+} from '@/lib/actions';
 import { AdminTableSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { PlanFeature, parseFeatures, serializeFeatureItems } from '@/lib/plan-features';
 import { DynamicPlanFeaturesEditor } from '@/components/dashboard/DynamicPlanFeaturesEditor';
+import {
+  FREE_TRIAL_PRESETS,
+  getCentreSubscriptionStatus,
+} from '@/lib/subscription';
 import {
   CurrencyInr,
   Crown,
@@ -27,6 +36,9 @@ import {
   MagnifyingGlass,
   ArrowSquareOut,
   Sparkle,
+  PencilSimple,
+  Clock,
+  CalendarBlank,
 } from '@phosphor-icons/react';
 
 const DEFAULT_FREE_FEATURES: PlanFeature[] = [
@@ -71,8 +83,21 @@ export default function AdminPlansPage() {
   const [premiumPlanPrice, setPremiumPlanPrice] = useState(3999);
   const [allowFreeTierPublicListing, setAllowFreeTierPublicListing] = useState(true);
   const [enableFreePlan, setEnableFreePlan] = useState(true);
+  const [freeTierDurationDays, setFreeTierDurationDays] = useState(90);
+  const [isCustomDays, setIsCustomDays] = useState(false);
   const [enableStandardPlan, setEnableStandardPlan] = useState(true);
   const [enablePremiumPlan, setEnablePremiumPlan] = useState(true);
+
+  // Quick Action & Override Modal State
+  const [extendingCoachId, setExtendingCoachId] = useState<string | null>(null);
+  const [overrideModal, setOverrideModal] = useState<{
+    isOpen: boolean;
+    coach: any;
+    daysToAdd: number;
+    customDate: string;
+    planTier: string;
+    reason: string;
+  } | null>(null);
 
   // Configurable Dynamic Plan Feature Points
   const [freePlanFeatures, setFreePlanFeatures] = useState<PlanFeature[]>(DEFAULT_FREE_FEATURES);
@@ -98,6 +123,10 @@ export default function AdminPlansPage() {
         setStandardPlanPrice(Number(res.config.standardPlanPrice) || 1499);
         setPremiumPlanPrice(Number(res.config.premiumPlanPrice) || 3999);
         setAllowTrialBookings((res.config as any)?.allowTrialBookings ?? true);
+
+        const trialDays = res.config.freeTierDurationDays ? Number(res.config.freeTierDurationDays) : 90;
+        setFreeTierDurationDays(trialDays);
+        setIsCustomDays(![30, 60, 90].includes(trialDays));
 
         setAllowFreeTierPublicListing(
           res.config.allowFreeTierPublicListing !== undefined
@@ -149,6 +178,7 @@ export default function AdminPlansPage() {
         premiumPlanPrice: Number(premiumPlanPrice),
         allowFreeTierPublicListing,
         enableFreePlan,
+        freeTierDurationDays: Number(freeTierDurationDays) || 90,
         enableStandardPlan,
         enablePremiumPlan,
         freePlanFeatures: serializeFeatureItems(freePlanFeatures),
@@ -157,9 +187,58 @@ export default function AdminPlansPage() {
       });
       if (res.success) {
         await refreshConfig();
-        showToast("✅ Coach subscription plans, pricing & dynamic features saved!");
+        showToast("✅ Coach subscription plans, pricing, free duration & dynamic features saved!");
       } else {
         showToast("❌ Failed to save subscription pricing");
+      }
+    });
+  };
+
+  const handleQuickExtend = async (coachId: string, days: number = 30) => {
+    setExtendingCoachId(coachId);
+    try {
+      const res = await adminExtendCoachSubscription(coachId, days);
+      if (res.success) {
+        showToast(`✅ ${res.message}`);
+        await loadData();
+      } else {
+        showToast(`❌ ${res.message}`);
+      }
+    } catch (err: any) {
+      showToast(`❌ Error: ${err?.message || 'Failed to extend subscription'}`);
+    } finally {
+      setExtendingCoachId(null);
+    }
+  };
+
+  const handleApplyOverride = async () => {
+    if (!overrideModal?.coach?.id) return;
+    startTransition(async () => {
+      try {
+        let res;
+        if (overrideModal.customDate) {
+          res = await adminSetCoachCustomExpiry(
+            overrideModal.coach.id,
+            overrideModal.customDate,
+            overrideModal.planTier as any,
+            overrideModal.reason
+          );
+        } else {
+          res = await adminExtendCoachSubscription(
+            overrideModal.coach.id,
+            Number(overrideModal.daysToAdd) || 30,
+            overrideModal.reason
+          );
+        }
+        if (res.success) {
+          showToast(`✅ ${res.message}`);
+          setOverrideModal(null);
+          await loadData();
+        } else {
+          showToast(`❌ ${res.message}`);
+        }
+      } catch (err: any) {
+        showToast(`❌ Error: ${err?.message || 'Failed to apply override'}`);
       }
     });
   };
@@ -330,8 +409,69 @@ export default function AdminPlansPage() {
 
               <div className="space-y-1">
                 <div className="text-xs font-bold text-slate-500">Subscription Price</div>
-                <div className="text-2xl font-black text-slate-900">₹0 <span className="text-xs font-medium text-slate-500">/ month</span></div>
-                <p className="text-[10px] text-slate-400">Always ₹0 for onboarding and trial pass reception.</p>
+                <div className="text-2xl font-black text-slate-900">₹0 <span className="text-xs font-medium text-slate-500">/ trial</span></div>
+                <p className="text-[10px] text-slate-400">Zero upfront cost for newly registered coaches.</p>
+              </div>
+
+              {/* Configurable Free Tier Duration (Option 1) */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-800">
+                    Free Tier Duration
+                  </label>
+                  <span className="text-[10px] font-mono font-bold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded">
+                    {freeTierDurationDays} Days
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {FREE_TRIAL_PRESETS.map((preset) => {
+                    const isSelected = !isCustomDays && freeTierDurationDays === preset.days;
+                    return (
+                      <button
+                        key={preset.days}
+                        type="button"
+                        onClick={() => {
+                          setIsCustomDays(false);
+                          setFreeTierDurationDays(preset.days);
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer text-center ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomDays(true)}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer text-center ${
+                      isCustomDays
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+                {isCustomDays && (
+                  <div className="flex items-center gap-2 pt-1 animate-fade-in">
+                    <input
+                      type="number"
+                      min={1}
+                      max={730}
+                      value={freeTierDurationDays}
+                      onChange={(e) => setFreeTierDurationDays(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-24 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    />
+                    <span className="text-xs text-slate-500 font-medium">days trial validity</span>
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  New coaches receive active operational tools for this duration upon sign up. When expired, operations and public listing are locked until renewed.
+                </p>
               </div>
 
               {/* Dynamic Feature Points Config */}
@@ -537,8 +677,11 @@ export default function AdminPlansPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredCoaches.map((coach) => {
-                    const isPaid = coach.planTier === 'STANDARD' || coach.planTier === 'PREMIUM';
-                    const isPubliclyVisible = isPaid || allowFreeTierPublicListing;
+                    const subStatus = getCentreSubscriptionStatus(coach, {
+                      allowFreeTierPublicListing,
+                      enableFreePlan,
+                      freeTierDurationDays,
+                    });
 
                     return (
                       <tr key={coach.id} className="hover:bg-slate-50 transition-colors">
@@ -561,76 +704,121 @@ export default function AdminPlansPage() {
                         <td className="py-3.5 px-4">
                           <span
                             className={`inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-1 rounded-xl uppercase tracking-wider ${
-                              coach.planTier === 'PREMIUM'
+                              subStatus.isExpired
+                                ? 'bg-red-100 text-red-900 border border-red-300'
+                                : coach.planTier === 'PREMIUM'
                                 ? 'bg-purple-100 text-purple-900 border border-purple-300'
                                 : coach.planTier === 'STANDARD'
                                 ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                                : subStatus.isTrial
+                                ? 'bg-sky-100 text-sky-900 border border-sky-300'
                                 : 'bg-slate-100 text-slate-700 border border-slate-200'
                             }`}
                           >
-                            {coach.planTier || 'FREE'}
+                            {coach.planTier || (subStatus.isTrial ? 'TRIAL' : 'FREE')}
                           </span>
                         </td>
 
-                        {/* Payment & Razorpay Status */}
+                        {/* Payment & Subscription Status */}
                         <td className="py-3.5 px-4">
-                          {isPaid ? (
+                          {subStatus.isExpired ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-red-100 text-red-800 px-2 py-0.5 rounded-md border border-red-200">
+                              <WarningCircle size={12} weight="bold" /> Expired ({subStatus.formattedExpiry})
+                            </span>
+                          ) : subStatus.isTrial ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-sky-100 text-sky-800 px-2 py-0.5 rounded-md border border-sky-200">
+                                <Clock size={12} weight="bold" /> Trial Active ({subStatus.daysRemaining}d left)
+                              </span>
+                              <div className="text-[10px] text-slate-500 font-medium">
+                                Valid until: {subStatus.formattedExpiry}
+                              </div>
+                            </div>
+                          ) : subStatus.canOperate ? (
                             <div className="space-y-0.5">
                               <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
-                                <CheckCircle size={12} weight="fill" /> Razorpay Confirmed
+                                <CheckCircle size={12} weight="fill" /> Active ({subStatus.daysRemaining}d left)
                               </span>
                               <div className="font-mono text-[10px] text-slate-500">
-                                {coach.planPaymentId || 'pay_razorpay_verified'}
+                                {coach.planPaymentId || 'Verified Subscription'}
                               </div>
                             </div>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                              No Active Plan (Unlisted)
+                              No Active Plan (Locked)
                             </span>
                           )}
                         </td>
 
                         {/* Billing Cycle & Expiration */}
                         <td className="py-3.5 px-4 text-slate-600 text-xs">
-                          {isPaid ? (
-                            <div>
-                              <div className="font-bold text-slate-800 capitalize">
-                                {coach.planBillingCycle || 'Monthly'}
-                              </div>
-                              <div className="text-[10px] text-slate-500">
-                                {coach.planExpiresAt
-                                  ? `Renews: ${new Date(coach.planExpiresAt).toLocaleDateString('en-IN')}`
-                                  : 'Active Subscription'}
-                              </div>
+                          <div>
+                            <div className="font-bold text-slate-800 capitalize">
+                              {coach.planBillingCycle || (subStatus.isTrial ? 'Trial' : 'Monthly')}
                             </div>
-                          ) : (
-                            <span className="text-slate-400 text-xs">—</span>
-                          )}
+                            <div className="text-[10px] text-slate-500">
+                              {coach.planExpiresAt
+                                ? `${subStatus.isExpired ? 'Expired: ' : 'Expires: '}${new Date(coach.planExpiresAt).toLocaleDateString('en-IN')}`
+                                : 'No expiry set'}
+                            </div>
+                          </div>
                         </td>
 
                         {/* Public Directory Status */}
                         <td className="py-3.5 px-4">
-                          {isPubliclyVisible ? (
+                          {subStatus.canPublicList ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                               <Eye size={12} weight="bold" /> Listed in Directory
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                              <EyeSlash size={12} weight="bold" /> Hidden (Requires Plan)
+                              <EyeSlash size={12} weight="bold" /> {subStatus.isExpired ? 'Hidden (Expired)' : 'Hidden (Requires Plan)'}
                             </span>
                           )}
                         </td>
 
-                        {/* Actions */}
+                        {/* Actions (Requirement D: Manual Extension) */}
                         <td className="py-3.5 px-4 text-right">
-                          <Link
-                            href={`/activities/${coach.id}`}
-                            target="_blank"
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                          >
-                            <span>View Listing</span>
-                            <ArrowSquareOut size={12} />
-                          </Link>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              disabled={extendingCoachId === coach.id}
+                              onClick={() => handleQuickExtend(coach.id, 30)}
+                              className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer disabled:opacity-50"
+                              title="Quick extend validity by 30 days"
+                            >
+                              {extendingCoachId === coach.id ? (
+                                <ArrowsClockwise size={12} className="animate-spin" />
+                              ) : (
+                                <span>+30d</span>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOverrideModal({
+                                  isOpen: true,
+                                  coach,
+                                  daysToAdd: 30,
+                                  customDate: coach.planExpiresAt ? new Date(coach.planExpiresAt).toISOString().split('T')[0] : '',
+                                  planTier: coach.planTier || 'STANDARD',
+                                  reason: '',
+                                })
+                              }
+                              className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-800 px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer"
+                            >
+                              <PencilSimple size={12} />
+                              <span>Manage</span>
+                            </button>
+                            <Link
+                              href={`/activities/${coach.id}`}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors p-1"
+                              title="View public profile"
+                            >
+                              <ArrowSquareOut size={13} />
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -649,6 +837,148 @@ export default function AdminPlansPage() {
           </div>
         </div>
       </div>
+
+      {/* Manual Subscription Extension Modal (Requirement D) */}
+      {overrideModal?.isOpen && overrideModal.coach && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 animate-scale-in">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full">
+                  Admin Subscription Override
+                </span>
+                <h3 className="text-lg font-black text-slate-900">
+                  Manage Validity: {overrideModal.coach.name}
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Current Tier: <strong className="text-slate-800">{overrideModal.coach.planTier || 'FREE'}</strong> • Current Expiry: {overrideModal.coach.planExpiresAt ? new Date(overrideModal.coach.planExpiresAt).toLocaleDateString('en-IN') : 'None'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOverrideModal(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+              >
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+
+            {/* Quick Extension Buttons */}
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-800 block">
+                Quick Extend Days
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {[30, 60, 90, 180].map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() =>
+                      setOverrideModal({
+                        ...overrideModal,
+                        daysToAdd: days,
+                        customDate: '',
+                      })
+                    }
+                    className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                      overrideModal.daysToAdd === days && !overrideModal.customDate
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    +{days} Days
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Or Specific Expiry Date */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-800 block">
+                Or Set Exact Expiry Date
+              </label>
+              <input
+                type="date"
+                value={overrideModal.customDate}
+                onChange={(e) =>
+                  setOverrideModal({
+                    ...overrideModal,
+                    customDate: e.target.value,
+                    daysToAdd: 0,
+                  })
+                }
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            {/* Plan Tier Adjustment */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-800 block">
+                Override Plan Tier
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {['FREE', 'STANDARD', 'PREMIUM'].map((tier) => (
+                  <button
+                    key={tier}
+                    type="button"
+                    onClick={() =>
+                      setOverrideModal({
+                        ...overrideModal,
+                        planTier: tier,
+                      })
+                    }
+                    className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                      overrideModal.planTier === tier
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {tier}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Reason */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-800 block">
+                Administrative Reason / Audit Note (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Promotional extension, tournament partner, dispute resolution..."
+                value={overrideModal.reason}
+                onChange={(e) =>
+                  setOverrideModal({
+                    ...overrideModal,
+                    reason: e.target.value,
+                  })
+                }
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setOverrideModal(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold rounded-xl transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={handleApplyOverride}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+              >
+                Apply Validity Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
