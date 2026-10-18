@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import {
   SUPPORT_WHATSAPP_NUMBER,
   SUPPORT_WHATSAPP_URL,
+  PROMPT_AUTO_DISMISS_DELAY_MS,
 } from '@/components/ui/WhatsAppSupportWidget';
 
 describe('Phase 50: WhatsApp Support Widget State Machine Tests', () => {
@@ -63,6 +64,11 @@ describe('Phase 50: WhatsApp Support Widget State Machine Tests', () => {
       assert.strictEqual(state.showPrompt, false);
       assert.strictEqual(state.isDismissed, true);
       assert.strictEqual(checkSessionDismissed(mockStorage), true);
+    });
+
+    it('should configure auto-dismiss delay between 2 and 3 seconds (2500ms)', () => {
+      assert.strictEqual(PROMPT_AUTO_DISMISS_DELAY_MS, 2500);
+      assert.ok(PROMPT_AUTO_DISMISS_DELAY_MS >= 2000 && PROMPT_AUTO_DISMISS_DELAY_MS <= 3000);
     });
   });
 });

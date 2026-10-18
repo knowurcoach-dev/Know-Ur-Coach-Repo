@@ -6,6 +6,7 @@ import { WhatsappLogo, X } from '@phosphor-icons/react';
 export const SUPPORT_WHATSAPP_NUMBER = '919762577714';
 export const SUPPORT_WHATSAPP_URL =
   'https://wa.me/919762577714?text=Hi%20KnowUrCoach%20Team%2C%20I%20need%20support%20assistance';
+export const PROMPT_AUTO_DISMISS_DELAY_MS = 2500;
 
 export function WhatsAppSupportWidget() {
   const [showPrompt, setShowPrompt] = useState(false);
@@ -23,13 +24,24 @@ export function WhatsAppSupportWidget() {
       // Ignore sessionStorage errors
     }
 
-    // Show friendly speech prompt after a brief 3s delay
+    // Show friendly speech prompt after a brief 2s delay
     const timer = setTimeout(() => {
       setShowPrompt(true);
-    }, 3000);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Automatically make popover disappear after 2-3 seconds (2500ms)
+  useEffect(() => {
+    if (!showPrompt) return;
+
+    const autoDismissTimer = setTimeout(() => {
+      setShowPrompt(false);
+    }, PROMPT_AUTO_DISMISS_DELAY_MS);
+
+    return () => clearTimeout(autoDismissTimer);
+  }, [showPrompt]);
 
   const handleDismissPrompt = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -90,6 +102,9 @@ export function WhatsAppSupportWidget() {
         rel="noopener noreferrer"
         aria-label="Chat with KnowUrCoach Support on WhatsApp"
         id="floating-whatsapp-btn"
+        onMouseEnter={() => {
+          if (!isDismissed) setShowPrompt(true);
+        }}
         className="pointer-events-auto group relative flex items-center gap-2 bg-[#25D366] hover:bg-[#20ba59] active:bg-[#1da850] text-white p-3.5 sm:p-3.5 md:px-4 md:py-3 rounded-full shadow-lg shadow-emerald-600/30 hover:shadow-xl hover:shadow-emerald-600/40 border border-white/30 backdrop-blur-sm transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-pointer ring-4 ring-emerald-500/15 hover:ring-emerald-500/30"
       >
         {/* Pulsing online badge indicator */}
