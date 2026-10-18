@@ -118,6 +118,8 @@ describe('Phase 56: Address Autocomplete & Location Details Parser Tests', () =>
       const resultWithoutLocality: LocationResult = {
         id: 'loc-102',
         name: 'Agra Sports Complex',
+        displayName: 'Agra Sports Complex, Agra',
+        locality: '',
         city: 'Agra',
         state: 'Uttar Pradesh',
         lat: 27.18,
