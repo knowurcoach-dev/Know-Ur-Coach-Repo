@@ -14,7 +14,14 @@ export function formatFeaturesToText(raw: any, fallbackText: string = ''): strin
   // If already an array
   if (Array.isArray(raw)) {
     return raw
-      .map((item) => (typeof item === 'string' ? item : item?.text || ''))
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const prefix = item.included === false ? '- ' : '';
+          return `${prefix}${item.text || item.name || item.title || ''}`;
+        }
+        return String(item);
+      })
       .filter(Boolean)
       .join('\n');
   }

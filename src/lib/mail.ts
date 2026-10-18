@@ -474,7 +474,7 @@ export async function sendCoachTrialWelcomeEmail(options: CoachTrialWelcomeOptio
     month: 'long',
     year: 'numeric',
   });
-  const monthsCount = Math.round(trialDurationDays / 30);
+  const monthsCount = trialDurationDays >= 30 ? Math.round(trialDurationDays / 30) : 0;
   const durationLabel = monthsCount >= 1 ? `${monthsCount} Month${monthsCount > 1 ? 's' : ''}` : `${trialDurationDays} Days`;
 
   const htmlContent = `
