@@ -1,4 +1,5 @@
 // ─── OpenStreetMap Location Utilities & Pre-Indexed Hubs ──────────────────────
+import { getCategoryDisplayName } from './categories';
 
 export interface LocationResult {
   id: string;
@@ -76,14 +77,6 @@ export const POPULAR_CITY_NEIGHBOURHOODS: Record<string, CityNeighbourhood[]> = 
     { name: 'Civil Lines', slug: 'civil-lines', tag: 'Badminton & Dance' },
     { name: 'Khandari', slug: 'khandari', tag: 'Multi-Sport Hub' },
     { name: 'Etmadpur', slug: 'etmadpur', tag: 'Sports & Athletics Hub' },
-  ],
-  'Etmadpur': [
-    { name: 'Station Road', slug: 'station-road', tag: 'Coaching & Academy Hub' },
-    { name: 'Khandauli Road', slug: 'khandauli-road', tag: 'Sports Grounds' },
-    { name: 'Mandi Samiti', slug: 'mandi-samiti', tag: 'Martial Arts & Fitness' },
-    { name: 'Highway Corridor (NH-19)', slug: 'highway-corridor', tag: 'Turf & Cricket Nets' },
-    { name: 'Barhan Road', slug: 'barhan-road', tag: 'Badminton & Dance' },
-    { name: 'Gurukul Road', slug: 'gurukul-road', tag: 'Yoga & Athletics' },
   ],
   'Delhi NCR': [
     { name: 'Vasant Kunj', slug: 'vasant-kunj', tag: 'Tennis & Swimming' },
@@ -208,7 +201,7 @@ export const ALL_INDIA_POPULAR_NEIGHBOURHOODS: CityNeighbourhood[] = [
 ];
 
 export const STATE_TO_CITIES: Record<string, string[]> = {
-  'Uttar Pradesh': ['Agra', 'Etmadpur', 'Lucknow'],
+  'Uttar Pradesh': ['Agra', 'Lucknow'],
   'Maharashtra': ['Mumbai', 'Pune'],
   'Karnataka': ['Bengaluru'],
   'Telangana': ['Hyderabad'],
@@ -289,6 +282,190 @@ export function getPopularNeighbourhoodsForCity(cityName?: string): CityNeighbou
   // Fallback: If unknown or generic, show diverse national hubs
   return ALL_INDIA_POPULAR_NEIGHBOURHOODS;
 }
+
+export interface DynamicNeighbourhoodOptions {
+  activeCity?: string;
+  activeLocality?: string;
+  coords?: GeoCoordinates | null;
+  academies?: Array<{
+    id?: string;
+    name?: string;
+    locality?: string;
+    localityName?: string;
+    address?: string;
+    city?: string;
+    distance?: number;
+    distanceText?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    lat?: number | null;
+    lon?: number | null;
+    category?: string;
+    activities?: string[];
+    activitiesText?: string;
+    rating?: number;
+  }>;
+  geocodedPlaces?: CityNeighbourhood[];
+}
+
+/**
+ * Resolves popular localities/neighbourhoods dynamically using a Hybrid architecture:
+ * 1. Database-driven: Extracts localities from real registered coaching centres matching the area.
+ * 2. Geocoding-driven: Supplements with live nearby places/suburbs from the geocoding service.
+ * 3. Pre-indexed Baseline: Uses city presets for top metros as fallback.
+ */
+export function resolveDynamicNeighbourhoods(options: DynamicNeighbourhoodOptions = {}): CityNeighbourhood[] {
+  const { activeCity = '', activeLocality = '', coords = null, academies = [], geocodedPlaces = [] } = options;
+
+  const isAllIndia =
+    !activeCity ||
+    activeCity.trim() === '' ||
+    activeCity.toLowerCase().includes('india') ||
+    activeCity.toLowerCase() === 'all';
+
+  const cleanCity = activeCity.trim();
+  const cleanLocality = activeLocality.trim();
+  const targetLocation =
+    cleanLocality &&
+    cleanLocality.toLowerCase() !== cleanCity.toLowerCase() &&
+    !cleanLocality.toLowerCase().includes('india')
+      ? cleanLocality
+      : cleanCity;
+
+  const results: CityNeighbourhood[] = [];
+  const seenSlugs = new Set<string>();
+
+  const addNeighbourhood = (item: CityNeighbourhood) => {
+    if (!item.name || !item.name.trim()) return;
+    const slug = (item.slug || item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')).trim();
+    if (!slug || seenSlugs.has(slug)) return;
+    seenSlugs.add(slug);
+    results.push({
+      ...item,
+      slug,
+      cityName: item.cityName || cleanCity || 'All India',
+    });
+  };
+
+  // ── LAYER 1: Extract Real Localities from Registered Coaching Centres (Database-Driven) ──
+  if (Array.isArray(academies) && academies.length > 0) {
+    const relevantAcademies = academies.filter((acad) => {
+      if (isAllIndia) return true;
+
+      const acadLat = acad.lat ?? acad.latitude ?? null;
+      const acadLon = acad.lon ?? acad.longitude ?? null;
+      if (coords && typeof acadLat === 'number' && typeof acadLon === 'number' && acadLat !== 0) {
+        const dist = calculateDistance(coords.lat, coords.lon, acadLat, acadLon);
+        if (dist <= 30) return true;
+      }
+
+      const acadCity = (acad.city || resolveCentreCity(acad as any) || '').toLowerCase();
+      const acadLocality = (acad.localityName || acad.locality || '').toLowerCase();
+      const acadAddress = (acad.address || '').toLowerCase();
+      const targetLower = targetLocation.toLowerCase();
+      const cityLower = cleanCity.toLowerCase();
+
+      return (
+        acadCity.includes(targetLower) ||
+        acadCity.includes(cityLower) ||
+        acadLocality.includes(targetLower) ||
+        acadAddress.includes(targetLower) ||
+        targetLower.includes(acadLocality)
+      );
+    });
+
+    const localityMap = new Map<
+      string,
+      {
+        count: number;
+        activities: Set<string>;
+        cityName: string;
+        minDistance: number;
+      }
+    >();
+
+    for (const acad of relevantAcademies) {
+      const rawLoc = (acad.localityName || acad.locality || '').trim();
+      if (!rawLoc || rawLoc.toLowerCase() === 'all india') continue;
+
+      const normLoc = rawLoc.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      const acadLat = acad.lat ?? acad.latitude ?? null;
+      const acadLon = acad.lon ?? acad.longitude ?? null;
+      let dist = 999;
+      if (coords && typeof acadLat === 'number' && typeof acadLon === 'number' && acadLat !== 0) {
+        dist = calculateDistance(coords.lat, coords.lon, acadLat, acadLon);
+      }
+
+      const existing = localityMap.get(normLoc);
+      const acts = acad.activities || (acad.category ? [acad.category] : []);
+      if (existing) {
+        existing.count += 1;
+        acts.forEach((a) => existing.activities.add(a));
+        if (dist < existing.minDistance) existing.minDistance = dist;
+      } else {
+        localityMap.set(normLoc, {
+          count: 1,
+          activities: new Set(acts),
+          cityName: acad.city || cleanCity,
+          minDistance: dist,
+        });
+      }
+    }
+
+    const sortedLocalities = Array.from(localityMap.entries()).sort((a, b) => {
+      if (coords && a[1].minDistance !== b[1].minDistance) {
+        return a[1].minDistance - b[1].minDistance;
+      }
+      return b[1].count - a[1].count;
+    });
+
+    for (const [locName, data] of sortedLocalities) {
+      const topSports = Array.from(data.activities).slice(0, 2).map((s) => getCategoryDisplayName(s)).join(' & ');
+      const tag = data.count > 1 ? `${data.count} Academies` : `${topSports || 'Verified Center'}`;
+      addNeighbourhood({
+        name: locName,
+        slug: locName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+        tag,
+        cityName: data.cityName,
+      });
+    }
+  }
+
+  // ── LAYER 2: Supplement with Live Geocoded Places (Location/Map Service) ──
+  if (Array.isArray(geocodedPlaces) && geocodedPlaces.length > 0) {
+    for (const place of geocodedPlaces) {
+      addNeighbourhood(place);
+    }
+  }
+
+  // ── LAYER 3: Baseline Fallback for Pre-indexed Top Cities ──
+  if (results.length < 4) {
+    const baselineHubs = getPopularNeighbourhoodsForCity(targetLocation);
+    if (baselineHubs && baselineHubs !== ALL_INDIA_POPULAR_NEIGHBOURHOODS) {
+      for (const hub of baselineHubs) {
+        addNeighbourhood(hub);
+      }
+    } else if (cleanCity && cleanCity !== targetLocation) {
+      const parentHubs = getPopularNeighbourhoodsForCity(cleanCity);
+      if (parentHubs && parentHubs !== ALL_INDIA_POPULAR_NEIGHBOURHOODS) {
+        for (const hub of parentHubs) {
+          addNeighbourhood({
+            ...hub,
+            cityName: cleanCity,
+          });
+        }
+      }
+    }
+  }
+
+  // Final all-India fallback if nothing found
+  if (results.length === 0 || isAllIndia) {
+    return ALL_INDIA_POPULAR_NEIGHBOURHOODS;
+  }
+
+  return results;
+}
+
 
 /**
  * Calculates great-circle distance between two GPS coordinates using the Haversine formula

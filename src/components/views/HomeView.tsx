@@ -27,6 +27,7 @@ import {
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   getPopularNeighbourhoodsForCity,
+  resolveDynamicNeighbourhoods,
   CityNeighbourhood,
   isStateLocation,
   ALL_INDIA_POPULAR_NEIGHBOURHOODS,
@@ -120,7 +121,7 @@ function mapCentresToAcademies(centres: any[], activeCity?: string): Academy[] {
 
 export function HomeView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
-  const { activeCity, activeLocality, setLocation, showToast } = usePersona();
+  const { activeCity, activeLocality, activeCoords, setLocation, showToast } = usePersona();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSectionRef = useRef<HTMLDivElement>(null);
@@ -166,6 +167,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
 
   // Popular Neighbourhoods Expansion State
   const [isAllNeighbourhoodsExpanded, setIsAllNeighbourhoodsExpanded] = useState(false);
+  const [geocodedNearbyPlaces, setGeocodedNearbyPlaces] = useState<CityNeighbourhood[]>([]);
 
   const initialLoadedRef = useRef(hasDiscoveryData);
 
@@ -251,22 +253,55 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
     return isStateLocation(activeCity);
   }, [activeCity]);
 
-  // Determine the effective location for popular neighbourhoods:
-  // If activeLocality has its own dedicated neighbourhoods (e.g. 'Etmadpur'), prioritize it over broad parent city
+  // Determine the effective location for popular neighbourhoods
   const locationTarget = useMemo(() => {
     if (activeLocality && activeLocality.toLowerCase() !== activeCity?.toLowerCase() && !activeLocality.toLowerCase().includes('india')) {
-      const localityNeighbourhoods = getPopularNeighbourhoodsForCity(activeLocality);
-      if (localityNeighbourhoods !== ALL_INDIA_POPULAR_NEIGHBOURHOODS && localityNeighbourhoods.length > 0) {
-        return activeLocality;
-      }
+      return activeLocality;
     }
     return activeCity;
   }, [activeCity, activeLocality]);
 
-  // Popular Neighbourhoods based on selected Location, State, or India
+  // Live Geocoded Nearby Places (Layer 2 of Hybrid Resolution)
+  useEffect(() => {
+    if (isAllIndia) {
+      setGeocodedNearbyPlaces([]);
+      return;
+    }
+    const abortCtrl = new AbortController();
+    const query = locationTarget || activeCity || '';
+    if (!query) return;
+
+    const latParam = activeCoords?.lat ? `&lat=${activeCoords.lat}` : '';
+    const lonParam = activeCoords?.lon ? `&lon=${activeCoords.lon}` : '';
+
+    fetch(`/api/location/nearby?q=${encodeURIComponent(query)}${latParam}${lonParam}`, {
+      signal: abortCtrl.signal,
+    })
+      .then((res) => (res.ok ? res.json() : { places: [] }))
+      .then((data) => {
+        if (Array.isArray(data.places)) {
+          setGeocodedNearbyPlaces(data.places);
+        }
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.warn('[HomeView] Could not load live nearby places:', err);
+        }
+      });
+
+    return () => abortCtrl.abort();
+  }, [locationTarget, activeCity, activeCoords, isAllIndia]);
+
+  // Hybrid Dynamic Popular Neighbourhoods (DB Centres + Live Geocoding + City presets)
   const popularNeighbourhoods = useMemo<CityNeighbourhood[]>(() => {
-    return getPopularNeighbourhoodsForCity(locationTarget);
-  }, [locationTarget]);
+    return resolveDynamicNeighbourhoods({
+      activeCity,
+      activeLocality,
+      coords: activeCoords,
+      academies: featuredAcademies,
+      geocodedPlaces: geocodedNearbyPlaces,
+    });
+  }, [activeCity, activeLocality, activeCoords, featuredAcademies, geocodedNearbyPlaces]);
 
   // Check if we are showing generic all-India fallback hubs
   const isShowingAllIndiaFallback = useMemo(() => {
@@ -941,23 +976,30 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
                 <div className="flex items-center gap-1 shrink-0 mr-0.5">
                   <MapPin size={13} weight="fill" className="text-emerald-600" />
                   <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-800 uppercase tracking-wide shrink-0">
-                    {isShowingAllIndiaFallback ? 'Popular Across India:' : `Popular in ${locationTarget}:`}
+                    {isShowingAllIndiaFallback ? 'Popular Across India:' : `Popular in & around ${locationTarget}:`}
                   </span>
                 </div>
-                {visibleNeighbourhoods.map((nh) => (
-                  <button
-                    key={`${nh.slug}-${nh.cityName || ''}`}
-                    type="button"
-                    onClick={() => handleNeighbourhoodClick(nh.slug, nh.name, nh.cityName)}
-                    className="inline-flex items-center gap-1 bg-white/60 hover:bg-emerald-50/80 hover:text-emerald-800 hover:border-emerald-300/80 text-slate-700 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-lg border border-white/80 backdrop-blur-sm shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95 group shrink-0 whitespace-nowrap"
-                    title={`Explore coaching in ${nh.name}${nh.cityName ? `, ${nh.cityName}` : ''}`}
-                  >
-                    <span>{nh.name}</span>
-                    {(isShowingAllIndiaFallback || isState) && nh.cityName && (
-                      <span className="text-[9px] text-slate-500 font-medium">({nh.cityName})</span>
-                    )}
-                  </button>
-                ))}
+                {visibleNeighbourhoods.map((nh) => {
+                  const isOtherCity =
+                    nh.cityName &&
+                    locationTarget &&
+                    nh.cityName.toLowerCase() !== locationTarget.toLowerCase() &&
+                    !locationTarget.toLowerCase().includes(nh.cityName.toLowerCase());
+                  return (
+                    <button
+                      key={`${nh.slug}-${nh.cityName || ''}`}
+                      type="button"
+                      onClick={() => handleNeighbourhoodClick(nh.slug, nh.name, nh.cityName)}
+                      className="inline-flex items-center gap-1 bg-white/60 hover:bg-emerald-50/80 hover:text-emerald-800 hover:border-emerald-300/80 text-slate-700 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-lg border border-white/80 backdrop-blur-sm shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95 group shrink-0 whitespace-nowrap"
+                      title={nh.tag ? `${nh.name} • ${nh.tag}` : `Explore coaching in ${nh.name}${nh.cityName ? `, ${nh.cityName}` : ''}`}
+                    >
+                      <span>{nh.name}</span>
+                      {(isShowingAllIndiaFallback || isState || isOtherCity) && nh.cityName && (
+                        <span className="text-[9px] text-slate-500 font-medium">({nh.cityName})</span>
+                      )}
+                    </button>
+                  );
+                })}
 
                 {/* +more / Show Less Toggle Button */}
                 {remainingNeighbourhoodsCount > 0 && (

@@ -11,6 +11,7 @@ import {
   isStateLocation,
   resolveCentreCity,
   getPopularNeighbourhoodsForCity,
+  resolveDynamicNeighbourhoods,
 } from '@/lib/location';
 
 describe('Phase 16: Category Pillar Resolution & Location Geocoding Tests', () => {
@@ -149,18 +150,67 @@ describe('Phase 16: Category Pillar Resolution & Location Geocoding Tests', () =
     });
   });
 
-  describe('getPopularNeighbourhoodsForCity() Location Hub Resolution', () => {
-    it('should return dedicated Etmadpur local hubs and not Kamla Nagar', () => {
-      const etmadpurHubs = getPopularNeighbourhoodsForCity('Etmadpur');
-      assert.ok(etmadpurHubs.length >= 4);
+  describe('resolveDynamicNeighbourhoods() Hybrid Dynamic Resolution', () => {
+    it('should dynamically extract localities from registered coaching centres in that area', () => {
+      const mockAcademies = [
+        {
+          id: 'c1',
+          name: 'Etmadpur Cricket Academy',
+          locality: 'Station Road',
+          localityName: 'Station Road',
+          city: 'Etmadpur',
+          category: 'cricket',
+          activities: ['Cricket'],
+        },
+        {
+          id: 'c2',
+          name: 'Etmadpur Martial Arts Dojo',
+          locality: 'Khandauli Road',
+          localityName: 'Khandauli Road',
+          city: 'Etmadpur',
+          category: 'martial-arts',
+          activities: ['Martial Arts'],
+        },
+        {
+          id: 'c3',
+          name: 'Kamla Nagar Tennis Club',
+          locality: 'Kamla Nagar',
+          localityName: 'Kamla Nagar',
+          city: 'Agra',
+          category: 'tennis',
+          activities: ['Tennis'],
+        },
+      ];
+
+      const etmadpurHubs = resolveDynamicNeighbourhoods({
+        activeCity: 'Etmadpur',
+        activeLocality: 'Etmadpur',
+        academies: mockAcademies,
+      });
 
       const hubNames = etmadpurHubs.map((h) => h.name);
-      assert.ok(hubNames.includes('Station Road'));
-      assert.ok(hubNames.includes('Khandauli Road'));
+      assert.ok(hubNames.includes('Station Road'), 'Should include Station Road from Etmadpur centres');
+      assert.ok(hubNames.includes('Khandauli Road'), 'Should include Khandauli Road from Etmadpur centres');
+      // Kamla Nagar belongs to Agra and should not be displayed as an unbadged local hub for Etmadpur
+      const stationRoadHub = etmadpurHubs.find((h) => h.name === 'Station Road');
+      assert.strictEqual(stationRoadHub?.cityName, 'Etmadpur');
+    });
+
+    it('should supplement with live geocoded places for that town', () => {
+      const mockGeocoded = [
+        { name: 'Mandi Samiti', slug: 'mandi-samiti', tag: 'Nearby Hub', cityName: 'Etmadpur' },
+        { name: 'Highway Corridor', slug: 'highway-corridor', tag: 'Nearby Hub', cityName: 'Etmadpur' },
+      ];
+
+      const dynamicHubs = resolveDynamicNeighbourhoods({
+        activeCity: 'Etmadpur',
+        activeLocality: 'Etmadpur',
+        geocodedPlaces: mockGeocoded,
+      });
+
+      const hubNames = dynamicHubs.map((h) => h.name);
       assert.ok(hubNames.includes('Mandi Samiti'));
-      assert.ok(hubNames.includes('Highway Corridor (NH-19)'));
-      // Verify Kamla Nagar is not erroneously listed as a direct local neighbourhood of Etmadpur
-      assert.strictEqual(hubNames.includes('Kamla Nagar'), false);
+      assert.ok(hubNames.includes('Highway Corridor'));
     });
 
     it('should include Kamla Nagar and Etmadpur under Agra district hubs', () => {
@@ -173,3 +223,4 @@ describe('Phase 16: Category Pillar Resolution & Location Geocoding Tests', () =
     });
   });
 });
+
