@@ -77,6 +77,8 @@ export function calculateCyclePrice(baseMonthlyPrice: number, cycle: BillingCycl
     days: cfg.days,
     label: cfg.label,
     discountPercent: cfg.discountPercent,
+    key: cfg.key,
+    cycleKey: cfg.key,
   };
 }
 
