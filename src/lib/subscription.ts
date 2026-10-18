@@ -108,6 +108,7 @@ export function getCentreSubscriptionStatus(
     planBillingCycle?: string | null;
     isTrialActive?: boolean;
     isActive?: boolean;
+    isSuspended?: boolean;
     isCustomExpiry?: boolean;
   } | null | undefined,
   config?: {
@@ -137,20 +138,63 @@ export function getCentreSubscriptionStatus(
   }
 
   const tier = (centre.planTier as SubscriptionPlan) || SubscriptionPlan.FREE;
-  const expiresAt = centre.planExpiresAt ? new Date(centre.planExpiresAt) : null;
+  const rawExpiresAt = centre.planExpiresAt ? new Date(centre.planExpiresAt) : null;
+  const expiresAt = rawExpiresAt && !isNaN(rawExpiresAt.getTime()) ? rawExpiresAt : null;
   const now = new Date();
 
   const isExpired = Boolean(expiresAt && now.getTime() > expiresAt.getTime());
   const daysRemaining = expiresAt
     ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
-    : 0;
+    : (tier !== SubscriptionPlan.FREE ? 9999 : 0);
 
   const formattedExpiry = expiresAt
     ? expiresAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-    : 'None';
+    : (tier !== SubscriptionPlan.FREE ? 'Lifetime Access' : 'None');
 
   const enableFreePlan = config?.enableFreePlan ?? true;
   const allowFreeListing = config?.allowFreeTierPublicListing ?? true;
+
+  // Case 0A: Academy explicitly suspended by platform administration
+  if (centre.isSuspended) {
+    return {
+      tier,
+      isActive: false,
+      isExpired: false,
+      isTrial: Boolean(centre.isTrialActive),
+      daysRemaining: 0,
+      expiresAt,
+      formattedExpiry,
+      billingCycle: centre.planBillingCycle || null,
+      statusBadge: 'LOCKED',
+      status: 'LOCKED',
+      canOperate: false,
+      canListPublicly: false,
+      canPublicList: false,
+      headline: 'Academy Suspended by Platform Admin',
+      subtext: 'Your academy account and operational tools have been suspended. Please contact platform administration.',
+    };
+  }
+
+  // Case 0B: Academy explicitly deactivated
+  if (centre.isActive === false) {
+    return {
+      tier,
+      isActive: false,
+      isExpired: false,
+      isTrial: Boolean(centre.isTrialActive),
+      daysRemaining: 0,
+      expiresAt,
+      formattedExpiry,
+      billingCycle: centre.planBillingCycle || null,
+      statusBadge: 'LOCKED',
+      status: 'LOCKED',
+      canOperate: false,
+      canListPublicly: false,
+      canPublicList: false,
+      headline: 'Academy Account Deactivated',
+      subtext: 'Your academy profile is currently deactivated. Please contact support or update your settings to reactivate.',
+    };
+  }
 
   // Case 1: FREE Tier
   if (tier === SubscriptionPlan.FREE) {
@@ -217,28 +261,29 @@ export function getCentreSubscriptionStatus(
       };
     }
 
-    // Active Free Trial
+    // Active Free Trial or Admin Extended Free Access
     const isExpiringSoon = Boolean(expiresAt && daysRemaining <= 7);
+    const isSpecialAccess = Boolean(centre.isCustomExpiry && !centre.isTrialActive);
     return {
       tier: SubscriptionPlan.FREE,
       isActive: true,
       isExpired: false,
-      isTrial: true,
+      isTrial: !isSpecialAccess,
       daysRemaining,
       expiresAt,
       formattedExpiry,
-      billingCycle: centre.planBillingCycle || 'trial',
-      statusBadge: isExpiringSoon ? 'EXPIRING_SOON' : 'TRIAL',
-      status: isExpiringSoon ? 'EXPIRING_SOON' : 'TRIAL',
+      billingCycle: centre.planBillingCycle || (isSpecialAccess ? 'custom' : 'trial'),
+      statusBadge: isExpiringSoon ? 'EXPIRING_SOON' : (isSpecialAccess ? 'ACTIVE' : 'TRIAL'),
+      status: isExpiringSoon ? 'EXPIRING_SOON' : (isSpecialAccess ? 'ACTIVE' : 'TRIAL'),
       canOperate: true,
       canListPublicly: allowFreeListing,
       canPublicList: allowFreeListing,
       headline: isExpiringSoon
         ? `Free Trial Ending in ${daysRemaining} Day${daysRemaining === 1 ? '' : 's'}`
-        : 'Free Partner Trial Active',
+        : (isSpecialAccess ? 'Admin Extended Access Active' : 'Free Partner Trial Active'),
       subtext: expiresAt
-        ? `Trial valid until ${formattedExpiry}. Upgrade anytime for priority search ranking.`
-        : 'Trial active.',
+        ? (isSpecialAccess ? `Special access valid until ${formattedExpiry}.` : `Trial valid until ${formattedExpiry}. Upgrade anytime for priority search ranking.`)
+        : 'Active coverage.',
     };
   }
 
@@ -283,6 +328,6 @@ export function getCentreSubscriptionStatus(
       : `${tier === SubscriptionPlan.PREMIUM ? 'Premier Partner' : 'Standard Partner'} Active`,
     subtext: expiresAt
       ? `Active coverage until ${formattedExpiry}.`
-      : 'Active coverage.',
+      : 'Lifetime / Permanent partner access active.',
   };
 }
