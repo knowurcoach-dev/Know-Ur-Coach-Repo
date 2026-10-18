@@ -179,7 +179,7 @@ export async function updatePaymentSettings(
     razorpayLiveKeySecret?: string;
     webhookSecret?: string;
   },
-  actorEmail: string = 'admin@knowurcoach.in'
+  actorEmail: string = process.env.ADMIN_EMAIL || 'system@knowurcoach.in'
 ) {
   try {
     const current = await getPaymentSettings();

@@ -1,0 +1,61 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Environment variables & secrets (CRITICAL: Never upload to GitHub)
+.env
+.env*.local
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+*.env
+*.env.*
+!.env.example
+
+# Local Administrative & Database Reset Scripts
+prisma/clean-prod.ts
+prisma/*.local.ts
+prisma/local-*
+scripts/local-*
+scratch/
+
+# Database dumps, backups & local storage
+*.sql
+*.dump
+*.backup
+*.sqlite
+*.db
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# TypeScript compiler cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+logs/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.pem
+
+# AI agent workspace states
+.agent
+.agent_state

@@ -30,23 +30,23 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import crypto from "crypto";
 
+function isUserAdmin(user: { role?: any; email?: string | null } | null | undefined): boolean {
+  if (!user) return false;
+  const userRole = String(user.role || '').toUpperCase();
+  if (userRole === 'ADMIN') return true;
+  const configuredAdmin = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const userEmail = user.email?.trim().toLowerCase();
+  return Boolean(configuredAdmin && userEmail === configuredAdmin);
+}
+
 async function requireAdminSession() {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     throw new Error("Unauthorized: Platform Administrator privileges required. Please sign in.");
   }
 
-  const userRole = (session.user as any)?.role;
-  const userEmail = (session.user as any)?.email?.toLowerCase();
-  const isAdminRole =
-    userRole === Role.ADMIN ||
-    userRole === 'ADMIN' ||
-    String(userRole).toUpperCase() === 'ADMIN';
-  const isKnownAdminEmail =
-    userEmail === 'admin@knowurcoach.in' ||
-    userEmail === 'admin.rawat@knowurcoach.com';
-
-  if (!isAdminRole && !isKnownAdminEmail) {
+  const user = session.user as any;
+  if (!isUserAdmin(user)) {
     throw new Error("Unauthorized: Platform Administrator privileges required.");
   }
 
@@ -63,7 +63,7 @@ async function requireAuthenticatedUser() {
 
 async function requireParentSession() {
   const user = await requireAuthenticatedUser();
-  const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+  const isAdmin = isUserAdmin(user);
 
   const parent = await prisma.parentProfile.findFirst({
     where: {
@@ -84,7 +84,7 @@ async function requireParentSession() {
 
 async function requireCoachSession(targetCentreId?: string) {
   const user = await requireAuthenticatedUser();
-  const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+  const isAdmin = isUserAdmin(user);
 
   const centre = await prisma.coachingCentre.findFirst({
     where: targetCentreId
@@ -157,7 +157,7 @@ export async function checkInStudent(
       };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(user);
 
     // 1. Attempt to find the booking by booking.id OR childId
     let booking = await prisma.booking.findFirst({
@@ -945,7 +945,7 @@ export async function approveCoachKyc(
     });
 
     await logAdminAction({
-      actorEmail: 'admin@knowurcoach.in',
+      actorEmail: process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'COACH_APPROVED',
       targetModel: 'CoachingCentre',
@@ -1031,7 +1031,7 @@ export async function rejectCoachKyc(
     });
 
     await logAdminAction({
-      actorEmail: 'admin@knowurcoach.in',
+      actorEmail: process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'COACH_REJECTED',
       targetModel: 'CoachingCentre',
@@ -1112,7 +1112,7 @@ export async function referBackCoachKyc(
     });
 
     await logAdminAction({
-      actorEmail: 'admin@knowurcoach.in',
+      actorEmail: process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'COACH_REFERRED_BACK',
       targetModel: 'CoachingCentre',
@@ -2016,7 +2016,7 @@ export async function updatePlatformConfig(data: {
     });
 
     await logAdminAction({
-      actorEmail: adminSession.user?.email || 'admin@knowurcoach.in',
+      actorEmail: adminSession.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'CONFIG_UPDATED',
       targetModel: 'PlatformConfig',
@@ -2870,7 +2870,7 @@ export async function submitCoachKycProfile(data: {
       return { success: false, message: 'Authentication required to submit KYC.' };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(user);
 
     let targetCentreId = data.centreId;
 
@@ -3084,7 +3084,7 @@ export async function updateCoachAcademyProfile(data: {
       return { success: false, message: 'Authentication required to update academy profile.' };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(user);
 
     const targetCentre = await prisma.coachingCentre.findUnique({
       where: { id: data.centreId },
@@ -3175,7 +3175,7 @@ export async function getParentDashboardData(userEmailOrId?: string) {
       return { success: false, parent: null, bookings: [], children: [], savedCentres: [] };
     }
     const sessionUser = session.user as any;
-    const isAdmin = sessionUser.role === Role.ADMIN || sessionUser.email === 'admin@knowurcoach.in' || sessionUser.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(sessionUser);
 
     const clean = (isAdmin && userEmailOrId ? userEmailOrId : (sessionUser.email || sessionUser.id))?.trim().toLowerCase();
 
@@ -3399,7 +3399,7 @@ export async function getCoachLeadsData(coachEmailOrId: string) {
       return { success: false, leads: [], centre: null };
     }
     const sessionUser = session.user as any;
-    const isAdmin = sessionUser.role === Role.ADMIN || sessionUser.email === 'admin@knowurcoach.in' || sessionUser.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(sessionUser);
     const clean = (isAdmin && coachEmailOrId ? coachEmailOrId : (sessionUser.email || sessionUser.id))?.trim().toLowerCase();
 
     const user = await prisma.user.findFirst({
@@ -3485,7 +3485,7 @@ export async function updateCoachLeadStatus(leadId: string, status: string) {
       return { success: false, message: 'Authentication required.' };
     }
     const sessionUser = session.user as any;
-    const isAdmin = sessionUser.role === Role.ADMIN || sessionUser.email === 'admin@knowurcoach.in' || sessionUser.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(sessionUser);
 
     const targetLead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -3605,7 +3605,7 @@ export async function recordBatchAttendance(data: {
       return { success: false, message: 'Authentication required to record attendance.' };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(user);
 
     let booking = null;
     if (data.bookingId) {
@@ -3716,7 +3716,7 @@ export async function getCoachBatchesData(coachEmailOrId: string) {
       return { success: false, batches: [], centre: null };
     }
     const sessionUser = session.user as any;
-    const isAdmin = sessionUser.role === Role.ADMIN || sessionUser.email === 'admin@knowurcoach.in' || sessionUser.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(sessionUser);
     const clean = (isAdmin && coachEmailOrId ? coachEmailOrId : (sessionUser.email || sessionUser.id))?.trim().toLowerCase();
 
     const user = await prisma.user.findFirst({
@@ -3778,7 +3778,7 @@ export async function saveCoachBatch(
       return { success: false, message: 'Authentication required to manage batches.' };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(user);
 
     const centre = await prisma.coachingCentre.findUnique({ where: { id: centreId } });
     if (!centre) {
@@ -3843,7 +3843,7 @@ export async function deleteCoachBatch(batchId: string) {
       return { success: false, message: 'Authentication required to delete batch.' };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in' || user.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(user);
 
     const batch = await prisma.batch.findUnique({
       where: { id: batchId },
@@ -3888,7 +3888,7 @@ export async function getCoachRevenueData(coachEmailOrId: string) {
       };
     }
     const sessionUser = session.user as any;
-    const isAdmin = sessionUser.role === Role.ADMIN || sessionUser.email === 'admin@knowurcoach.in' || sessionUser.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(sessionUser);
     const clean = (isAdmin && coachEmailOrId ? coachEmailOrId : (sessionUser.email || sessionUser.id))?.trim().toLowerCase();
     const user = await prisma.user.findFirst({
       where: {
@@ -4145,7 +4145,7 @@ export async function updateCoachSubscriptionPlan(
       return { success: false, message: 'Academy centre not found in database.' };
     }
 
-    const isAdmin = userRole === Role.ADMIN || userEmail === 'admin@knowurcoach.in' || userEmail === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin({ role: userRole, email: userEmail });
     const isOwner = centre.ownerUserId === userId || (centre.owner && centre.owner.email === userEmail);
 
     if (!isAdmin && !isOwner) {
@@ -4254,7 +4254,7 @@ export async function getUserNotifications(userEmailOrId: string) {
     if (!session?.user) return { success: false, notifications: [], unreadCount: 0 };
 
     const sessionUser = session.user as any;
-    const isAdmin = sessionUser.role === Role.ADMIN || sessionUser.email === 'admin@knowurcoach.in' || sessionUser.email === 'admin.rawat@knowurcoach.com';
+    const isAdmin = isUserAdmin(sessionUser);
     const clean = (isAdmin && userEmailOrId ? userEmailOrId : (sessionUser.email || sessionUser.id))?.trim().toLowerCase();
     if (!clean) return { success: false, notifications: [], unreadCount: 0 };
 
@@ -4308,7 +4308,7 @@ export async function markAllNotificationsAsRead(userEmailOrId: string) {
     const session = await getServerSession(authOptions);
     if (!session?.user) return { success: false };
     const sessionUser = session.user as any;
-    const isAdmin = sessionUser.role === Role.ADMIN || sessionUser.email === 'admin@knowurcoach.in';
+    const isAdmin = isUserAdmin(sessionUser);
     const clean = (isAdmin && userEmailOrId ? userEmailOrId : (sessionUser.email || sessionUser.id))?.trim().toLowerCase();
     if (!clean) return { success: false };
 
@@ -4395,7 +4395,7 @@ export async function updatePaymentSettingsAction(data: {
   try {
     const adminSession = await requireAdminSession();
     const { updatePaymentSettings } = await import('@/lib/payments');
-    const actorEmail = (adminSession.user as any)?.email || 'admin@knowurcoach.in';
+    const actorEmail = (adminSession.user as any)?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in';
     return await updatePaymentSettings(data, actorEmail);
   } catch (err: any) {
     console.error('updatePaymentSettingsAction error:', err);
@@ -4414,7 +4414,7 @@ export async function createRazorpayOrderAction(params: {
       return { success: false, message: 'Authentication required to initiate checkout.' };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in';
+    const isAdmin = isUserAdmin(user);
 
     const centre = await prisma.coachingCentre.findUnique({ where: { id: params.centreId } });
     if (!centre) {
@@ -4447,7 +4447,7 @@ export async function verifyRazorpayPaymentAction(params: {
       return { success: false, message: 'Authentication required to verify payment.' };
     }
     const user = session.user as any;
-    const isAdmin = user.role === Role.ADMIN || user.email === 'admin@knowurcoach.in';
+    const isAdmin = isUserAdmin(user);
 
     const centre = await prisma.coachingCentre.findUnique({ where: { id: params.centreId } });
     if (!centre) {
@@ -4781,7 +4781,7 @@ export async function updateHeroCarouselThemeAction(themeData: Partial<HeroCarou
     const updated = await writeHeroCarouselTheme(themeData);
 
     await logAdminAction({
-      actorEmail: adminSession.user?.email || 'admin@knowurcoach.in',
+      actorEmail: adminSession.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'CONFIG_UPDATED',
       targetModel: 'HeroCarouselTheme',
@@ -4807,7 +4807,7 @@ export async function resetHeroCarouselThemeAction() {
     const reset = await writeHeroCarouselTheme(DEFAULT_HERO_CAROUSEL_THEME);
 
     await logAdminAction({
-      actorEmail: adminSession.user?.email || 'admin@knowurcoach.in',
+      actorEmail: adminSession.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'CONFIG_UPDATED',
       targetModel: 'HeroCarouselTheme',

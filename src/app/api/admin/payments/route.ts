@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const actorEmail = (session.user as any)?.email || 'admin@knowurcoach.in';
+    const actorEmail = (session.user as any)?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in';
 
     const result = await updatePaymentSettings(body, actorEmail);
 

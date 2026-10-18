@@ -20,10 +20,10 @@ export async function GET(
 
     const { passId } = await params;
     const user = session.user as any;
+    const configuredAdmin = process.env.ADMIN_EMAIL?.trim().toLowerCase();
     const isAdmin =
       user.role === Role.ADMIN ||
-      user.email === 'admin@knowurcoach.in' ||
-      user.email === 'admin.rawat@knowurcoach.com';
+      Boolean(configuredAdmin && user.email?.trim().toLowerCase() === configuredAdmin);
 
     // Verify booking exists and caller is authorized (Parent, Coach, or Admin)
     const booking = await prisma.booking.findFirst({

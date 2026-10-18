@@ -45,7 +45,9 @@ export const authOptions: AuthOptions = {
         }
 
         // If trying to access as ADMIN, verify admin eligibility
-        const isStandardAdmin = cleanEmail === 'admin@knowurcoach.in' || cleanEmail === 'admin.rawat@knowurcoach.com';
+        const configuredAdminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+        const isStandardAdmin = Boolean(configuredAdminEmail && cleanEmail === configuredAdminEmail);
+
         if (reqRole === 'ADMIN' && !isStandardAdmin) {
           // Check DB user role
           try {
@@ -81,9 +83,12 @@ export const authOptions: AuthOptions = {
             },
           });
 
-          // Bootstrap primary admin user if not found in database
+          // Bootstrap primary admin user if not found in database using environment credentials
           if (!dbUser && isStandardAdmin) {
-            const defaultAdminPass = process.env.ADMIN_INITIAL_PASSWORD || 'Admin@Agra2026!';
+            const defaultAdminPass = process.env.ADMIN_INITIAL_PASSWORD;
+            if (!defaultAdminPass) {
+              throw new Error('Initial admin password is not configured in environment.');
+            }
             if (!otp && password && password !== defaultAdminPass) {
               throw new Error('Incorrect password. Please verify your credentials.');
             }
@@ -93,7 +98,7 @@ export const authOptions: AuthOptions = {
                 data: {
                   id: `usr_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
                   email: cleanEmail,
-                  phone: '+91 97625 77714',
+                  phone: process.env.ADMIN_PHONE || '+91 97625 77714',
                   role: Role.ADMIN,
                   passwordHash: hashedAdminPass,
                   isActive: true,
@@ -152,7 +157,7 @@ export const authOptions: AuthOptions = {
             return {
               id: dbUser.id,
               userId: dbUser.id,
-              name: dbUser.parentProfile?.fullName || dbUser.coachingCentre?.name || (isStandardAdmin ? 'Er. S. Rawat (KYC Admin)' : 'KnowUrCoach User'),
+              name: dbUser.parentProfile?.fullName || dbUser.coachingCentre?.name || (isStandardAdmin ? (process.env.ADMIN_NAME || 'Platform Administrator') : 'KnowUrCoach User'),
               email: dbUser.email || cleanEmail,
               phone: dbUser.phone,
               role: dbUser.role,

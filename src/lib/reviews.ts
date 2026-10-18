@@ -448,7 +448,7 @@ export async function updateReviewStatusByAdmin(reviewId: string, status: 'APPRO
     }
 
     await logAdminAction({
-      actorEmail: session.user?.email || 'admin@knowurcoach.in',
+      actorEmail: session.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: `REVIEW_STATUS_${status}`,
       targetModel: 'Review',
@@ -487,7 +487,7 @@ export async function deleteReviewByAdmin(reviewId: string) {
     }
 
     await logAdminAction({
-      actorEmail: session.user?.email || 'admin@knowurcoach.in',
+      actorEmail: session.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'REVIEW_DELETED',
       targetModel: 'Review',
@@ -592,7 +592,7 @@ export async function saveHomepageReviewByAdmin(data: Partial<PlatformReviewItem
       });
 
       await logAdminAction({
-        actorEmail: session.user?.email || 'admin@knowurcoach.in',
+        actorEmail: session.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
         actorRole: 'ADMIN',
         action: 'HOMEPAGE_REVIEW_UPDATED',
         targetModel: 'PlatformReview',
@@ -618,7 +618,7 @@ export async function saveHomepageReviewByAdmin(data: Partial<PlatformReviewItem
       });
 
       await logAdminAction({
-        actorEmail: session.user?.email || 'admin@knowurcoach.in',
+        actorEmail: session.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
         actorRole: 'ADMIN',
         action: 'HOMEPAGE_REVIEW_CREATED',
         targetModel: 'PlatformReview',
@@ -649,7 +649,7 @@ export async function deleteHomepageReviewByAdmin(id: string) {
     });
 
     await logAdminAction({
-      actorEmail: session.user?.email || 'admin@knowurcoach.in',
+      actorEmail: session.user?.email || process.env.ADMIN_EMAIL || 'system@knowurcoach.in',
       actorRole: 'ADMIN',
       action: 'HOMEPAGE_REVIEW_DELETED',
       targetModel: 'PlatformReview',

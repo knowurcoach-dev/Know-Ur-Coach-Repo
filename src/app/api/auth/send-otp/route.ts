@@ -27,8 +27,8 @@ export async function POST(request: Request) {
 
     // Verify user is registered when logging in (not signing up)
     if (!isSignup) {
-      const isStandardAdmin =
-        cleanEmail === 'admin@knowurcoach.in' || cleanEmail === 'admin.rawat@knowurcoach.com';
+      const configuredAdmin = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+      const isStandardAdmin = Boolean(configuredAdmin && cleanEmail === configuredAdmin);
 
       if (!isStandardAdmin) {
         try {
@@ -123,7 +123,8 @@ export async function POST(request: Request) {
           console.warn('[DB_NOTICE] send-otp coach pre-check skipped due to DB connection:', dbErr);
         }
 
-        if (cleanEmail === 'admin@knowurcoach.in' || cleanEmail === 'admin.rawat@knowurcoach.com') {
+        const configuredAdmin = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+        if (configuredAdmin && cleanEmail === configuredAdmin) {
           return NextResponse.json(
             {
               success: false,
