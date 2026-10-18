@@ -4,6 +4,8 @@ import {
   resolveCategoryFromSearch,
   getCategoryDisplayName,
   getCategoryEmoji,
+  resolveCategoryCoverImage,
+  getCategoryPillar,
 } from '@/lib/categories';
 import {
   calculateDistance,
@@ -220,6 +222,121 @@ describe('Phase 16: Category Pillar Resolution & Location Geocoding Tests', () =
       assert.ok(hubNames.includes('Sanjay Place'));
       assert.ok(hubNames.includes('Dayalbagh'));
       assert.ok(hubNames.includes('Etmadpur'));
+    });
+  });
+
+  describe('Expanded Categories & Distinct Dedicated Images Matrix', () => {
+    const sportsCategories = [
+      'tennis',
+      'table-tennis',
+      'badminton',
+      'cricket',
+      'handball',
+      'basketball',
+      'swimming',
+      'skating',
+      'gymnastics',
+      'chess',
+      'shooting',
+      'yoga',
+      'football',
+      'taekwondo',
+    ];
+
+    const culturalCategories = [
+      'drawing-painting',
+      'dance',
+      'keyboard',
+      'tabla',
+      'piano',
+      'flute',
+      'mehandi',
+      'calligraphy',
+      'art-craft',
+      'baking',
+    ];
+
+    const brainBoosterCategories = [
+      'brain-gym',
+      'handwriting',
+      'abacus',
+      'phonics',
+      'matra-gyan',
+    ];
+
+    const allCategories = [
+      ...sportsCategories,
+      ...culturalCategories,
+      ...brainBoosterCategories,
+    ];
+
+    it('should assign valid pillars to all sports categories', () => {
+      sportsCategories.forEach((cat) => {
+        const pillar = getCategoryPillar(cat);
+        assert.strictEqual(pillar, 'sports', `Category ${cat} should map to sports pillar`);
+      });
+    });
+
+    it('should assign valid pillars to all cultural categories', () => {
+      culturalCategories.forEach((cat) => {
+        const pillar = getCategoryPillar(cat);
+        assert.strictEqual(pillar, 'arts', `Category ${cat} should map to arts pillar`);
+      });
+    });
+
+    it('should assign valid pillars to all brain booster categories', () => {
+      brainBoosterCategories.forEach((cat) => {
+        const pillar = getCategoryPillar(cat);
+        assert.strictEqual(pillar, 'brain-booster', `Category ${cat} should map to brain-booster pillar`);
+      });
+    });
+
+    it('should provide distinct emojis for every category', () => {
+      allCategories.forEach((cat) => {
+        const emoji = getCategoryEmoji(cat);
+        assert.ok(emoji && emoji.length > 0, `Category ${cat} should have an emoji`);
+      });
+    });
+
+    it('should provide completely distinct cover images with zero duplicates across all categories', () => {
+      const imageMap = new Map<string, string>();
+
+      allCategories.forEach((cat) => {
+        const img = resolveCategoryCoverImage(cat);
+        assert.ok(img, `Category ${cat} must resolve to a valid cover image`);
+
+        if (imageMap.has(img)) {
+          const conflictingCategory = imageMap.get(img);
+          assert.fail(`Duplicate image detected between "${conflictingCategory}" and "${cat}": ${img}`);
+        }
+        imageMap.set(img, cat);
+      });
+
+      assert.strictEqual(imageMap.size, allCategories.length, 'Every category must have its own unique image');
+    });
+
+    it('should resolve natural queries for newly added sports', () => {
+      assert.deepStrictEqual(resolveCategoryFromSearch('table tennis academy'), { category: 'table-tennis', pillar: 'sports' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('handball coaching'), { category: 'handball', pillar: 'sports' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('10m air rifle shooting'), { category: 'shooting', pillar: 'sports' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('yoga and mindfulness'), { category: 'yoga', pillar: 'sports' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('basketball dribbling'), { category: 'basketball', pillar: 'sports' });
+    });
+
+    it('should resolve natural queries for newly added cultural categories', () => {
+      assert.deepStrictEqual(resolveCategoryFromSearch('classical tabla lessons'), { category: 'tabla', pillar: 'arts' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('bamboo flute bansuri'), { category: 'flute', pillar: 'arts' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('bridal mehandi art'), { category: 'mehandi', pillar: 'arts' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('copperplate calligraphy lettering'), { category: 'calligraphy', pillar: 'arts' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('kids baking and patisserie'), { category: 'baking', pillar: 'arts' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('keyboard and synthesizer'), { category: 'keyboard', pillar: 'arts' });
+    });
+
+    it('should resolve natural queries for newly added brain booster categories', () => {
+      assert.deepStrictEqual(resolveCategoryFromSearch('brain gym and memory agility'), { category: 'brain-gym', pillar: 'brain-booster' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('speed handwriting cursive'), { category: 'handwriting', pillar: 'brain-booster' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('early phonics reading'), { category: 'phonics', pillar: 'brain-booster' });
+      assert.deepStrictEqual(resolveCategoryFromSearch('hindi matra gyan vyakaran'), { category: 'matra-gyan', pillar: 'brain-booster' });
     });
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useTransition, useMemo } from 'react';
+import React, { useState, useEffect, useTransition, useMemo, useRef } from 'react';
 import {
   getAdminDashboardData,
   createActivity,
@@ -33,6 +33,8 @@ import {
   SquaresFour,
   Check,
   Lightning,
+  FileArrowUp,
+  LinkSimple,
 } from '@phosphor-icons/react';
 
 type AdminTab = 'activities' | 'categories';
@@ -119,6 +121,79 @@ export default function AdminCategoriesPage() {
     title: '',
     message: '',
   });
+
+  // Category Image Upload States
+  const [catImageInputMode, setCatImageInputMode] = useState<'upload' | 'url'>('upload');
+  const [catUploadedFileName, setCatUploadedFileName] = useState<string>('');
+  const [isCompressingCatImage, setIsCompressingCatImage] = useState(false);
+  const [isDraggingCatFile, setIsDraggingCatFile] = useState(false);
+  const catFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Client-side high-resolution image compression
+  const compressImageFile = (file: File, maxDim = 1200, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve((event.target?.result as string) || '');
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve((event.target?.result as string) || '');
+        img.src = (event.target?.result as string) || '';
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleCategoryImageFileUpload = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please upload a valid image file (JPG, PNG, WebP).');
+      return;
+    }
+    setCatUploadedFileName(file.name);
+    setIsCompressingCatImage(true);
+    try {
+      const dataUrl = await compressImageFile(file, 1200, 0.85);
+      if (dataUrl) {
+        setCategoryModal((prev) => ({ ...prev, imageUrl: dataUrl }));
+        showToast(`Image "${file.name}" compressed and attached!`);
+      } else {
+        showToast('Failed to process image.');
+      }
+    } catch {
+      showToast('Error processing uploaded image.');
+    } finally {
+      setIsCompressingCatImage(false);
+    }
+  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -245,6 +320,8 @@ export default function AdminCategoriesPage() {
   // Handlers for Category
   const openCreateCategoryModal = (presetActivityId?: string) => {
     const defaultActId = presetActivityId || (activities.length > 0 ? activities[0]?.id : '');
+    setCatImageInputMode('upload');
+    setCatUploadedFileName('');
     setCategoryModal({
       isOpen: true,
       mode: 'create',
@@ -253,7 +330,7 @@ export default function AdminCategoriesPage() {
       name: '',
       slug: '',
       shortDesc: '',
-      imageUrl: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=600&q=80',
+      imageUrl: '',
       icon: 'Sparkle',
       badge: 'Free Trial',
       order: categories.length + 1,
@@ -262,6 +339,8 @@ export default function AdminCategoriesPage() {
   };
 
   const openEditCategoryModal = (cat: any) => {
+    setCatUploadedFileName('');
+    setCatImageInputMode(cat.imageUrl && cat.imageUrl.startsWith('data:image') ? 'upload' : 'url');
     setCategoryModal({
       isOpen: true,
       mode: 'edit',
@@ -270,7 +349,7 @@ export default function AdminCategoriesPage() {
       name: cat.name || '',
       slug: cat.slug || '',
       shortDesc: cat.shortDesc || '',
-      imageUrl: cat.imageUrl || 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=600&q=80',
+      imageUrl: cat.imageUrl || '',
       icon: cat.icon || 'Sparkle',
       badge: cat.badge || '',
       order: cat.order ?? 0,
@@ -1128,46 +1207,199 @@ export default function AdminCategoriesPage() {
                   />
                 </div>
 
-                {/* Image URL & Preview */}
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Card Image URL:</label>
-                  <input
-                    type="text"
-                    value={categoryModal.imageUrl}
-                    onChange={(e) => setCategoryModal({ ...categoryModal, imageUrl: e.target.value })}
-                    placeholder="https://images.unsplash.com/photo-..."
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                  />
-                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                    <span className="text-[10px] text-slate-500 font-bold">Quick Images:</span>
-                    {[
-                      { label: 'Badminton', url: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80' },
-                      { label: 'Tennis', url: 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=600&q=80' },
-                      { label: 'Cricket', url: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=600&q=80' },
-                      { label: 'Football', url: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=600&q=80' },
-                      { label: 'Robotics', url: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=600&q=80' },
-                      { label: 'Chess', url: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?auto=format&fit=crop&w=600&q=80' },
-                      { label: 'Dance', url: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=600&q=80' },
-                      { label: 'Music', url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80' },
-                    ].map((p) => (
+                {/* Cover Image Upload & URL Section */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-700 flex items-center gap-1.5">
+                      <ImageIcon size={14} className="text-indigo-600" />
+                      <span>Category Cover Image:</span>
+                    </label>
+
+                    {/* Mode Selector Tabs */}
+                    <div className="inline-flex p-0.5 bg-slate-200/80 rounded-xl">
                       <button
-                        key={p.label}
                         type="button"
-                        onClick={() => setCategoryModal({ ...categoryModal, imageUrl: p.url })}
-                        className="text-[10px] bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 px-2 py-0.5 rounded-md font-bold text-slate-600 border border-slate-200 cursor-pointer"
+                        onClick={() => setCatImageInputMode('upload')}
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                          catImageInputMode === 'upload'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
                       >
-                        {p.label}
+                        <FileArrowUp size={12} weight="bold" />
+                        <span>Upload File</span>
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => setCatImageInputMode('url')}
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                          catImageInputMode === 'url'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <LinkSimple size={12} weight="bold" />
+                        <span>Image URL</span>
+                      </button>
+                    </div>
                   </div>
-                  {categoryModal.imageUrl && (
-                    <div className="mt-2 h-20 w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+
+                  {/* TAB 1: UPLOAD LOCAL IMAGE */}
+                  {catImageInputMode === 'upload' && (
+                    <div className="space-y-2">
+                      <input
+                        ref={catFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleCategoryImageFileUpload(file);
+                          e.target.value = '';
+                        }}
+                      />
+
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDraggingCatFile(true);
+                        }}
+                        onDragLeave={() => setIsDraggingCatFile(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDraggingCatFile(false);
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) handleCategoryImageFileUpload(file);
+                        }}
+                        onClick={() => catFileInputRef.current?.click()}
+                        className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${
+                          isDraggingCatFile
+                            ? 'border-indigo-500 bg-indigo-50/70 shadow-inner'
+                            : categoryModal.imageUrl && categoryModal.imageUrl.startsWith('data:image')
+                            ? 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/60'
+                            : 'border-slate-300 bg-white hover:bg-slate-50 hover:border-indigo-400'
+                        }`}
+                      >
+                        {isCompressingCatImage ? (
+                          <div className="py-2 flex flex-col items-center gap-2">
+                            <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                            <p className="text-xs font-bold text-indigo-600">Compressing &amp; attaching image...</p>
+                          </div>
+                        ) : categoryModal.imageUrl && categoryModal.imageUrl.startsWith('data:image') ? (
+                          <div className="flex items-center justify-between gap-3 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className="w-14 h-12 rounded-xl overflow-hidden bg-slate-100 border border-emerald-300 shadow-xs shrink-0">
+                                <img
+                                  src={categoryModal.imageUrl}
+                                  alt="Uploaded preview"
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div>
+                                <p className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                                  <CheckCircle size={14} weight="fill" className="text-emerald-600" />
+                                  {catUploadedFileName || 'Image Uploaded & Ready'}
+                                </p>
+                                <p className="text-[10px] text-slate-500">
+                                  Click or drag a new image to replace
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCategoryModal((prev) => ({ ...prev, imageUrl: '' }));
+                                setCatUploadedFileName('');
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Remove image"
+                            >
+                              <Trash size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="py-2 space-y-1">
+                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                              <FileArrowUp size={16} weight="bold" />
+                            </div>
+                            <p className="text-xs font-bold text-slate-700">
+                              Drag &amp; drop an image here, or <span className="text-indigo-600 underline">browse</span>
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              PNG, JPG, WebP (auto-compressed for fast loading)
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: IMAGE URL */}
+                  {catImageInputMode === 'url' && (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={categoryModal.imageUrl}
+                        onChange={(e) => setCategoryModal({ ...categoryModal, imageUrl: e.target.value })}
+                        placeholder="https://images.unsplash.com/photo-... or /images/categories/..."
+                        className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                      />
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-500 font-bold">Quick Presets:</span>
+                        {[
+                          { label: 'Tennis', url: 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Table Tennis', url: 'https://images.unsplash.com/photo-1534158914592-062992fbe900?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Badminton', url: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Cricket', url: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Handball', url: '/images/categories/handball.jpg' },
+                          { label: 'Swimming', url: 'https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Yoga', url: '/images/categories/yoga.jpg' },
+                          { label: 'Shooting', url: '/images/categories/shooting.jpg' },
+                          { label: 'Dance', url: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Tabla', url: '/images/categories/tabla.jpg' },
+                          { label: 'Flute', url: '/images/categories/flute.jpg' },
+                          { label: 'Mehandi', url: '/images/categories/mehandi.jpg' },
+                          { label: 'Calligraphy', url: '/images/categories/calligraphy.jpg' },
+                          { label: 'Baking', url: '/images/categories/baking.jpg' },
+                          { label: 'Brain Gym', url: '/images/categories/brain-gym.jpg' },
+                          { label: 'Handwriting', url: '/images/categories/handwriting.jpg' },
+                          { label: 'Phonics', url: '/images/categories/phonics.jpg' },
+                          { label: 'Matra Gyan', url: '/images/categories/matra-gyan.jpg' },
+                          { label: 'Abacus', url: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Robotics', url: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80' },
+                        ].map((p) => (
+                          <button
+                            key={p.label}
+                            type="button"
+                            onClick={() => setCategoryModal({ ...categoryModal, imageUrl: p.url })}
+                            className="text-[10px] bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 px-2 py-0.5 rounded-md font-bold text-slate-600 border border-slate-200 cursor-pointer"
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cover Image Preview (for non-data URLs) */}
+                  {categoryModal.imageUrl && !categoryModal.imageUrl.startsWith('data:image') && (
+                    <div className="mt-2 h-20 w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative group">
                       <img
                         src={categoryModal.imageUrl}
                         alt="Preview"
                         className="w-full h-full object-cover"
                         onError={(e) => ((e.target as any).src = 'https://placehold.co/600x400?text=Invalid+Image+URL')}
                       />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setCategoryModal((prev) => ({ ...prev, imageUrl: '' }))}
+                          className="text-[10px] font-bold text-rose-300 bg-rose-950/80 px-2.5 py-1 rounded-lg border border-rose-500/40 hover:bg-rose-900 cursor-pointer"
+                        >
+                          Clear Image
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
