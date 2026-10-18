@@ -8,6 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "db:clean": "tsx prisma/clean-prod.ts",
+    "seed:carousel": "tsx prisma/seeds/seed-carousel.ts",
+    "seed:categories": "tsx prisma/seeds/seed-activities-categories.ts",
+    "seed:activities-categories": "tsx prisma/seeds/seed-activities-categories.ts",
+    "seed:academy": "tsx prisma/seeds/seed-academy.ts",
+    "seed:academies": "tsx prisma/seeds/seed-academy.ts",
+    "seed:admin": "tsx prisma/seeds/seed-admin.ts",
+    "seed:all": "tsx prisma/seed.ts",
     "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
