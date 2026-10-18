@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useTransition, useRef } from 'react';
 import Link from 'next/link';
 import {
   getAdminHeroSlides,
@@ -46,6 +46,7 @@ import {
   MagnifyingGlass,
   Check,
   Palette,
+  FileArrowUp,
 } from '@phosphor-icons/react';
 
 const IMAGE_PRESETS = [
@@ -98,6 +99,13 @@ export default function AdminHeroSlidesPage() {
     showSecondaryCta: true,
   });
 
+  // Image Upload & Source States
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Deletion Modal
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string; title: string }>({
     isOpen: false,
@@ -106,6 +114,72 @@ export default function AdminHeroSlidesPage() {
   });
 
   const [dbError, setDbError] = useState<string | null>(null);
+
+  // Client-side high-resolution image compression for crisp hero banners
+  const compressImageFile = (file: File, maxDim = 1920, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve((event.target?.result as string) || '');
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve((event.target?.result as string) || '');
+        img.src = (event.target?.result as string) || '';
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageFileUpload = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('⚠️ Please upload a valid image file (PNG, JPG, WebP, AVIF)');
+      return;
+    }
+    setIsCompressingImage(true);
+    try {
+      const dataUrl = await compressImageFile(file, 1920, 0.85);
+      if (dataUrl) {
+        setFormData((prev) => ({ ...prev, imageUrl: dataUrl }));
+        setUploadedFileName(file.name);
+        showToast(`📸 Attached: ${file.name}`);
+      } else {
+        showToast('⚠️ Could not process image file.');
+      }
+    } catch {
+      showToast('⚠️ Failed to load image file.');
+    } finally {
+      setIsCompressingImage(false);
+    }
+  };
 
   const loadSlides = async () => {
     setIsLoading(true);
@@ -139,11 +213,13 @@ export default function AdminHeroSlidesPage() {
 
   const openCreateModal = () => {
     setEditingSlide(null);
+    setUploadedFileName('');
+    setImageInputMode('upload');
     setFormData({
       title: '',
       subtitle: '',
       badge: "India's Verified Kids Coaching Network",
-      imageUrl: IMAGE_PRESETS[0].url,
+      imageUrl: '',
       ctaText: 'Explore Activities',
       ctaLink: '/activities',
       secondaryCtaText: 'Book Free Trial',
@@ -162,6 +238,13 @@ export default function AdminHeroSlidesPage() {
 
   const openEditModal = (slide: HeroSlideData) => {
     setEditingSlide(slide);
+    if (slide.imageUrl?.startsWith('data:image')) {
+      setImageInputMode('upload');
+      setUploadedFileName('Custom Uploaded Image');
+    } else {
+      setImageInputMode('url');
+      setUploadedFileName('');
+    }
     setFormData({
       title: slide.title,
       subtitle: slide.subtitle || '',
@@ -189,8 +272,8 @@ export default function AdminHeroSlidesPage() {
       showToast('⚠️ Please enter a slide headline/title');
       return;
     }
-    if (!formData.imageUrl.trim()) {
-      showToast('⚠️ Please enter an image URL');
+    if (!formData.imageUrl?.trim()) {
+      showToast('⚠️ Please upload an image file or provide an image URL');
       return;
     }
 
@@ -1156,55 +1239,228 @@ export default function AdminHeroSlidesPage() {
               </div>
 
               {/* SECTION 6: SLIDE IMAGE & APPEARANCE */}
-              <div className="space-y-4 pt-2">
-                {/* Image URL & Presets */}
-                <div className="space-y-2">
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-                    Slide Image URL *
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      required
-                      placeholder="https://images.unsplash.com/..."
-                      value={formData.imageUrl}
-                      onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                      className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {formData.imageUrl && (
-                      <div className="w-12 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                        <img
-                          src={formData.imageUrl}
-                          alt="Preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Preset Chips */}
-                  <div>
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
-                      Quick Preset Images:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {IMAGE_PRESETS.map((preset) => (
-                        <button
-                          key={preset.label}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, imageUrl: preset.url })}
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                            formData.imageUrl === preset.url
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon size={18} weight="bold" className="text-blue-600" />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        6. Slide Background Image *
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Upload a local photo or paste an optional web image URL
+                      </p>
                     </div>
                   </div>
+
+                  {/* Mode Selector Tabs */}
+                  <div className="inline-flex p-0.5 bg-slate-200/80 rounded-xl self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setImageInputMode('upload')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                        imageInputMode === 'upload'
+                          ? 'bg-white text-blue-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <FileArrowUp size={13} weight="bold" />
+                      <span>Upload File</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImageInputMode('url')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                        imageInputMode === 'url'
+                          ? 'bg-white text-blue-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <LinkSimple size={13} weight="bold" />
+                      <span>Web URL (Optional)</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* TAB 1: UPLOAD LOCAL IMAGE */}
+                {imageInputMode === 'upload' && (
+                  <div className="space-y-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageFileUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDraggingFile(true);
+                      }}
+                      onDragLeave={() => setIsDraggingFile(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingFile(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handleImageFileUpload(file);
+                      }}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
+                        isDraggingFile
+                          ? 'border-blue-500 bg-blue-50/70 shadow-inner'
+                          : formData.imageUrl && formData.imageUrl.startsWith('data:image')
+                          ? 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/60'
+                          : 'border-slate-300 bg-white hover:bg-slate-50 hover:border-blue-400'
+                      }`}
+                    >
+                      {isCompressingImage ? (
+                        <div className="py-2 flex flex-col items-center gap-2">
+                          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                          <p className="text-xs font-bold text-blue-600">Compressing &amp; attaching image...</p>
+                        </div>
+                      ) : formData.imageUrl && formData.imageUrl.startsWith('data:image') ? (
+                        <div className="flex items-center justify-between gap-3 text-left">
+                          <div className="flex items-center gap-3">
+                            <div className="w-16 h-12 rounded-xl overflow-hidden bg-slate-100 border border-emerald-300 shadow-xs shrink-0">
+                              <img
+                                src={formData.imageUrl}
+                                alt="Uploaded preview"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                                <CheckCircle size={14} weight="fill" className="text-emerald-600" />
+                                {uploadedFileName || 'Image Uploaded & Ready'}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                Click or drag a new image to replace
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFormData((prev) => ({ ...prev, imageUrl: '' }));
+                              setUploadedFileName('');
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Remove image"
+                          >
+                            <Trash size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="py-2 space-y-1.5">
+                          <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-inner">
+                            <FileArrowUp size={20} weight="bold" />
+                          </div>
+                          <p className="text-xs font-extrabold text-slate-800">
+                            Click to upload or drag &amp; drop an image file
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            PNG, JPG, WebP, AVIF up to 10MB (automatically optimized for fast loading)
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: OPTIONAL WEB IMAGE URL & PRESETS */}
+                {imageInputMode === 'url' && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="https://images.unsplash.com/photo-... (optional if file uploaded)"
+                        value={formData.imageUrl.startsWith('data:image') ? '' : formData.imageUrl}
+                        onChange={(e) => {
+                          setFormData({ ...formData, imageUrl: e.target.value });
+                          setUploadedFileName('');
+                        }}
+                        className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                      {formData.imageUrl && !formData.imageUrl.startsWith('data:image') && (
+                        <div className="w-12 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                          <img
+                            src={formData.imageUrl}
+                            alt="Preview"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Preset Chips */}
+                    <div>
+                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                        Quick Preset Images:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {IMAGE_PRESETS.map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, imageUrl: preset.url });
+                              setUploadedFileName('');
+                            }}
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                              formData.imageUrl === preset.url
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Image Status Bar */}
+                <div className="flex items-center justify-between text-[11px] pt-1 text-slate-500 border-t border-slate-200/60">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-bold shrink-0">Selected Image:</span>
+                    {formData.imageUrl ? (
+                      formData.imageUrl.startsWith('data:image') ? (
+                        <span className="text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1 shrink-0">
+                          <Check size={11} weight="bold" /> Uploaded File ({uploadedFileName || 'Ready'})
+                        </span>
+                      ) : (
+                        <span className="text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200 truncate max-w-[240px] sm:max-w-[340px]">
+                          {formData.imageUrl}
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-amber-600 font-medium italic">
+                        No image chosen yet (upload a file or paste optional URL)
+                      </span>
+                    )}
+                  </span>
+
+                  {formData.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData((prev) => ({ ...prev, imageUrl: '' }));
+                        setUploadedFileName('');
+                      }}
+                      className="text-slate-400 hover:text-rose-600 text-[11px] font-semibold underline cursor-pointer shrink-0 ml-2"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
 
                 {/* Gradient Theme Preset */}
                 <div>
@@ -1253,7 +1509,6 @@ export default function AdminHeroSlidesPage() {
                     </span>
                   </label>
                 </div>
-              </div>
 
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">

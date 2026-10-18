@@ -4624,7 +4624,7 @@ export async function createHeroSlide(data: Partial<HeroSlideData>) {
   try {
     await requireAdminSession();
     if (!data.title?.trim() || !data.imageUrl?.trim()) {
-      return { success: false, message: "Title and Image URL are required." };
+      return { success: false, message: "Slide Title and Image (upload or URL) are required." };
     }
     const maxOrder = await prisma.heroSlide.aggregate({ _max: { order: true } });
     const nextOrder = (maxOrder._max.order ?? 0) + 1;
