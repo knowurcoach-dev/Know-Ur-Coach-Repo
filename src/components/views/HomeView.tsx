@@ -25,7 +25,12 @@ import {
   getCategoryPillar,
 } from '@/lib/categories';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
-import { getPopularNeighbourhoodsForCity, CityNeighbourhood, isStateLocation } from '@/lib/location';
+import {
+  getPopularNeighbourhoodsForCity,
+  CityNeighbourhood,
+  isStateLocation,
+  ALL_INDIA_POPULAR_NEIGHBOURHOODS,
+} from '@/lib/location';
 import { HowItWorksSection } from '@/components/home/HowItWorksSection';
 import { ParentTestimonialsSection } from '@/components/home/ParentTestimonialsSection';
 import {
@@ -115,7 +120,7 @@ function mapCentresToAcademies(centres: any[], activeCity?: string): Academy[] {
 
 export function HomeView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
-  const { activeCity, setLocation, showToast } = usePersona();
+  const { activeCity, activeLocality, setLocation, showToast } = usePersona();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSectionRef = useRef<HTMLDivElement>(null);
@@ -239,22 +244,39 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
 
   // Check if India is selected or a State is selected
   const isAllIndia = useMemo(() => {
-    return !activeCity || activeCity.trim() === '' || activeCity.toLowerCase().includes('india');
+    return !activeCity || activeCity.trim() === '' || activeCity.toLowerCase().includes('india') || activeCity.toLowerCase() === 'all';
   }, [activeCity]);
 
   const isState = useMemo(() => {
     return isStateLocation(activeCity);
   }, [activeCity]);
 
-  // Popular Neighbourhoods based on selected City, State, or India
+  // Determine the effective location for popular neighbourhoods:
+  // If activeLocality has its own dedicated neighbourhoods (e.g. 'Etmadpur'), prioritize it over broad parent city
+  const locationTarget = useMemo(() => {
+    if (activeLocality && activeLocality.toLowerCase() !== activeCity?.toLowerCase() && !activeLocality.toLowerCase().includes('india')) {
+      const localityNeighbourhoods = getPopularNeighbourhoodsForCity(activeLocality);
+      if (localityNeighbourhoods !== ALL_INDIA_POPULAR_NEIGHBOURHOODS && localityNeighbourhoods.length > 0) {
+        return activeLocality;
+      }
+    }
+    return activeCity;
+  }, [activeCity, activeLocality]);
+
+  // Popular Neighbourhoods based on selected Location, State, or India
   const popularNeighbourhoods = useMemo<CityNeighbourhood[]>(() => {
-    return getPopularNeighbourhoodsForCity(activeCity);
-  }, [activeCity]);
+    return getPopularNeighbourhoodsForCity(locationTarget);
+  }, [locationTarget]);
+
+  // Check if we are showing generic all-India fallback hubs
+  const isShowingAllIndiaFallback = useMemo(() => {
+    return isAllIndia || popularNeighbourhoods === ALL_INDIA_POPULAR_NEIGHBOURHOODS;
+  }, [isAllIndia, popularNeighbourhoods]);
 
   // Reset expansion state when active city changes
   useEffect(() => {
     setIsAllNeighbourhoodsExpanded(false);
-  }, [activeCity]);
+  }, [activeCity, activeLocality]);
 
   const INITIAL_NEIGHBOURHOODS_COUNT = 6;
   const visibleNeighbourhoods = useMemo(() => {
@@ -919,7 +941,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
                 <div className="flex items-center gap-1 shrink-0 mr-0.5">
                   <MapPin size={13} weight="fill" className="text-emerald-600" />
                   <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-800 uppercase tracking-wide shrink-0">
-                    {isAllIndia ? 'Popular Across India:' : `Popular in ${activeCity}:`}
+                    {isShowingAllIndiaFallback ? 'Popular Across India:' : `Popular in ${locationTarget}:`}
                   </span>
                 </div>
                 {visibleNeighbourhoods.map((nh) => (
@@ -931,7 +953,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
                     title={`Explore coaching in ${nh.name}${nh.cityName ? `, ${nh.cityName}` : ''}`}
                   >
                     <span>{nh.name}</span>
-                    {(isAllIndia || isState) && nh.cityName && (
+                    {(isShowingAllIndiaFallback || isState) && nh.cityName && (
                       <span className="text-[9px] text-slate-500 font-medium">({nh.cityName})</span>
                     )}
                   </button>

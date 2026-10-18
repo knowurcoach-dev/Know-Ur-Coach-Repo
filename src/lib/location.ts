@@ -54,6 +54,7 @@ export const AGRA_LOCALITIES = [
   { name: 'Bodla & Shastri Puram', distance: '6.1 km', lat: 27.1995, lon: 77.9520, description: 'Cricket Nets & Academies' },
   { name: 'Civil Lines', distance: '2.8 km', lat: 27.1932, lon: 78.0021, description: 'Badminton & Fitness Centers' },
   { name: 'Khandari', distance: '3.1 km', lat: 27.2110, lon: 77.9945, description: 'Multi-Sport Training Grounds' },
+  { name: 'Etmadpur', distance: '19.0 km', lat: 27.2344, lon: 78.1887, description: 'Athletics, Turf & Sports Hub' },
 ];
 
 export interface CityNeighbourhood {
@@ -74,6 +75,15 @@ export const POPULAR_CITY_NEIGHBOURHOODS: Record<string, CityNeighbourhood[]> = 
     { name: 'Shastri Puram', slug: 'shastri-puram', tag: 'Cricket Nets' },
     { name: 'Civil Lines', slug: 'civil-lines', tag: 'Badminton & Dance' },
     { name: 'Khandari', slug: 'khandari', tag: 'Multi-Sport Hub' },
+    { name: 'Etmadpur', slug: 'etmadpur', tag: 'Sports & Athletics Hub' },
+  ],
+  'Etmadpur': [
+    { name: 'Station Road', slug: 'station-road', tag: 'Coaching & Academy Hub' },
+    { name: 'Khandauli Road', slug: 'khandauli-road', tag: 'Sports Grounds' },
+    { name: 'Mandi Samiti', slug: 'mandi-samiti', tag: 'Martial Arts & Fitness' },
+    { name: 'Highway Corridor (NH-19)', slug: 'highway-corridor', tag: 'Turf & Cricket Nets' },
+    { name: 'Barhan Road', slug: 'barhan-road', tag: 'Badminton & Dance' },
+    { name: 'Gurukul Road', slug: 'gurukul-road', tag: 'Yoga & Athletics' },
   ],
   'Delhi NCR': [
     { name: 'Vasant Kunj', slug: 'vasant-kunj', tag: 'Tennis & Swimming' },
@@ -198,7 +208,7 @@ export const ALL_INDIA_POPULAR_NEIGHBOURHOODS: CityNeighbourhood[] = [
 ];
 
 export const STATE_TO_CITIES: Record<string, string[]> = {
-  'Uttar Pradesh': ['Agra', 'Lucknow'],
+  'Uttar Pradesh': ['Agra', 'Etmadpur', 'Lucknow'],
   'Maharashtra': ['Mumbai', 'Pune'],
   'Karnataka': ['Bengaluru'],
   'Telangana': ['Hyderabad'],
@@ -394,6 +404,8 @@ export function resolveCentreCity(centre: {
   if (
     text.includes('agra') ||
     text.includes('taj') ||
+    text.includes('etmadpur') ||
+    text.includes('itmadpur') ||
     text.includes('kamla nagar') ||
     text.includes('sanjay place') ||
     text.includes('dayalbagh') ||
@@ -514,14 +526,14 @@ function parseNominatimItems(items: any[], prefix: string): LocationResult[] {
     const state = addr.state || '';
     const postcode = addr.postcode || '';
 
-    let city =
-      addr.city ||
-      addr.town ||
-      addr.district ||
-      addr.state_district ||
-      addr.county ||
-      state ||
-      'Agra';
+    const rawDistrict = addr.district || addr.state_district || addr.county || '';
+    let city = addr.city || '';
+    if (!city && rawDistrict && Object.keys(POPULAR_CITY_NEIGHBOURHOODS).some((k) => k.toLowerCase() === rawDistrict.toLowerCase())) {
+      city = rawDistrict;
+    }
+    if (!city) {
+      city = addr.town || rawDistrict || state || 'Agra';
+    }
 
     // If city resolved to "India" or generic country, prefer state or town or Agra
     if (city.toLowerCase() === 'india' || city.toLowerCase() === 'republic of india') {
@@ -562,14 +574,14 @@ function parseSingleNominatimItem(item: any, lat: number, lon: number, prefix: s
   const state = addr.state || 'Uttar Pradesh';
   const postcode = addr.postcode || '';
 
-  let city =
-    addr.city ||
-    addr.town ||
-    addr.district ||
-    addr.state_district ||
-    addr.county ||
-    state ||
-    'Agra';
+  const rawDistrict = addr.district || addr.state_district || addr.county || '';
+  let city = addr.city || '';
+  if (!city && rawDistrict && Object.keys(POPULAR_CITY_NEIGHBOURHOODS).some((k) => k.toLowerCase() === rawDistrict.toLowerCase())) {
+    city = rawDistrict;
+  }
+  if (!city) {
+    city = addr.town || rawDistrict || state || 'Agra';
+  }
 
   if (city.toLowerCase() === 'india' || city.toLowerCase() === 'republic of india') {
     city = state || 'Agra';

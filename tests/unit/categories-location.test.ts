@@ -10,6 +10,7 @@ import {
   formatDistanceText,
   isStateLocation,
   resolveCentreCity,
+  getPopularNeighbourhoodsForCity,
 } from '@/lib/location';
 
 describe('Phase 16: Category Pillar Resolution & Location Geocoding Tests', () => {
@@ -145,6 +146,30 @@ describe('Phase 16: Category Pillar Resolution & Location Geocoding Tests', () =
     it('should fallback to Agra if neither city nor parseable address is found', () => {
       const centre = { address: 'Unknown address' };
       assert.strictEqual(resolveCentreCity(centre), 'Agra');
+    });
+  });
+
+  describe('getPopularNeighbourhoodsForCity() Location Hub Resolution', () => {
+    it('should return dedicated Etmadpur local hubs and not Kamla Nagar', () => {
+      const etmadpurHubs = getPopularNeighbourhoodsForCity('Etmadpur');
+      assert.ok(etmadpurHubs.length >= 4);
+
+      const hubNames = etmadpurHubs.map((h) => h.name);
+      assert.ok(hubNames.includes('Station Road'));
+      assert.ok(hubNames.includes('Khandauli Road'));
+      assert.ok(hubNames.includes('Mandi Samiti'));
+      assert.ok(hubNames.includes('Highway Corridor (NH-19)'));
+      // Verify Kamla Nagar is not erroneously listed as a direct local neighbourhood of Etmadpur
+      assert.strictEqual(hubNames.includes('Kamla Nagar'), false);
+    });
+
+    it('should include Kamla Nagar and Etmadpur under Agra district hubs', () => {
+      const agraHubs = getPopularNeighbourhoodsForCity('Agra');
+      const hubNames = agraHubs.map((h) => h.name);
+      assert.ok(hubNames.includes('Kamla Nagar'));
+      assert.ok(hubNames.includes('Sanjay Place'));
+      assert.ok(hubNames.includes('Dayalbagh'));
+      assert.ok(hubNames.includes('Etmadpur'));
     });
   });
 });
