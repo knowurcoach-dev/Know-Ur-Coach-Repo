@@ -1,7 +1,20 @@
 "use server";
 
 import prisma from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag, revalidateTag } from "next/cache";
+
+function invalidateTag(tag: string) {
+  try {
+    updateTag(tag);
+  } catch {
+    try {
+      revalidateTag(tag, { expire: 0 });
+    } catch {
+      // Non-fatal if invoked outside an active Next.js request lifecycle
+    }
+  }
+}
+import { getCachedDiscoveryData } from "@/lib/cached-queries";
 import bcrypt from "bcryptjs";
 import { KycStatus, SafetyGrade, SubscriptionPlan, CoachType, Role, PassType, EscrowStatus } from "@prisma/client";
 import { logAdminAction } from "@/lib/audit";
@@ -961,6 +974,12 @@ export async function approveCoachKyc(
       }).catch(() => null);
     }
 
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
+    revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
+    revalidatePath('/');
     revalidatePath('/admin');
     revalidatePath('/admin/verify-coaches');
     return {
@@ -1041,6 +1060,12 @@ export async function rejectCoachKyc(
       }).catch(() => null);
     }
 
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
+    revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
+    revalidatePath('/');
     revalidatePath('/admin');
     revalidatePath('/admin/verify-coaches');
     return {
@@ -1116,6 +1141,12 @@ export async function referBackCoachKyc(
       }).catch(() => null);
     }
 
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
+    revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
+    revalidatePath('/');
     revalidatePath('/admin');
     revalidatePath('/admin/verify-coaches');
     return {
@@ -1145,10 +1176,14 @@ export async function suspendCoach(centreId: string, notes: string = "Suspended 
         statusNotes: notes,
       },
     });
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
     revalidatePath('/admin');
     revalidatePath('/admin/coaches');
     revalidatePath('/admin/academies');
     revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     return { success: true, message: "Coach academy temporarily suspended." };
   } catch (err: any) {
@@ -1173,10 +1208,14 @@ export async function unsuspendCoach(centreId: string) {
         statusNotes: `Reactivated on ${new Date().toLocaleDateString('en-IN')}`,
       },
     });
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
     revalidatePath('/admin');
     revalidatePath('/admin/coaches');
     revalidatePath('/admin/academies');
     revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     return { success: true, message: "Coach academy reactivated and restored to live directory." };
   } catch (err: any) {
@@ -1205,10 +1244,14 @@ export async function updateCoachPlan(
         coachType,
       },
     });
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
     revalidatePath('/admin');
     revalidatePath('/admin/coaches');
     revalidatePath('/admin/academies');
     revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     return {
       success: true,
@@ -1233,11 +1276,15 @@ export async function deleteCoach(centreId: string) {
     await prisma.batch.deleteMany({ where: { coachingCentreId: centreId } });
     await prisma.lead.deleteMany({ where: { coachingCentreId: centreId } });
     await prisma.coachingCentre.delete({ where: { id: centreId } });
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
     revalidatePath('/admin');
     revalidatePath('/admin/verify-coaches');
     revalidatePath('/admin/coaches');
     revalidatePath('/admin/academies');
     revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     return { success: true, message: "Coaching center deleted successfully." };
   } catch (err: any) {
@@ -1321,11 +1368,15 @@ export async function updateCoachDetails(
         ...(data.referredBackRemarks !== undefined && { referredBackRemarks: data.referredBackRemarks }),
       },
     });
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
     revalidatePath('/admin');
     revalidatePath('/admin/verify-coaches');
     revalidatePath('/admin/coaches');
     revalidatePath('/admin/academies');
     revalidatePath('/activities');
+    revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     return { success: true, message: "Coach details saved successfully." };
   } catch (err: any) {
@@ -1408,8 +1459,19 @@ export async function deleteParent(parentId: string) {
 function safeRevalidatePath(path: string) {
   try {
     revalidatePath(path);
+    if (path === '/' || path === '/activities') {
+      invalidateTag('discovery');
+    }
   } catch {
     // Non-fatal if invoked outside an active Next.js request lifecycle (e.g. standalone scripts)
+  }
+}
+
+function safeRevalidateTag(tag: string) {
+  try {
+    invalidateTag(tag);
+  } catch {
+    // Non-fatal if invoked outside an active Next.js request lifecycle
   }
 }
 
@@ -1862,9 +1924,12 @@ export async function createCompetition(data: {
         umpiringRules: data.umpiringRules || "Federation certified officials.",
       },
     });
+    invalidateTag('discovery');
+    invalidateTag('competitions');
     revalidatePath('/admin');
     revalidatePath('/admin/competitions');
     revalidatePath('/competitions');
+    revalidatePath('/');
     return { success: true, competition: comp, message: `Tournament "${data.title}" created successfully!` };
   } catch (err: any) {
     console.error("DB createCompetition error:", err);
@@ -1877,9 +1942,12 @@ export async function deleteCompetition(id: string) {
   try {
     await prisma.booking.updateMany({ where: { competitionId: id }, data: { competitionId: null } });
     await prisma.competition.delete({ where: { id } });
+    invalidateTag('discovery');
+    invalidateTag('competitions');
     revalidatePath('/admin');
     revalidatePath('/admin/competitions');
     revalidatePath('/competitions');
+    revalidatePath('/');
     return { success: true, message: "Tournament deleted successfully." };
   } catch (err: any) {
     console.error("DB deleteCompetition error:", err);
@@ -1961,6 +2029,7 @@ export async function updatePlatformConfig(data: {
       },
     });
 
+    invalidateTag('discovery');
     revalidatePath('/');
     revalidatePath('/admin');
     revalidatePath('/admin/plans');
@@ -2001,11 +2070,15 @@ export async function getAdminDashboardData() {
           },
         },
         orderBy: [{ isTopInArea: 'desc' }, { rating: 'desc' }],
+        take: 200,
       }),
       prisma.parentProfile.findMany({
         include: {
           children: true,
-          bookings: true,
+          bookings: {
+            take: 10,
+            orderBy: { createdAt: 'desc' },
+          },
           user: {
             select: {
               id: true,
@@ -2018,6 +2091,8 @@ export async function getAdminDashboardData() {
             },
           },
         },
+        orderBy: { user: { createdAt: 'desc' } },
+        take: 200,
       }),
       prisma.category.findMany({
         orderBy: { order: 'asc' },
@@ -2137,97 +2212,7 @@ export async function getAdminDashboardData() {
 
 export async function getDiscoveryData() {
   try {
-    // Public discovery: only active, non-suspended centres on Standard or Premium/Premier plan tiers are publicly visible
-    const [centres, competitions, majorActivities, config, heroSlides, heroCarouselTheme] = await Promise.all([
-      prisma.coachingCentre.findMany({
-        where: {
-          isSuspended: false,
-          isActive: true,
-          kycStatus: KycStatus.APPROVED,
-          planTier: { in: [SubscriptionPlan.STANDARD, SubscriptionPlan.PREMIUM] },
-        },
-        include: {
-          facilities: true,
-          batches: true,
-          owner: {
-            select: {
-              id: true,
-              email: true,
-              phone: true,
-              role: true,
-            },
-          },
-        },
-        orderBy: [
-          { isTopInArea: 'desc' },
-          { isVerifiedBatch: 'desc' },
-          { planTier: 'desc' },
-          { rating: 'desc' },
-        ],
-      }),
-      prisma.competition.findMany({
-        orderBy: { registrationFee: 'asc' },
-      }),
-      prisma.majorActivity.findMany({
-        where: { isActive: true },
-        include: {
-          disciplines: {
-            where: { isActive: true },
-            orderBy: { order: 'asc' },
-          },
-        },
-        orderBy: { order: 'asc' },
-      }),
-      prisma.platformConfig.findUnique({
-        where: { id: 'default' },
-      }),
-      prisma.heroSlide.findMany({
-        where: { isActive: true },
-        orderBy: { order: 'asc' },
-      }),
-      readHeroCarouselTheme(),
-    ]);
-
-    const mappedActivities = (majorActivities || []).map((act: any) => ({
-      id: act.id,
-      name: act.name,
-      slug: act.slug,
-      description: act.description,
-      imageUrl: act.imageUrl,
-      icon: act.icon,
-      accentColor: act.accentColor,
-      order: act.order,
-      isActive: act.isActive,
-      categories: (act.disciplines || []).map((d: any) => ({
-        id: d.id,
-        activityId: d.activityId,
-        name: d.name,
-        slug: d.slug,
-        shortDesc: d.shortDesc,
-        imageUrl: d.imageUrl,
-        icon: d.icon,
-        badge: d.badge,
-        order: d.order,
-        isActive: d.isActive,
-      })),
-    }));
-
-    const allCategories = mappedActivities.flatMap((act) => act.categories);
-
-    const mappedCentres = (centres || []).map((c: any) => ({
-      ...c,
-      batches: (c.batches || []).map((b: any) => formatBatchItem(b, c.category)),
-    }));
-
-    return toPlainObject({
-      centres: mappedCentres,
-      competitions: competitions || [],
-      activities: mappedActivities,
-      categories: allCategories,
-      config,
-      heroSlides: heroSlides || [],
-      heroCarouselTheme: heroCarouselTheme || DEFAULT_HERO_CAROUSEL_THEME,
-    });
+    return await getCachedDiscoveryData();
   } catch (err) {
     console.error("[DB_ERROR] Failed to fetch discovery data from database:", err);
     throw new Error("Database error: Failed to fetch discovery data");
@@ -2981,17 +2966,23 @@ export async function submitCoachKycProfile(data: {
       include: { batches: true, facilities: true },
     });
 
-    // Add facilities if provided
+    // Add facilities if provided in batch
     if (data.safetyChecklist.facilities && data.safetyChecklist.facilities.length > 0) {
-      for (const fac of data.safetyChecklist.facilities) {
-        const existing = await prisma.facility.findFirst({
-          where: { coachingCentreId: targetCentreId, description: fac },
+      const validFacs = data.safetyChecklist.facilities.filter(Boolean);
+      const existingFacs = await prisma.facility.findMany({
+        where: { coachingCentreId: targetCentreId },
+        select: { description: true },
+      });
+      const existingSet = new Set(existingFacs.map((f) => f.description));
+      const toCreate = validFacs
+        .filter((fac) => !existingSet.has(fac))
+        .map((fac) => ({ coachingCentreId: targetCentreId!, description: fac }));
+
+      if (toCreate.length > 0) {
+        await prisma.facility.createMany({
+          data: toCreate,
+          skipDuplicates: true,
         });
-        if (!existing) {
-          await prisma.facility.create({
-            data: { coachingCentreId: targetCentreId, description: fac },
-          });
-        }
       }
     }
 
@@ -3044,11 +3035,16 @@ export async function submitCoachKycProfile(data: {
       }).catch(() => null);
     }
 
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${targetCentreId}`);
     revalidatePath('/coach/dashboard');
     revalidatePath('/coach/batches');
     revalidatePath('/admin');
     revalidatePath('/admin/verify-coaches');
     revalidatePath('/activities');
+    revalidatePath(`/activities/${targetCentreId}`);
+    revalidatePath('/');
 
     return {
       success: true,
@@ -3154,8 +3150,13 @@ export async function updateCoachAcademyProfile(data: {
       }
     }
 
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${data.centreId}`);
     revalidatePath('/coach/dashboard');
     revalidatePath('/activities');
+    revalidatePath(`/activities/${data.centreId}`);
+    revalidatePath('/');
     return { success: true, centre: toPlainObject(updated) };
   } catch (err) {
     console.warn("DB updateCoachAcademyProfile error:", err);
@@ -4544,27 +4545,8 @@ export async function getAcademyById(id: string) {
     const cleanId = id?.trim();
     if (!cleanId) return { success: false, centre: null };
 
-    const centre = await prisma.coachingCentre.findFirst({
-      where: {
-        OR: [
-          { id: cleanId },
-          { id: { equals: cleanId, mode: 'insensitive' } },
-        ],
-      },
-      include: {
-        batches: true,
-        facilities: true,
-        reviews: {
-          orderBy: { createdAt: 'desc' },
-        },
-        owner: {
-          select: {
-            id: true,
-            phone: true,
-          },
-        },
-      },
-    });
+    const { getCachedAcademyById } = await import('@/lib/cached-queries');
+    const centre = await getCachedAcademyById(cleanId);
 
     if (!centre) {
       return { success: false, centre: null };
@@ -4572,7 +4554,7 @@ export async function getAcademyById(id: string) {
 
     return {
       success: true,
-      centre: toPlainObject(centre),
+      centre,
     };
   } catch (err) {
     console.error("[DB_ERROR] Failed to fetch academy by id:", err);
@@ -4668,6 +4650,7 @@ export async function createHeroSlide(data: Partial<HeroSlideData>) {
       },
     });
 
+    invalidateTag('discovery');
     revalidatePath('/');
     return { success: true, slide: toPlainObject(slide), message: "Slide created successfully!" };
   } catch (err: any) {
@@ -4701,6 +4684,7 @@ export async function updateHeroSlide(id: string, data: Partial<HeroSlideData>) 
       },
     });
 
+    invalidateTag('discovery');
     revalidatePath('/');
     return { success: true, slide: toPlainObject(slide), message: "Slide updated successfully!" };
   } catch (err: any) {
@@ -4716,6 +4700,7 @@ export async function deleteHeroSlide(id: string) {
       where: { id },
     });
 
+    invalidateTag('discovery');
     revalidatePath('/');
     return { success: true, message: "Slide deleted successfully!" };
   } catch (err: any) {
@@ -4727,12 +4712,17 @@ export async function deleteHeroSlide(id: string) {
 export async function reorderHeroSlides(slideOrders: { id: string; order: number }[]) {
   try {
     await requireAdminSession();
-    for (const item of slideOrders) {
-      await prisma.heroSlide.update({
-        where: { id: item.id },
-        data: { order: item.order },
-      });
+    if (slideOrders.length > 0) {
+      await prisma.$transaction(
+        slideOrders.map((item) =>
+          prisma.heroSlide.update({
+            where: { id: item.id },
+            data: { order: item.order },
+          })
+        )
+      );
     }
+    invalidateTag('discovery');
     revalidatePath('/');
     return { success: true, message: "Slides reordered successfully!" };
   } catch (err: any) {
@@ -4745,28 +4735,28 @@ export async function seedDefaultHeroSlides() {
   try {
     await requireAdminSession();
     await prisma.heroSlide.deleteMany();
-    for (const s of DEFAULT_HERO_SLIDES) {
-      await prisma.heroSlide.create({
-        data: {
-          title: s.title,
-          subtitle: s.subtitle,
-          badge: s.badge,
-          imageUrl: s.imageUrl,
-          ctaText: s.ctaText,
-          ctaLink: s.ctaLink,
-          secondaryCtaText: s.secondaryCtaText,
-          secondaryCtaLink: s.secondaryCtaLink,
-          accentGradient: s.accentGradient,
-          order: s.order,
-          isActive: s.isActive,
-          showBadge: s.showBadge ?? true,
-          showTitle: s.showTitle ?? true,
-          showSubtitle: s.showSubtitle ?? true,
-          showPrimaryCta: s.showPrimaryCta ?? true,
-          showSecondaryCta: s.showSecondaryCta ?? true,
-        },
-      });
-    }
+    await prisma.heroSlide.createMany({
+      data: DEFAULT_HERO_SLIDES.map((s) => ({
+        title: s.title,
+        subtitle: s.subtitle,
+        badge: s.badge,
+        imageUrl: s.imageUrl,
+        ctaText: s.ctaText,
+        ctaLink: s.ctaLink,
+        secondaryCtaText: s.secondaryCtaText,
+        secondaryCtaLink: s.secondaryCtaLink,
+        accentGradient: s.accentGradient,
+        order: s.order,
+        isActive: s.isActive,
+        showBadge: s.showBadge ?? true,
+        showTitle: s.showTitle ?? true,
+        showSubtitle: s.showSubtitle ?? true,
+        showPrimaryCta: s.showPrimaryCta ?? true,
+        showSecondaryCta: s.showSecondaryCta ?? true,
+      })),
+      skipDuplicates: true,
+    });
+    invalidateTag('discovery');
     revalidatePath('/');
     return { success: true, message: "Default hero slides seeded successfully!" };
   } catch (err: any) {
@@ -4799,6 +4789,7 @@ export async function updateHeroCarouselThemeAction(themeData: Partial<HeroCarou
       details: themeData as Record<string, any>,
     });
 
+    invalidateTag('discovery');
     revalidatePath('/');
     revalidatePath('/admin/theme');
     revalidatePath('/admin/hero-slides');
@@ -4824,6 +4815,7 @@ export async function resetHeroCarouselThemeAction() {
       details: { action: 'RESET_TO_DEFAULTS' },
     });
 
+    invalidateTag('discovery');
     revalidatePath('/');
     revalidatePath('/admin/theme');
     revalidatePath('/admin/hero-slides');

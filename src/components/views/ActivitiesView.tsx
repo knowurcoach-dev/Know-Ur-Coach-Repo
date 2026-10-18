@@ -32,7 +32,21 @@ import {
   Lightning,
 } from '@phosphor-icons/react';
 
-export function ActivitiesView() {
+function computeCountMap(centres: any[]) {
+  const countMap: Record<string, number> = {};
+  if (!Array.isArray(centres)) return countMap;
+  centres.forEach((a: any) => {
+    const cat = (a.category || '').toLowerCase();
+    const acts = (a.activities || []).map((x: string) => x.toLowerCase());
+    const allTags = [cat, ...acts];
+    allTags.forEach((t) => {
+      if (t) countMap[t] = (countMap[t] || 0) + 1;
+    });
+  });
+  return countMap;
+}
+
+export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { activeCity, activeLocality } = usePersona();
@@ -47,11 +61,18 @@ export function ActivitiesView() {
   const initialPillar = rawActivity || (initialCategory ? getCategoryPillar(initialCategory) : (inferred?.pillar || 'all'));
   const initialSearch = rawSearch || (initialCategory ? getCategoryDisplayName(initialCategory) : '');
 
-  const [activitiesList, setActivitiesList] = useState<any[]>([]);
-  const [academiesCountMap, setAcademiesCountMap] = useState<Record<string, number>>({});
-  const [totalAcademiesCount, setTotalAcademiesCount] = useState<number>(0);
-  const [isLoadingDb, setIsLoadingDb] = useState(true);
+  const [activitiesList, setActivitiesList] = useState<any[]>(() => initialData?.activities || []);
+  const [academiesCountMap, setAcademiesCountMap] = useState<Record<string, number>>(() =>
+    initialData?.centres ? computeCountMap(initialData.centres) : {}
+  );
+  const [totalAcademiesCount, setTotalAcademiesCount] = useState<number>(() =>
+    initialData?.centres?.length || 0
+  );
+  const hasTaxonomy = Boolean(initialData?.activities && initialData.activities.length > 0);
+  const [isLoadingDb, setIsLoadingDb] = useState(!hasTaxonomy);
   const [dbError, setDbError] = useState<string | null>(null);
+
+  const initialLoadedRef = useRef(hasTaxonomy);
 
   // Filter state for categories on this browse page
   const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(initialPillar);
@@ -94,16 +115,7 @@ export function ActivitiesView() {
       const rawCentres = (res as any).centres || (res as any).academies || [];
       if (rawCentres.length > 0) {
         setTotalAcademiesCount(rawCentres.length);
-        const countMap: Record<string, number> = {};
-        rawCentres.forEach((a: any) => {
-          const cat = (a.category || '').toLowerCase();
-          const acts = (a.activities || []).map((x: string) => x.toLowerCase());
-          const allTags = [cat, ...acts];
-          allTags.forEach((t) => {
-            if (t) countMap[t] = (countMap[t] || 0) + 1;
-          });
-        });
-        setAcademiesCountMap(countMap);
+        setAcademiesCountMap(computeCountMap(rawCentres));
       }
     } catch (err: any) {
       console.error('[DB_ERROR] Failed to fetch discovery data in ActivitiesView:', err);
@@ -115,6 +127,10 @@ export function ActivitiesView() {
   }, [activeCity]);
 
   useEffect(() => {
+    if (initialLoadedRef.current) {
+      initialLoadedRef.current = false;
+      return;
+    }
     fetchDbData();
   }, [fetchDbData]);
 

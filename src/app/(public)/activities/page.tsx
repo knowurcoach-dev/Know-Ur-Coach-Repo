@@ -1,7 +1,12 @@
 import React, { Suspense } from 'react';
 import { ActivitiesView } from '@/components/views/ActivitiesView';
+import { getCachedDiscoveryData } from '@/lib/cached-queries';
 
-export default function ActivitiesPage() {
+export const revalidate = 60; // ISR cache for 60 seconds with on-demand tag revalidation
+
+export default async function ActivitiesPage() {
+  const initialData = await getCachedDiscoveryData();
+
   return (
     <Suspense fallback={
       <div className="max-w-7xl mx-auto px-4 py-16 text-center">
@@ -9,7 +14,7 @@ export default function ActivitiesPage() {
         <p className="text-xs font-bold text-slate-500">Loading verified coaching &amp; activity centres...</p>
       </div>
     }>
-      <ActivitiesView />
+      <ActivitiesView initialData={initialData} />
     </Suspense>
   );
 }

@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '25mb',
     },
+    optimizePackageImports: [
+      '@phosphor-icons/react',
+      'date-fns',
+      'clsx',
+      'tailwind-merge',
+    ],
   },
 };
 

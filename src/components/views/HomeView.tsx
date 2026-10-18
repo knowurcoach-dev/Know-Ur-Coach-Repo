@@ -63,7 +63,57 @@ interface SearchSuggestion {
 
 const SLIDE_DURATION_MS = 5000; // 5.0 seconds standard ideal carousel timer
 
-export function HomeView() {
+function mapCentresToAcademies(centres: any[], activeCity?: string): Academy[] {
+  if (!Array.isArray(centres) || centres.length === 0) return [];
+  return centres.map((c: any) => {
+    const categorySlugs = (c.category ? c.category.split(',') : ['tennis'])
+      .map((s: string) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
+
+    return {
+      id: c.id,
+      name: c.name,
+      tagline: c.tagline,
+      category: (c.category as any) || 'tennis',
+      activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(c.category)],
+      activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(c.category),
+      locality: (c.locality as any) || 'central',
+      localityName: c.locality
+        ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+        : c.city || activeCity || 'City Center',
+      address: c.address,
+      phone: c.phone,
+      distance: 2.5,
+      distanceText: '2.5 km away',
+      age: ['u8', 'u12', 'u16'] as any,
+      ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
+      fee: Number(c.monthlyTuitionFee) || 1800,
+      trialFee: Number(c.trialFee) || 0,
+      rating: Number(c.rating) || 5.0,
+      reviewsCount: Number(c.reviewsCount || 0),
+      verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Inspected',
+      image: c.image || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600&auto=format&fit=crop',
+      coachName: c.headCoachName,
+      coachTitle: 'NIS Certified Head Coach',
+      coachesCount: c.coachesCount || 3,
+      ratio: c.studentCoachRatio || '1 : 8',
+      facilities: (c.facilities || []).map((f: any) => f.description),
+      safety: '24/7 CCTV • First Aid • Police Verified',
+      isTopInArea: c.isTopInArea,
+      planTier: c.planTier,
+      isVerifiedBatch: c.isVerifiedBatch,
+      coachType: c.coachType,
+      batches: (c.batches || []).map((b: any) => ({
+        name: b.name,
+        time: b.schedule,
+        seats: `${b.seatsFilled}/${b.totalSeats} Enrolled`,
+      })),
+    };
+  });
+}
+
+export function HomeView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
   const { activeCity, setLocation, showToast } = usePersona();
 
@@ -76,14 +126,28 @@ export function HomeView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMainActivity, setSelectedMainActivity] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [featuredAcademies, setFeaturedAcademies] = useState<Academy[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [featuredAcademies, setFeaturedAcademies] = useState<Academy[]>(() =>
+    initialData?.centres ? mapCentresToAcademies(initialData.centres, activeCity) : []
+  );
+  const hasDiscoveryData = Boolean(
+    (initialData?.activities && initialData.activities.length > 0) ||
+    (initialData?.heroSlides && initialData.heroSlides.length > 0)
+  );
+  const [isLoading, setIsLoading] = useState(!hasDiscoveryData);
 
   // Taxonomy & Hero Slides Data
-  const [platformCategories, setPlatformCategories] = useState<PlatformCategory[]>([]);
-  const [activitiesList, setActivitiesList] = useState<TaxonomyGroup[]>([]);
-  const [heroSlides, setHeroSlides] = useState<HeroSlideData[]>([]);
-  const [carouselTheme, setCarouselTheme] = useState<HeroCarouselTheme>(DEFAULT_HERO_CAROUSEL_THEME);
+  const [platformCategories, setPlatformCategories] = useState<PlatformCategory[]>(() =>
+    initialData?.categories || []
+  );
+  const [activitiesList, setActivitiesList] = useState<TaxonomyGroup[]>(() =>
+    initialData?.activities || []
+  );
+  const [heroSlides, setHeroSlides] = useState<HeroSlideData[]>(() =>
+    initialData?.heroSlides || []
+  );
+  const [carouselTheme, setCarouselTheme] = useState<HeroCarouselTheme>(() =>
+    initialData?.heroCarouselTheme || DEFAULT_HERO_CAROUSEL_THEME
+  );
   const [dbError, setDbError] = useState<string | null>(null);
 
   // Carousel State & Timing
@@ -97,6 +161,8 @@ export function HomeView() {
 
   // Popular Neighbourhoods Expansion State
   const [isAllNeighbourhoodsExpanded, setIsAllNeighbourhoodsExpanded] = useState(false);
+
+  const initialLoadedRef = useRef(hasDiscoveryData);
 
   // Load dynamic data from DB (Centres, Categories, Activities, Hero Slides)
   const loadData = useCallback(async () => {
@@ -123,53 +189,7 @@ export function HomeView() {
         setPlatformCategories([]);
       }
       if (data.centres && Array.isArray(data.centres) && data.centres.length > 0) {
-        const mapped = data.centres.map((c: any) => {
-          const categorySlugs = (c.category ? c.category.split(',') : ['tennis'])
-            .map((s: string) => s.trim().toLowerCase())
-            .filter(Boolean);
-          const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
-
-          return {
-            id: c.id,
-            name: c.name,
-            tagline: c.tagline,
-            category: (c.category as any) || 'tennis',
-            activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(c.category)],
-            activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(c.category),
-            locality: (c.locality as any) || 'central',
-            localityName: c.locality
-              ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-              : c.city || activeCity || 'City Center',
-            address: c.address,
-            phone: c.phone,
-            distance: 2.5,
-            distanceText: '2.5 km away',
-            age: ['u8', 'u12', 'u16'] as any,
-            ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
-            fee: Number(c.monthlyTuitionFee) || 1800,
-            trialFee: Number(c.trialFee) || 0,
-            rating: Number(c.rating) || 5.0,
-            reviewsCount: Number(c.reviewsCount || 0),
-            verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Inspected',
-            image: c.image || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600&auto=format&fit=crop',
-            coachName: c.headCoachName,
-            coachTitle: 'NIS Certified Head Coach',
-            coachesCount: c.coachesCount || 3,
-            ratio: c.studentCoachRatio || '1 : 8',
-            facilities: (c.facilities || []).map((f: any) => f.description),
-            safety: '24/7 CCTV • First Aid • Police Verified',
-            isTopInArea: c.isTopInArea,
-            planTier: c.planTier,
-            isVerifiedBatch: c.isVerifiedBatch,
-            coachType: c.coachType,
-            batches: (c.batches || []).map((b: any) => ({
-              name: b.name,
-              time: b.schedule,
-              seats: `${b.seatsFilled}/${b.totalSeats} Enrolled`,
-            })),
-          };
-        });
-        setFeaturedAcademies(mapped);
+        setFeaturedAcademies(mapCentresToAcademies(data.centres, activeCity));
       } else {
         setFeaturedAcademies([]);
       }
@@ -183,6 +203,10 @@ export function HomeView() {
   }, [activeCity]);
 
   useEffect(() => {
+    if (initialLoadedRef.current) {
+      initialLoadedRef.current = false;
+      return;
+    }
     loadData();
   }, [loadData]);
 

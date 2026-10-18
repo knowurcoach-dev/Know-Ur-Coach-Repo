@@ -10,11 +10,20 @@ import { getToken } from 'next-auth/jwt';
 async function getAuthToken(request: NextRequest) {
   const secret = process.env.NEXTAUTH_SECRET || 'knowurcoach-secret-key-agra-2026';
 
-  // 1. Check for secure cookie (__Secure-next-auth.session-token) present in HTTPS/production
   const hasSecureCookie =
     request.cookies.has('__Secure-next-auth.session-token') ||
     request.cookies.getAll().some((c) => c.name.startsWith('__Secure-next-auth.session-token'));
 
+  const hasPlainCookie =
+    request.cookies.has('next-auth.session-token') ||
+    request.cookies.getAll().some((c) => c.name.startsWith('next-auth.session-token'));
+
+  // Fast path: if no session cookie exists, bail immediately to prevent blocking the 2-vCPU event loop
+  if (!hasSecureCookie && !hasPlainCookie) {
+    return null;
+  }
+
+  // 1. Check secure cookie if present
   if (hasSecureCookie) {
     try {
       const token = await getToken({
@@ -27,11 +36,7 @@ async function getAuthToken(request: NextRequest) {
     } catch {}
   }
 
-  // 2. Check for standard un-prefixed cookie (next-auth.session-token) present in HTTP/localhost
-  const hasPlainCookie =
-    request.cookies.has('next-auth.session-token') ||
-    request.cookies.getAll().some((c) => c.name.startsWith('next-auth.session-token'));
-
+  // 2. Check plain cookie if present
   if (hasPlainCookie) {
     try {
       const token = await getToken({
@@ -44,27 +49,12 @@ async function getAuthToken(request: NextRequest) {
     } catch {}
   }
 
-  // 3. Fallback: default resolution
+  // 3. Fallback default resolution
   try {
-    const token = await getToken({
-      req: request,
-      secret,
-    });
-    if (token) return token;
-  } catch {}
-
-  // 4. Fallback: try explicit secure resolution
-  try {
-    const token = await getToken({
-      req: request,
-      secret,
-      cookieName: '__Secure-next-auth.session-token',
-      secureCookie: true,
-    });
-    if (token) return token;
-  } catch {}
-
-  return null;
+    return await getToken({ req: request, secret });
+  } catch {
+    return null;
+  }
 }
 
 // ─── Proxy (Next.js 16 replacement for middleware) ────────────────────────────

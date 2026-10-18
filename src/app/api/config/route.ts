@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 export async function GET() {
   try {
     const config = await prisma.platformConfig.findUnique({
       where: { id: 'default' },
+      select: {
+        themeColor: true,
+        bgColor: true,
+        siteName: true,
+        tagline: true,
+      },
     });
 
     return NextResponse.json({
@@ -18,17 +23,24 @@ export async function GET() {
       tagline: config?.tagline || 'Hyperlocal Sports & Academy Discovery across India',
     }, {
       headers: {
-        'Cache-Control': 'no-store, max-age=0',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
       },
     });
   } catch (err) {
-    console.error("[DB_ERROR] Failed to fetch platform config from database:", err);
+    console.warn("[DB_WARNING] Database unreachable for platform config, serving defaults:", (err as any)?.message);
     return NextResponse.json(
       {
-        success: false,
-        error: 'Database error: Failed to fetch platform config',
+        success: true,
+        themeColor: 'emerald',
+        bgColor: 'slate',
+        siteName: 'KnowUrCoach',
+        tagline: 'Hyperlocal Sports & Academy Discovery across India',
       },
-      { status: 500 }
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+        },
+      }
     );
   }
 }

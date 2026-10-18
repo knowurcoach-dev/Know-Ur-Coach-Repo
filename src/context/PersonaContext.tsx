@@ -126,15 +126,12 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
 
   const refreshConfig = async () => {
     try {
-      await fetch('/api/config', { cache: 'no-store' });
+      await fetch('/api/config');
     } catch (err) {
       console.warn('Failed to fetch live config:', err);
     }
   };
 
-  useEffect(() => {
-    refreshConfig();
-  }, []);
 
   const showToast = (message: string) => {
     setToast(message);

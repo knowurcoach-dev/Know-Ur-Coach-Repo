@@ -10,8 +10,9 @@ export const prisma =
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+// Always store on globalThis across all environments to ensure a strict singleton
+// across Next.js webpack chunks and long-running Node.js server processes.
+globalForPrisma.prisma = prisma;
+
 
 export default prisma;
