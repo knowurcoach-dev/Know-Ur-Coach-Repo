@@ -672,3 +672,110 @@ export async function recordFailedPayment(params: {
   }
 }
 
+/**
+ * Creates a Razorpay order for online tournament registration fee.
+ */
+export async function createTournamentOrder(params: {
+  competitionId: string;
+  childNames: string[];
+  parentEmail: string;
+  parentName?: string;
+  parentPhone?: string;
+}) {
+  const { competitionId, childNames, parentEmail, parentName, parentPhone } = params;
+
+  try {
+    const comp = await prisma.competition.findUnique({
+      where: { id: competitionId },
+    });
+
+    if (!comp) {
+      return { success: false, message: 'Tournament not found.' };
+    }
+
+    const regFee = Number(comp.registrationFee) || 0;
+    const participantCount = Math.max(1, childNames.length);
+    const totalRupees = regFee * participantCount;
+
+    if (totalRupees <= 0) {
+      return {
+        success: true,
+        isFree: true,
+        orderId: null,
+        amount: 0,
+        currency: 'INR',
+        keyId: null,
+        isTestMode: true,
+        competitionTitle: comp.title,
+        message: 'Free tournament entry. No payment required.',
+      };
+    }
+
+    const amountInPaise = Math.round(totalRupees * 100);
+    const { razorpay, keyId, mode, isTestMode } = await createRazorpayInstance();
+
+    const receipt = `trn_${competitionId.slice(-6)}_${Date.now()}`;
+    const rzpOrder = await razorpay.orders.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt,
+      notes: {
+        competitionId,
+        competitionTitle: comp.title,
+        parentEmail,
+        parentPhone: parentPhone || '',
+        childNames: childNames.join(', '),
+        participantCount: String(participantCount),
+        type: 'TOURNAMENT_ENTRY',
+      },
+    });
+
+    return {
+      success: true,
+      isFree: false,
+      orderId: rzpOrder.id,
+      amount: totalRupees,
+      amountPaise: amountInPaise,
+      currency: 'INR',
+      keyId,
+      isTestMode,
+      competitionTitle: comp.title,
+      receipt,
+    };
+  } catch (err: any) {
+    console.error('[createTournamentOrder] Error creating order:', err);
+    return { success: false, message: err.message || 'Failed to create tournament order.' };
+  }
+}
+
+/**
+ * Verifies Razorpay signature for tournament payment.
+ */
+export async function verifyTournamentPayment(params: {
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}) {
+  const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = params;
+
+  try {
+    const creds = await getActiveRazorpayCredentials();
+
+    const expectedSignature = crypto
+      .createHmac('sha256', creds.keySecret)
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest('hex');
+
+    if (expectedSignature !== razorpaySignature) {
+      console.error('[verifyTournamentPayment] Signature mismatch!');
+      return { success: false, message: 'Invalid payment signature. Verification failed.' };
+    }
+
+    return { success: true, paymentId: razorpayPaymentId };
+  } catch (err: any) {
+    console.error('[verifyTournamentPayment] Error verifying payment:', err);
+    return { success: false, message: err.message || 'Payment verification failed.' };
+  }
+}
+
+

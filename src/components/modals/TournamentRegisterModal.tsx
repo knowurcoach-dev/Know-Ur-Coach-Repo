@@ -5,7 +5,13 @@ import { DialogWrapper } from './DialogWrapper';
 import { useModalStore } from '@/hooks/useModalStore';
 import { usePersona } from '@/context/PersonaContext';
 import { useAuth } from '@/hooks/useAuth';
-import { registerTournamentEntry, getParentDashboardData, addChildProfile } from '@/lib/actions';
+import {
+  registerTournamentEntry,
+  getParentDashboardData,
+  addChildProfile,
+  createTournamentRazorpayOrderAction,
+  verifyTournamentPaymentAction,
+} from '@/lib/actions';
 import { downloadBookingSlip } from '@/lib/downloadBookingSlip';
 import {
   Trophy,
@@ -22,8 +28,30 @@ import {
   Check,
   ShieldCheck,
   LockKey,
+  CreditCard,
+  Wallet,
+  CurrencyInr,
 } from '@phosphor-icons/react';
 import { useRouter } from 'next/navigation';
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve(false);
+      return;
+    }
+    if ((window as any).Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export function TournamentRegisterModal() {
   const { isOpen, activeModal, modalData, closeModal } = useModalStore();
@@ -36,6 +64,8 @@ export function TournamentRegisterModal() {
   const [selectedChildNames, setSelectedChildNames] = useState<string[]>([]);
   const [bookingId, setBookingId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'venue'>('razorpay');
+  const [isRazorpayReady, setIsRazorpayReady] = useState(false);
 
   // Quick Add Child inline state
   const [showAddChild, setShowAddChild] = useState(false);
@@ -50,10 +80,15 @@ export function TournamentRegisterModal() {
   const compSport = competition.sport || 'Sports Tournament';
   const compVenue = competition.venue || 'Premier Sports Complex';
   const compDate = competition.date || competition.dates || 'Upcoming';
-  const compFee = competition.fee || competition.registrationFee || 450;
+  const compFee = competition.fee !== undefined ? Number(competition.fee) : (competition.registrationFee !== undefined ? Number(competition.registrationFee) : 450);
   const prizePool = competition.prizePool || 'Medals & State Certificates';
+  const isFree = compFee === 0;
 
   const userEmail = session?.user?.email || (user as any)?.email;
+
+  useEffect(() => {
+    loadRazorpayScript().then(setIsRazorpayReady);
+  }, []);
 
   useEffect(() => {
     if (!isModalOpen || isGuest || !userEmail) return;
@@ -63,7 +98,11 @@ export function TournamentRegisterModal() {
         const res = await getParentDashboardData(userEmail);
         if (res?.children && res.children.length > 0) {
           setChildrenList(res.children);
-          setSelectedChildNames([res.children[0].fullName]);
+          if (modalData?.selectedChildNames && Array.isArray(modalData.selectedChildNames) && modalData.selectedChildNames.length > 0) {
+            setSelectedChildNames(modalData.selectedChildNames);
+          } else {
+            setSelectedChildNames([res.children[0].fullName]);
+          }
         } else {
           setChildrenList([]);
           setSelectedChildNames([]);
@@ -77,7 +116,7 @@ export function TournamentRegisterModal() {
     }
 
     fetchChildren();
-  }, [isModalOpen, userEmail, isGuest]);
+  }, [isModalOpen, userEmail, isGuest, modalData]);
 
   const handleClose = () => {
     closeModal();
@@ -148,6 +187,7 @@ export function TournamentRegisterModal() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (isGuest || !userEmail) {
       showToast('⚠️ Please sign in or create a parent account to register for tournaments');
       handleClose();
@@ -160,29 +200,141 @@ export function TournamentRegisterModal() {
       return;
     }
 
+    // CASE 1: Free Tournament or Pay at Venue selected
+    if (isFree || paymentMethod === 'venue') {
+      setSubmitting(true);
+      try {
+        const res = await registerTournamentEntry({
+          competitionId: competition.id,
+          competitionTitle: compTitle,
+          childNames: selectedChildNames,
+          childName: selectedChildNames.join(', '),
+          parentEmail: userEmail,
+          parentName: session?.user?.name || undefined,
+          netAmountPaid: 0,
+        });
+
+        if (!res.success) {
+          showToast(res.message || '⚠️ Tournament registration could not be completed');
+          return;
+        }
+
+        setBookingId(res.passId || res.bookingId);
+        setStep('success');
+        showToast(
+          isFree
+            ? `🏆 Free Entry Pass confirmed for ${selectedChildNames.join(' & ')}!`
+            : `🎟️ Entry registered! Please pay ₹${compFee * selectedChildNames.length} at tournament desk on match day.`
+        );
+      } catch (err) {
+        console.error('Tournament registration error:', err);
+        showToast('⚠️ Failed to complete tournament registration. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // CASE 2: Paid Tournament via Razorpay
     setSubmitting(true);
     try {
-      const res = await registerTournamentEntry({
+      const orderRes = await createTournamentRazorpayOrderAction({
         competitionId: competition.id,
-        competitionTitle: compTitle,
         childNames: selectedChildNames,
-        childName: selectedChildNames.join(', '),
         parentEmail: userEmail,
         parentName: session?.user?.name || undefined,
+        parentPhone: (user as any)?.phone || undefined,
       });
 
-      if (!res.success) {
-        showToast(res.message || '⚠️ Tournament registration could not be completed');
+      if (!orderRes.success) {
+        showToast(orderRes.message || '⚠️ Failed to initiate payment order.');
+        setSubmitting(false);
         return;
       }
 
-      setBookingId(res.passId);
-      setStep('success');
-      showToast(`🏆 Registration confirmed for ${selectedChildNames.join(' & ')}!`);
-    } catch (err) {
-      console.error('Tournament registration error:', err);
-      showToast('⚠️ Failed to complete tournament registration. Please try again.');
-    } finally {
+      if (orderRes.isFree) {
+        const res = await registerTournamentEntry({
+          competitionId: competition.id,
+          competitionTitle: compTitle,
+          childNames: selectedChildNames,
+          parentEmail: userEmail,
+          parentName: session?.user?.name || undefined,
+          netAmountPaid: 0,
+        });
+        setBookingId(res.passId || res.bookingId);
+        setStep('success');
+        setSubmitting(false);
+        return;
+      }
+
+      if (typeof window === 'undefined' || !(window as any).Razorpay) {
+        const loaded = await loadRazorpayScript();
+        if (!loaded) {
+          showToast('⚠️ Razorpay payment SDK could not be loaded. Check your internet connection.');
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      const options = {
+        key: orderRes.keyId,
+        amount: orderRes.amountPaise,
+        currency: 'INR',
+        name: 'KnowUrCoach Competitions',
+        description: `Entry Pass: ${compTitle} (${selectedChildNames.length} Participant${selectedChildNames.length > 1 ? 's' : ''})`,
+        order_id: orderRes.orderId,
+        prefill: {
+          name: session?.user?.name || '',
+          email: userEmail,
+          contact: (user as any)?.phone || '',
+        },
+        theme: {
+          color: '#ea580c',
+        },
+        handler: async function (response: any) {
+          try {
+            const verifyRes = await verifyTournamentPaymentAction({
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              competitionId: competition.id,
+              childNames: selectedChildNames,
+              parentEmail: userEmail,
+              parentName: session?.user?.name || undefined,
+              parentPhone: (user as any)?.phone || undefined,
+            });
+
+            if (verifyRes.success) {
+              setBookingId((verifyRes as any).passId || (verifyRes as any).bookingId || '');
+              setStep('success');
+              showToast(`🏆 Payment Verified! Registration confirmed for ${selectedChildNames.join(' & ')}.`);
+            } else {
+              showToast(verifyRes.message || 'Payment verification failed.');
+            }
+          } catch (vErr) {
+            console.error('Payment verification error:', vErr);
+            showToast('⚠️ Error confirming payment. Please contact coordinator.');
+          } finally {
+            setSubmitting(false);
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            setSubmitting(false);
+            showToast('Payment window was closed.');
+          },
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (resp: any) {
+        showToast(`⚠️ Payment failed: ${resp.error?.description || 'Gateway declined'}`);
+        setSubmitting(false);
+      });
+      rzp.open();
+    } catch (err: any) {
+      console.error('Razorpay tournament launch error:', err);
+      showToast('⚠️ Could not open payment checkout. Please retry.');
       setSubmitting(false);
     }
   };
@@ -362,6 +514,58 @@ export function TournamentRegisterModal() {
             )}
           </div>
 
+          {/* Payment Method Selector (Only for paid tournaments) */}
+          {!isFree && (
+            <div className="space-y-2 border-t border-slate-100 pt-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-[11px] font-extrabold text-slate-700 uppercase tracking-wide">
+                  Payment Method *
+                </label>
+                <span className="text-xs font-black text-orange-600">
+                  Total: ₹{(compFee * Math.max(1, selectedChildNames.length)).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('razorpay')}
+                  className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                    paymentMethod === 'razorpay'
+                      ? 'bg-orange-50/80 border-orange-500 ring-1 ring-orange-500 text-orange-950'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <div className={`p-1.5 rounded-lg shrink-0 ${paymentMethod === 'razorpay' ? 'bg-orange-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                    <CreditCard size={16} weight="bold" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-extrabold text-xs">Pay Online (Razorpay)</div>
+                    <div className="text-[10px] text-slate-500 font-medium">Instant pass • UPI, Cards, NetBanking</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('venue')}
+                  className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                    paymentMethod === 'venue'
+                      ? 'bg-orange-50/80 border-orange-500 ring-1 ring-orange-500 text-orange-950'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <div className={`p-1.5 rounded-lg shrink-0 ${paymentMethod === 'venue' ? 'bg-orange-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                    <Wallet size={16} weight="bold" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-extrabold text-xs">Pay at Reporting Desk</div>
+                    <div className="text-[10px] text-slate-500 font-medium">Cash / Spot UPI at match-day counter</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Guarantee Note */}
           <div className="bg-emerald-50/80 p-3 rounded-2xl border border-emerald-200 text-xs flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
@@ -369,7 +573,13 @@ export function TournamentRegisterModal() {
             </div>
             <div>
               <div className="font-extrabold text-emerald-950 text-xs">Official Registration Guarantee</div>
-              <div className="text-[11px] text-emerald-700">Present your booking reference number at the reporting desk on match day.</div>
+              <div className="text-[11px] text-emerald-700">
+                {isFree
+                  ? 'Free official entry pass with instant verification QR code for match-day check-in.'
+                  : paymentMethod === 'razorpay'
+                  ? '100% Escrow protected via Razorpay. Instant verified digital QR pass issued to WhatsApp.'
+                  : 'Pay fee at match-day reporting counter to collect your tournament credentials.'}
+              </div>
             </div>
           </div>
 
@@ -381,11 +591,19 @@ export function TournamentRegisterModal() {
           >
             {submitting ? (
               <>
-                <CircleNotch size={16} weight="bold" className="animate-spin" /> Confirming Tournament Entry...
+                <CircleNotch size={16} weight="bold" className="animate-spin" /> Processing Entry Pass...
+              </>
+            ) : isFree ? (
+              <>
+                <CheckCircle size={16} weight="bold" /> Book Free Entry Pass
+              </>
+            ) : paymentMethod === 'razorpay' ? (
+              <>
+                <CreditCard size={16} weight="bold" /> Pay ₹{(compFee * Math.max(1, selectedChildNames.length)).toLocaleString('en-IN')} via Razorpay
               </>
             ) : (
               <>
-                <CheckCircle size={16} weight="bold" /> Confirm Registration &amp; Get Reference Slip
+                <CheckCircle size={16} weight="bold" /> Confirm Registration (Pay at Venue)
               </>
             )}
           </button>

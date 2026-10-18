@@ -21,6 +21,7 @@ import {
   Megaphone,
   CreditCard,
   Lock,
+  Trophy,
 } from '@phosphor-icons/react';
 import { getCoachDashboardData } from '@/lib/actions';
 
@@ -43,6 +44,7 @@ const navItems = [
     group: 'Academy Management',
     items: [
       { label: 'Batch Management', href: '/coach/batches', icon: CalendarCheck, isGated: true },
+      { label: 'Tournaments & Events', href: '/coach/tournaments', icon: Trophy, isGated: true },
       { label: 'Revenue & Analytics', href: '/coach/revenue', icon: CurrencyInr, isGated: true },
       { label: 'Academy Profile', href: '/coach/profile', icon: Buildings, isGated: false },
     ],

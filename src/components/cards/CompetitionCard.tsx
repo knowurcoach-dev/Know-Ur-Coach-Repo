@@ -140,7 +140,10 @@ export function CompetitionCard({
       {/* Title & Organizer */}
       <div>
         <h3
-          onClick={() => onOpenDetails && onOpenDetails(competition)}
+          onClick={() => {
+            if (onOpenDetails) onOpenDetails(competition);
+            else router.push(`/competitions/${competition.id}`);
+          }}
           className="font-extrabold text-[#0a1128] text-base leading-snug mb-1 hover:text-orange-600 cursor-pointer transition-colors"
         >
           {competition.title}
@@ -219,7 +222,10 @@ export function CompetitionCard({
         </button>
 
         <button
-          onClick={() => (onOpenDetails ? onOpenDetails(competition) : showToast(`Viewing details for ${competition.title}`))}
+          onClick={() => {
+            if (onOpenDetails) onOpenDetails(competition);
+            else router.push(`/competitions/${competition.id}`);
+          }}
           className="flex-1 bg-white border border-orange-200 text-orange-600 hover:bg-orange-50 text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1 transition-colors cursor-pointer active:scale-[0.98]"
         >
           <Info size={15} weight="bold" />

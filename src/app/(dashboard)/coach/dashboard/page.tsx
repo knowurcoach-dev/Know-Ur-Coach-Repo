@@ -11,6 +11,7 @@ import {
   getCoachDashboardData,
   submitCoachKycProfile,
   updateCoachAcademyProfile,
+  getCoachTournamentsAction,
 } from '@/lib/actions';
 import { parseDocsPayload } from '@/lib/coach-docs';
 import { getCategoryEmoji, getCategoryDisplayName } from '@/lib/categories';
@@ -136,6 +137,10 @@ export default function CoachDashboardPage() {
   // Live Class Roster (starts clean for new coach)
   const [roster, setRoster] = useState<StudentRosterItem[]>([]);
   const [checkingStudentId, setCheckingStudentId] = useState<string | null>(null);
+
+  // Tournament metrics state
+  const [tournamentsCount, setTournamentsCount] = useState<number>(0);
+  const [registeredParticipantsCount, setRegisteredParticipantsCount] = useState<number>(0);
 
   // Load Coach & CoachingCentre Data
   useEffect(() => {
@@ -266,6 +271,18 @@ export default function CoachDashboardPage() {
           setCentreData(null);
           setBatches([]);
           setRoster([]);
+        }
+
+        // Load hosted tournaments and registered participant rosters
+        try {
+          const tRes = await getCoachTournamentsAction(userEmail);
+          if (tRes?.success && tRes.tournaments) {
+            setTournamentsCount(tRes.tournaments.length);
+            const totalReg = tRes.tournaments.reduce((acc: number, t: any) => acc + (t.participantsCount || 0), 0);
+            setRegisteredParticipantsCount(totalReg);
+          }
+        } catch (tErr) {
+          console.warn('Could not load coach tournaments in dashboard:', tErr);
         }
       } catch (err) {
         console.warn('Could not load coach centre data:', err);
@@ -574,6 +591,11 @@ export default function CoachDashboardPage() {
   const isPlanActive = subStatus.canOperate;
   const isOperationsUnlocked = isPlanActive;
   const isPublicLive = isApproved && isPlanActive;
+  const isCoachSubscribed =
+    (centreData?.planTier === 'STANDARD' ||
+      centreData?.planTier === 'PREMIUM' ||
+      Boolean(centreData?.isTrialActive)) &&
+    Boolean(subStatus.canOperate);
 
   const presentCount = roster.filter((s) => s.status === 'present').length;
   const activeBatch = batches.length > 0 ? batches[0] : null;
@@ -645,7 +667,7 @@ export default function CoachDashboardPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
             {isPublicLive ? (
               <Link
                 href={`/activities/${academyId}`}
@@ -668,6 +690,28 @@ export default function CoachDashboardPage() {
                 <span>Public Listing Locked</span>
               </div>
             )}
+
+            {/* Host Tournament Quick Action Button (Locked for non-subscription) */}
+            {isCoachSubscribed ? (
+              <button
+                onClick={() => openModal('competition-host', { centre: centreData, isSubscribed: true })}
+                className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trophy size={15} weight="fill" />
+                <span>Host Tournament</span>
+              </button>
+            ) : (
+              <Link
+                href="/coach/plans"
+                className="bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all border border-white/15 flex items-center gap-1.5 cursor-pointer"
+                title="Tournament hosting is locked for free/unsubscribed academies. Upgrade to unlock."
+              >
+                <Lock size={14} className="text-amber-400" />
+                <span>Host Tournament</span>
+                <span className="bg-amber-400/20 text-amber-300 text-[9px] px-1.5 py-0.5 rounded font-black uppercase">PRO</span>
+              </Link>
+            )}
+
             <button
               onClick={() => {
                 setActiveHubTab('batches');
@@ -1138,6 +1182,123 @@ export default function CoachDashboardPage() {
             </div>
           );
         })()}
+
+        {/* ══════════════════════════════════════════
+            ACADEMY TOURNAMENTS & CHAMPIONSHIPS PORTAL
+           ══════════════════════════════════════════ */}
+        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 space-y-5">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-100 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                  <Trophy size={18} weight="fill" />
+                </div>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                  Academy Tournaments &amp; District Championships
+                </h3>
+                {!isCoachSubscribed && (
+                  <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1 border border-amber-300">
+                    <Lock size={11} weight="bold" /> Partner Exclusive
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                Host official championships in {locality}, collect entry fees online via Razorpay or match-day desk, and manage real-time participant rosters.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              {isCoachSubscribed ? (
+                <>
+                  <button
+                    onClick={() => openModal('competition-host', { centre: centreData, isSubscribed: true })}
+                    className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 active:scale-95 text-white font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trophy size={15} weight="bold" />
+                    <span>Host New Tournament</span>
+                  </button>
+                  <Link
+                    href="/coach/tournaments"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs px-4 py-2.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Users size={15} weight="bold" />
+                    <span>View Registrations ({registeredParticipantsCount})</span>
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href="/coach/plans"
+                  className="bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Crown size={15} weight="bold" />
+                  <span>Unlock Tournament Hosting</span>
+                  <ArrowRight size={13} weight="bold" />
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {!isCoachSubscribed ? (
+            /* Locked state explanation banner */
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
+                  <Lock size={20} weight="bold" />
+                </div>
+                <div className="space-y-0.5 min-w-0">
+                  <div className="text-xs font-black text-amber-950">
+                    Tournament Hosting is Locked for Non-Subscribed Academies
+                  </div>
+                  <p className="text-[11px] text-amber-900 leading-relaxed">
+                    Publishing district championships, collecting entry fees via Razorpay, issuing verified QR passes, and viewing participant rosters requires an active <strong>Standard Growth</strong> or <strong>Premier Pro</strong> Partner plan.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/coach/plans"
+                className="w-full sm:w-auto shrink-0 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl text-center transition-all whitespace-nowrap"
+              >
+                View Partner Plans →
+              </Link>
+            </div>
+          ) : (
+            /* Subscribed summary metrics */
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-4 rounded-2xl bg-orange-50/60 border border-orange-200/80">
+                <span className="text-[10px] font-extrabold text-orange-700 uppercase tracking-wider block">
+                  Tournaments Hosted
+                </span>
+                <div className="text-2xl font-black text-orange-950 mt-1">{tournamentsCount}</div>
+                <span className="text-[11px] text-orange-800 font-medium">Published on KnowUrCoach</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200/80">
+                <span className="text-[10px] font-extrabold text-blue-700 uppercase tracking-wider block">
+                  Total Participants Registered
+                </span>
+                <div className="text-2xl font-black text-blue-950 mt-1">{registeredParticipantsCount}</div>
+                <span className="text-[11px] text-blue-800 font-medium">Verified junior entries</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider block">
+                    Payment &amp; Check-In Hub
+                  </span>
+                  <div className="text-xs font-extrabold text-emerald-950 mt-1">Razorpay + Match-Day Desk</div>
+                  <span className="text-[11px] text-emerald-800 font-medium">Track who paid &amp; check-in status</span>
+                </div>
+                <Link
+                  href="/coach/tournaments"
+                  className="text-emerald-700 hover:text-emerald-800 font-extrabold text-xs inline-flex items-center gap-1 mt-2.5"
+                >
+                  <span>Open Tournament Portal</span>
+                  <ArrowRight size={13} weight="bold" />
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ══════════════════════════════════════════
             ONBOARDING & PROFILE COMPLETION HUB

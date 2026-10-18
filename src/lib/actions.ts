@@ -802,6 +802,8 @@ export async function registerTournamentEntry(data: {
   parentPhone?: string;
   parentEmail?: string;
   parentName?: string;
+  paymentId?: string;
+  netAmountPaid?: number;
 }): Promise<{ success: boolean; bookingId: string; passId: string; message: string }> {
   // 1. Enforce authentication: Guest users must not be allowed to register
   if (!data.parentEmail || !data.parentEmail.trim()) {
@@ -849,11 +851,22 @@ export async function registerTournamentEntry(data: {
       comp = await prisma.competition.findFirst();
     }
 
-    const regFee = comp?.registrationFee ? Number(comp.registrationFee) : 450.00;
+    const regFee = comp?.registrationFee ? Number(comp.registrationFee) : 0.00;
+
+    // Check if tournament was hosted by a registered coaching centre
+    let hostCentreId: string | null = null;
+    if (comp?.organizer) {
+      const hostCentre = await prisma.coachingCentre.findFirst({
+        where: { name: { equals: comp.organizer.trim(), mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (hostCentre) hostCentreId = hostCentre.id;
+    }
 
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
       const curPassId = i === 0 ? primaryPassId : `KUC-TRN-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const effectivePaid = data.netAmountPaid !== undefined ? data.netAmountPaid : (data.paymentId ? regFee : 0.00);
 
       await prisma.booking.create({
         data: {
@@ -861,18 +874,22 @@ export async function registerTournamentEntry(data: {
           passType: PassType.TOURNAMENT_ENTRY,
           parentId: parent.id,
           childId: child.id,
+          coachingCentreId: hostCentreId,
           competitionId: comp ? comp.id : null,
           scheduledAt: new Date(),
           grossAmount: regFee,
           creditApplied: 0.00,
-          netAmountPaid: 0.00, // Offline direct registration fee
-          escrowStatus: EscrowStatus.HELD,
+          netAmountPaid: effectivePaid,
+          escrowStatus: effectivePaid > 0 ? EscrowStatus.HELD : EscrowStatus.RELEASED_TO_COACH,
+          bookingStatus: 'CONFIRMED',
         },
       });
     }
 
     revalidatePath('/parent/bookings');
     revalidatePath('/parent/dashboard');
+    revalidatePath('/coach/tournaments');
+    revalidatePath('/competitions');
     revalidatePath('/competitions');
 
     const names = data.childNames && data.childNames.length > 0 ? data.childNames.join(', ') : (data.childName || 'Child');
@@ -1916,6 +1933,40 @@ export async function createCompetition(data: {
     const sessionRole = (session?.user as any)?.role;
     if (!session || (sessionRole !== Role.COACH && sessionRole !== Role.ADMIN)) {
       return { success: false, message: 'Unauthorized. Only registered coaches, organizers, and administrators can host tournaments.' };
+    }
+
+    // Subscription check: Coaches must have an active Standard or Premium plan (or active trial)
+    if (sessionRole === Role.COACH) {
+      const coachUserId = (session.user as any)?.id;
+      const coachCentre = await prisma.coachingCentre.findFirst({
+        where: {
+          OR: [
+            ...(coachUserId ? [{ ownerUserId: coachUserId }] : []),
+            ...(session.user?.email ? [{ owner: { email: session.user.email } }] : []),
+          ],
+        },
+      });
+
+      if (!coachCentre) {
+        return { success: false, message: 'Coaching centre profile not found. Please setup your academy profile first.' };
+      }
+
+      const isSubscribed =
+        coachCentre.planTier === SubscriptionPlan.STANDARD ||
+        coachCentre.planTier === SubscriptionPlan.PREMIUM ||
+        coachCentre.isTrialActive;
+
+      if (!isSubscribed) {
+        return {
+          success: false,
+          isLocked: true,
+          message: 'Tournament hosting is an exclusive feature for Standard & Premium partner academies. Please upgrade your subscription to host tournaments.',
+        };
+      }
+
+      if (!data.organizer || data.organizer.trim() === '') {
+        data.organizer = coachCentre.name;
+      }
     }
 
     const comp = await prisma.competition.create({
@@ -5085,3 +5136,280 @@ export async function resetHeroCarouselThemeAction() {
     return { success: false, message: err?.message || "Failed to reset hero carousel theme." };
   }
 }
+
+// ==========================================
+// TOURNAMENT & COMPETITION ENHANCED ACTIONS
+// ==========================================
+
+export async function getCompetitionByIdAction(id: string) {
+  try {
+    const comp = await prisma.competition.findUnique({
+      where: { id },
+      include: {
+        bookings: {
+          select: {
+            id: true,
+            passId: true,
+            isCheckedIn: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (!comp) {
+      return { success: false, message: 'Tournament not found.' };
+    }
+
+    // Lookup host coaching centre if organizer name matches
+    let hostCentre: any = null;
+    if (comp.organizer) {
+      const centre = await prisma.coachingCentre.findFirst({
+        where: {
+          name: { equals: comp.organizer.trim(), mode: 'insensitive' },
+        },
+        select: {
+          id: true,
+          name: true,
+          locality: true,
+          address: true,
+          phone: true,
+          rating: true,
+          reviewsCount: true,
+          headCoachName: true,
+          category: true,
+          safetyGrade: true,
+          kycStatus: true,
+          planTier: true,
+        },
+      });
+      if (centre) {
+        hostCentre = {
+          ...centre,
+          rating: Number(centre.rating),
+        };
+      }
+    }
+
+    const formattedComp = {
+      ...comp,
+      registrationFee: Number(comp.registrationFee),
+      fee: Number(comp.registrationFee),
+      feeUnit: '/ participant',
+      date: comp.dates,
+      registeredCount: comp.bookings.length,
+    };
+
+    return {
+      success: true,
+      competition: formattedComp,
+      hostCentre,
+    };
+  } catch (err: any) {
+    console.error("getCompetitionByIdAction error:", err);
+    return { success: false, message: err?.message || 'Failed to fetch tournament.' };
+  }
+}
+
+export async function getCoachTournamentsAction(userEmail: string) {
+  try {
+    if (!userEmail) {
+      return { success: false, message: 'Authentication required' };
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: userEmail.trim().toLowerCase() },
+          { phone: userEmail.trim() },
+        ],
+      },
+      include: {
+        coachingCentre: true,
+      },
+    });
+
+    if (!user || !user.coachingCentre) {
+      return { success: false, message: 'Coach academy profile not found' };
+    }
+
+    const centre = user.coachingCentre;
+    const isSubscribed =
+      centre.planTier === SubscriptionPlan.STANDARD ||
+      centre.planTier === SubscriptionPlan.PREMIUM ||
+      centre.isTrialActive;
+
+    // Fetch all tournaments where organizer matches academy name OR bookings linked to centre
+    const tournaments = await prisma.competition.findMany({
+      where: {
+        OR: [
+          { organizer: { equals: centre.name.trim(), mode: 'insensitive' } },
+          { bookings: { some: { coachingCentreId: centre.id } } },
+        ],
+      },
+      include: {
+        bookings: {
+          include: {
+            parent: {
+              include: {
+                user: {
+                  select: { phone: true, email: true },
+                },
+              },
+            },
+            child: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: { id: 'desc' },
+    });
+
+    const mappedTournaments = tournaments.map((t) => {
+      const participants = t.bookings.map((b) => ({
+        bookingId: b.id,
+        passId: b.passId,
+        childName: b.child?.fullName || 'Child Participant',
+        childAge: b.child?.age || 10,
+        childGrade: b.child?.grade || '',
+        parentName: b.parent?.fullName || 'Parent',
+        parentPhone: b.parent?.user?.phone || b.parent?.emergencyContactPhone || '',
+        parentEmail: b.parent?.user?.email || '',
+        grossAmount: Number(b.grossAmount),
+        netAmountPaid: Number(b.netAmountPaid),
+        isPaid: Number(b.netAmountPaid) > 0,
+        paymentStatus: Number(b.netAmountPaid) > 0 ? 'PAID via Razorpay' : (Number(b.grossAmount) === 0 ? 'FREE ENTRY PASS' : 'PAY AT VENUE'),
+        bookingStatus: b.bookingStatus,
+        isCheckedIn: b.isCheckedIn,
+        checkedInAt: b.checkedInAt,
+        registeredAt: b.createdAt,
+      }));
+
+      const totalRevenue = participants.reduce((sum, p) => sum + p.netAmountPaid, 0);
+
+      return {
+        id: t.id,
+        title: t.title,
+        sport: t.sport,
+        category: t.category,
+        organizer: t.organizer,
+        dates: t.dates,
+        timing: t.timing,
+        venue: t.venue,
+        locality: t.locality,
+        registrationFee: Number(t.registrationFee),
+        ageDivisions: t.ageDivisions,
+        prizePool: t.prizePool,
+        equipmentRules: t.equipmentRules,
+        reportingRules: t.reportingRules,
+        matchFormat: t.matchFormat,
+        umpiringRules: t.umpiringRules,
+        rulebookPdfUrl: t.rulebookPdfUrl,
+        participantsCount: participants.length,
+        totalRevenue,
+        participants,
+      };
+    });
+
+    return {
+      success: true,
+      centre: {
+        id: centre.id,
+        name: centre.name,
+        planTier: centre.planTier,
+        isTrialActive: centre.isTrialActive,
+        locality: centre.locality,
+      },
+      isSubscribed,
+      tournaments: mappedTournaments,
+    };
+  } catch (err: any) {
+    console.error("getCoachTournamentsAction error:", err);
+    return { success: false, message: err?.message || 'Failed to fetch academy tournaments.' };
+  }
+}
+
+export async function toggleTournamentCheckInAction(bookingId: string, isCheckedIn: boolean) {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking) {
+      return { success: false, message: 'Registration record not found' };
+    }
+
+    const updated = await prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        isCheckedIn,
+        checkedInAt: isCheckedIn ? new Date() : null,
+      },
+    });
+
+    revalidatePath('/coach/tournaments');
+    revalidatePath('/coach/dashboard');
+    return {
+      success: true,
+      isCheckedIn: updated.isCheckedIn,
+      message: isCheckedIn ? 'Participant marked as Checked-In!' : 'Participant check-in cleared.',
+    };
+  } catch (err: any) {
+    console.error("toggleTournamentCheckInAction error:", err);
+    return { success: false, message: err?.message || 'Failed to toggle check-in status.' };
+  }
+}
+
+export async function createTournamentRazorpayOrderAction(params: {
+  competitionId: string;
+  childNames: string[];
+  parentEmail: string;
+  parentName?: string;
+  parentPhone?: string;
+}) {
+  try {
+    const { createTournamentOrder } = await import('@/lib/payments');
+    return await createTournamentOrder(params);
+  } catch (err: any) {
+    console.error("createTournamentRazorpayOrderAction error:", err);
+    return { success: false, message: err?.message || 'Failed to initiate tournament payment.' };
+  }
+}
+
+export async function verifyTournamentPaymentAction(params: {
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+  competitionId: string;
+  childNames: string[];
+  parentEmail: string;
+  parentName?: string;
+  parentPhone?: string;
+}) {
+  try {
+    const { verifyTournamentPayment } = await import('@/lib/payments');
+    const verifyRes = await verifyTournamentPayment({
+      razorpayOrderId: params.razorpayOrderId,
+      razorpayPaymentId: params.razorpayPaymentId,
+      razorpaySignature: params.razorpaySignature,
+    });
+
+    if (!verifyRes.success) {
+      return { success: false, message: verifyRes.message || 'Payment verification failed.' };
+    }
+
+    return await registerTournamentEntry({
+      competitionId: params.competitionId,
+      competitionTitle: '',
+      childNames: params.childNames,
+      parentEmail: params.parentEmail,
+      parentName: params.parentName,
+      parentPhone: params.parentPhone,
+      paymentId: params.razorpayPaymentId,
+    });
+  } catch (err: any) {
+    console.error("verifyTournamentPaymentAction error:", err);
+    return { success: false, message: err?.message || 'Failed to verify tournament payment.' };
+  }
+}
+
