@@ -11,31 +11,53 @@ const prisma = new PrismaClient();
 export async function seedAdmin(client: PrismaClient = prisma) {
   console.log('🛡️ [SEED-ADMIN] Starting platform admin and configuration bootstrap...');
 
-  // 1. BOOTSTRAP PLATFORM ADMINISTRATOR
-  const adminEmail = (process.env.ADMIN_EMAIL?.trim().toLowerCase()) || 'admin@knowurcoach.com';
-  const adminInitialPass = process.env.ADMIN_INITIAL_PASSWORD?.trim() || 'Admin@12345';
-  const adminPhone = process.env.ADMIN_PHONE?.trim() || '+919999988888';
+  // 1. BOOTSTRAP PLATFORM ADMINISTRATOR (.env)
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const adminInitialPass = process.env.ADMIN_INITIAL_PASSWORD?.trim();
+  const adminPhone = process.env.ADMIN_PHONE?.trim();
+
+  if (!adminEmail || !adminInitialPass || !adminPhone) {
+    throw new Error(
+      '❌ FATAL: Missing administrator environment variables.\n' +
+      'Please ensure ADMIN_EMAIL, ADMIN_INITIAL_PASSWORD, and ADMIN_PHONE are properly defined in your .env file before running seed:admin.'
+    );
+  }
 
   const passwordHash = await bcrypt.hash(adminInitialPass, 12);
 
-  const adminUser = await client.user.upsert({
-    where: { phone: adminPhone },
-    update: {
-      email: adminEmail,
-      role: Role.ADMIN,
-      passwordHash,
-      isActive: true,
-    },
-    create: {
-      id: `usr_${adminEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-      email: adminEmail,
-      phone: adminPhone,
-      role: Role.ADMIN,
-      passwordHash,
-      isActive: true,
+  let adminUser = await client.user.findFirst({
+    where: {
+      OR: [
+        { email: adminEmail },
+        { phone: adminPhone },
+      ],
     },
   });
-  console.log(`  ✓ Platform Administrator ready: ${adminUser.email} (Phone: ${adminUser.phone})`);
+
+  if (adminUser) {
+    adminUser = await client.user.update({
+      where: { id: adminUser.id },
+      data: {
+        email: adminEmail,
+        phone: adminPhone,
+        role: Role.ADMIN,
+        passwordHash,
+        isActive: true,
+      },
+    });
+  } else {
+    adminUser = await client.user.create({
+      data: {
+        id: `usr_${adminEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        email: adminEmail,
+        phone: adminPhone,
+        role: Role.ADMIN,
+        passwordHash,
+        isActive: true,
+      },
+    });
+  }
+  console.log(`  ✓ Platform Administrator provisioned: ${adminUser.email} (Role: ${adminUser.role})`);
 
   // 2. BOOTSTRAP PLATFORM CONFIG
   const config = await client.platformConfig.upsert({
@@ -122,21 +144,21 @@ export async function seedAdmin(client: PrismaClient = prisma) {
   await client.paymentSettings.upsert({
     where: { id: 'default' },
     update: {
-      razorpayTestKeyId: process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_placeholder',
-      razorpayTestKeySecret: process.env.RAZORPAY_KEY_SECRET || 'placeholder_secret',
-      webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_webhook_secret_agra_2026',
+      razorpayTestKeyId: process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || null,
+      razorpayTestKeySecret: process.env.RAZORPAY_KEY_SECRET || null,
+      webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || null,
     },
     create: {
       id: 'default',
-      razorpayTestKeyId: process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_placeholder',
-      razorpayTestKeySecret: process.env.RAZORPAY_KEY_SECRET || 'placeholder_secret',
+      razorpayTestKeyId: process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || null,
+      razorpayTestKeySecret: process.env.RAZORPAY_KEY_SECRET || null,
       razorpayLiveKeyId: null,
       razorpayLiveKeySecret: null,
       isTestMode: true,
-      webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_webhook_secret_agra_2026',
+      webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || null,
     },
   });
-  console.log('  ✓ PaymentSettings initialized.');
+  console.log('  ✓ PaymentSettings initialized from environment.');
 
   console.log('✅ [SEED-ADMIN] Platform admin & settings ready.');
   return { adminUser, config };
