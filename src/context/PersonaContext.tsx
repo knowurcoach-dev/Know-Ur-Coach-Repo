@@ -3,12 +3,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { GeoCoordinates } from '@/lib/location';
+import { LocationConfig, DEFAULT_LOCATION_CONFIG } from '@/lib/location-config';
 import { getUserNotifications, markAllNotificationsAsRead } from '@/lib/actions';
 
 // ─── App UI State Context ─────────────────────────────────────────────────────
-// Manages purely UI-level state: active tab, locality, city, coordinates, toast.
-// Provides automatic address hydration for registered users and customizable
-// manual locality selection for guests.
+// Manages purely UI-level state: active tab, locality, city, coordinates, toast,
+// and dynamic location configuration from administrator settings.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LocationState {
@@ -40,19 +40,22 @@ interface AppContextType {
   toast: string | null;
   showToast: (message: string) => void;
   refreshConfig: () => Promise<void>;
+  locationConfig: LocationConfig;
+  refreshLocationConfig: () => Promise<void>;
 }
 
 const PersonaContext = createContext<AppContextType | undefined>(undefined);
 
 const DEFAULT_LOCATION: LocationState = {
-  locality: 'All India',
-  city: 'All India',
-  coords: null,
+  locality: 'Agra',
+  city: 'Agra',
+  coords: { lat: 27.1767, lon: 78.0081 },
 };
 
 export function PersonaProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState<string>('home');
+  const [locationConfig, setLocationConfig] = useState<LocationConfig>(DEFAULT_LOCATION_CONFIG);
   const [activeLocality, setActiveLocality] = useState<string>(DEFAULT_LOCATION.locality);
   const [activeCity, setActiveCity] = useState<string>(DEFAULT_LOCATION.city);
   const [activeCoords, setActiveCoords] = useState<GeoCoordinates | null>(DEFAULT_LOCATION.coords);
@@ -61,7 +64,35 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [toast, setToast] = useState<string | null>(null);
 
-  // 1. Restore saved location preference from localStorage for guest users
+  // 1. Fetch live location configuration from server
+  const refreshLocationConfig = async () => {
+    try {
+      const res = await fetch('/api/location/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.config) {
+          setLocationConfig(data.config);
+          // If no custom user location is saved, apply administrator default landing hub
+          const saved = localStorage.getItem('kuc_user_location');
+          if (!saved && !session?.user?.locality) {
+            setActiveCity(data.config.defaultCity || 'Agra');
+            setActiveLocality(data.config.defaultLocality || data.config.defaultCity || 'Agra');
+            if (typeof data.config.defaultLat === 'number' && typeof data.config.defaultLon === 'number') {
+              setActiveCoords({ lat: data.config.defaultLat, lon: data.config.defaultLon });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch location config:', err);
+    }
+  };
+
+  useEffect(() => {
+    refreshLocationConfig();
+  }, []);
+
+  // 2. Restore saved location preference from localStorage for guest users
   useEffect(() => {
     try {
       const saved = localStorage.getItem('kuc_user_location');
@@ -265,6 +296,8 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
         toast,
         showToast,
         refreshConfig,
+        locationConfig,
+        refreshLocationConfig,
       }}
     >
       {children}

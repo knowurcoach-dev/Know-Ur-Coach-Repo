@@ -477,6 +477,7 @@ model PlatformConfig {
   standardPlanFeatures String? // JSON string or comma list of features
   premiumPlanFeatures  String? // JSON string or comma list of features
   heroCarouselTheme   String?  // JSON string for hero carousel theme, overlay & typography styling
+  locationConfig      String?  // JSON string for location modal settings, entry behavior & city arrangements
   updatedAt           DateTime @updatedAt
 }
 

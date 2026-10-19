@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { usePersona } from '@/context/PersonaContext';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -20,6 +20,7 @@ import {
 } from '@phosphor-icons/react';
 import { DialogWrapper } from './DialogWrapper';
 import { TOP_INDIAN_CITIES, TopCityItem, LocationResult } from '@/lib/location';
+import { sortConfiguredCities } from '@/lib/location-config';
 
 interface LocalityModalProps {
   isOpen: boolean;
@@ -44,6 +45,7 @@ export function LocalityModal({ isOpen, onClose }: LocalityModalProps) {
     detectGPSLocation,
     isDetectingGPS,
     showToast,
+    locationConfig,
   } = usePersona();
 
   const { isAuthenticated, user, session } = useAuth();
@@ -99,7 +101,14 @@ export function LocalityModal({ isOpen, onClose }: LocalityModalProps) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  if (!isOpen) return null;
+  // Compute sorted cities unconditionally (must run on every render before any returns)
+  const citiesList = useMemo(() => {
+    if (locationConfig?.cities && locationConfig.cities.length > 0) {
+      const active = locationConfig.cities.filter((c) => c.isActive);
+      return sortConfiguredCities(active, locationConfig.sortMode || 'manual');
+    }
+    return TOP_INDIAN_CITIES;
+  }, [locationConfig]);
 
   const commitLocation = (selection: PendingSelection) => {
     if (!selection.locality.trim() && !selection.city.trim()) return;
@@ -190,7 +199,11 @@ export function LocalityModal({ isOpen, onClose }: LocalityModalProps) {
   const registeredCity = (session?.user as any)?.city;
   const hasRegisteredAddress = Boolean(registeredLocality || registeredCity);
 
+  const showGps = locationConfig?.showGpsButton ?? true;
+  const showAllIndia = locationConfig?.showAllIndiaButton ?? true;
   const isAllIndiaActive = activeCity.toLowerCase().includes('india') || activeCity.toLowerCase() === 'all';
+
+  if (!isOpen) return null;
 
   return (
     <DialogWrapper
@@ -199,9 +212,10 @@ export function LocalityModal({ isOpen, onClose }: LocalityModalProps) {
       onClose={onClose}
       desktopWidth="md:max-w-2xl"
       icon={<Compass size={22} weight="fill" className="text-emerald-600" />}
-      title="Choose Your Location"
-      subtitle="Discover verified sports academies, coaches & creative labs across India"
+      title={locationConfig?.modalTitle || "Choose Your Location"}
+      subtitle={locationConfig?.modalSubtitle || "Discover verified sports academies, coaches & creative labs across India"}
       headerGradient="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50"
+      hideCloseButton={locationConfig ? !locationConfig.isDismissible : false}
     >
       <div className="p-4 sm:p-6 space-y-5 max-h-[82vh] overflow-y-auto">
         {/* User Account Registered Address Banner (if authenticated) */}
@@ -234,70 +248,76 @@ export function LocalityModal({ isOpen, onClose }: LocalityModalProps) {
         )}
 
         {/* 1-Tap Quick Action Row: GPS Auto-Detect & Pan-India Explore */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {/* Action 1: Use Current Location (GPS) */}
-          <button
-            type="button"
-            id="gps-location-btn"
-            onClick={handleGPSDetect}
-            disabled={isDetectingGPS}
-            className="p-3.5 rounded-2xl border-2 border-emerald-500/80 bg-gradient-to-br from-emerald-50/90 via-teal-50/60 to-white hover:from-emerald-100/90 hover:via-teal-100/60 hover:to-emerald-50 text-left transition-all cursor-pointer shadow-xs group flex items-center justify-between gap-3 disabled:opacity-75"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                {isDetectingGPS ? (
-                  <Spinner size={20} weight="bold" className="animate-spin" />
-                ) : (
-                  <NavigationArrow size={20} weight="fill" className="text-white" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                  <span>Use Current Location</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+        {(showGps || showAllIndia) && (
+          <div className={`grid gap-2.5 ${showGps && showAllIndia ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* Action 1: Use Current Location (GPS) */}
+            {showGps && (
+              <button
+                type="button"
+                id="gps-location-btn"
+                onClick={handleGPSDetect}
+                disabled={isDetectingGPS}
+                className="p-3.5 rounded-2xl border-2 border-emerald-500/80 bg-gradient-to-br from-emerald-50/90 via-teal-50/60 to-white hover:from-emerald-100/90 hover:via-teal-100/60 hover:to-emerald-50 text-left transition-all cursor-pointer shadow-xs group flex items-center justify-between gap-3 disabled:opacity-75"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                    {isDetectingGPS ? (
+                      <Spinner size={20} weight="bold" className="animate-spin" />
+                    ) : (
+                      <NavigationArrow size={20} weight="fill" className="text-white" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <span>{locationConfig?.gpsButtonLabel || 'Use Current Location'}</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    </div>
+                    <div className="text-[11px] text-slate-600 truncate">
+                      {isDetectingGPS ? 'Detecting device GPS...' : 'Auto-detect via GPS for nearby academies'}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-600 truncate">
-                  {isDetectingGPS ? 'Detecting device GPS...' : 'Auto-detect via GPS for nearby academies'}
-                </div>
-              </div>
-            </div>
-            <ArrowRight size={15} weight="bold" className="text-emerald-700 shrink-0 group-hover:translate-x-1 transition-transform" />
-          </button>
-
-          {/* Action 2: Explore All India (Pan-India) */}
-          <button
-            type="button"
-            id="pan-india-location-btn"
-            onClick={handleSelectAllIndia}
-            className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer shadow-xs group flex items-center justify-between gap-3 ${
-              isAllIndiaActive
-                ? 'border-blue-600 bg-blue-50/90 ring-2 ring-blue-500/20'
-                : 'border-blue-300/80 bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-white hover:from-blue-100/80 hover:via-indigo-100/50 hover:to-blue-50'
-            }`}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                <GlobeHemisphereWest size={20} weight="fill" className="text-white" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                  <span>Explore All India</span>
-                  <span className="text-[9px] bg-blue-100 text-blue-700 font-extrabold px-1.5 py-0.2 rounded-full">
-                    Pan-India
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-600 truncate">
-                  Browse top academies &amp; tournaments nationwide
-                </div>
-              </div>
-            </div>
-            {isAllIndiaActive ? (
-              <CheckCircle size={18} weight="fill" className="text-blue-600 shrink-0" />
-            ) : (
-              <ArrowRight size={15} weight="bold" className="text-blue-700 shrink-0 group-hover:translate-x-1 transition-transform" />
+                <ArrowRight size={15} weight="bold" className="text-emerald-700 shrink-0 group-hover:translate-x-1 transition-transform" />
+              </button>
             )}
-          </button>
-        </div>
+
+            {/* Action 2: Explore All India (Pan-India) */}
+            {showAllIndia && (
+              <button
+                type="button"
+                id="pan-india-location-btn"
+                onClick={handleSelectAllIndia}
+                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer shadow-xs group flex items-center justify-between gap-3 ${
+                  isAllIndiaActive
+                    ? 'border-blue-600 bg-blue-50/90 ring-2 ring-blue-500/20'
+                    : 'border-blue-300/80 bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-white hover:from-blue-100/80 hover:via-indigo-100/50 hover:to-blue-50'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                    <GlobeHemisphereWest size={20} weight="fill" className="text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <span>{locationConfig?.allIndiaButtonLabel || 'Explore All India'}</span>
+                      <span className="text-[9px] bg-blue-100 text-blue-700 font-extrabold px-1.5 py-0.2 rounded-full">
+                        Pan-India
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-600 truncate">
+                      Browse top academies &amp; tournaments nationwide
+                    </div>
+                  </div>
+                </div>
+                {isAllIndiaActive ? (
+                  <CheckCircle size={18} weight="fill" className="text-blue-600 shrink-0" />
+                ) : (
+                  <ArrowRight size={15} weight="bold" className="text-blue-700 shrink-0 group-hover:translate-x-1 transition-transform" />
+                )}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Live Search Bar for any Indian city, area, colony, or PIN code */}
         <div className="space-y-2">
@@ -322,7 +342,7 @@ export function LocalityModal({ isOpen, onClose }: LocalityModalProps) {
                   }
                 }
               }}
-              placeholder="Search city, area, neighbourhood or 6-digit PIN code (e.g. 110001, Indiranagar)..."
+              placeholder={locationConfig?.searchPlaceholder || "Search city, area, neighbourhood or 6-digit PIN code (e.g. 110001, Indiranagar)..."}
               className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200/90 rounded-2xl text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all shadow-inner"
             />
             {isSearching ? (
@@ -417,7 +437,7 @@ export function LocalityModal({ isOpen, onClose }: LocalityModalProps) {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-            {TOP_INDIAN_CITIES.map((cityItem) => {
+            {citiesList.map((cityItem: any) => {
               const isSelected =
                 !isAllIndiaActive &&
                 activeCity.toLowerCase() === cityItem.city.toLowerCase();

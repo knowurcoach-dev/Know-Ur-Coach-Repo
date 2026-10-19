@@ -26,7 +26,7 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
-  const { setActiveTab } = usePersona();
+  const { setActiveTab, locationConfig } = usePersona();
   const { isOpen, activeModal, closeModal } = useModalStore();
   const [localityModalOpen, setLocalityModalOpen] = useState(false);
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
@@ -65,23 +65,43 @@ export function AppShell({ children }: AppShellProps) {
 
   const isNoFooterRoute = isDashboardRoute || pathname.startsWith('/activities/explore');
 
-  // Automatic location selection modal popup for new users
+  // Automatic location selection modal popup configured by administrator
   useEffect(() => {
     if (isBareRoute || isDashboardRoute) return;
+
+    // Respect administrator's auto-show modal toggle
+    if (locationConfig && !locationConfig.autoShowModal) return;
 
     try {
       const saved = localStorage.getItem('kuc_user_location');
       const dismissed = sessionStorage.getItem('kuc_location_dismissed');
-      if (!saved && !dismissed) {
+
+      let shouldShow = false;
+      const frequency = locationConfig?.showFrequency || 'once_ever';
+
+      if (frequency === 'session') {
+        shouldShow = !dismissed;
+      } else if (frequency === 'always_until_selected') {
+        shouldShow = !saved;
+      } else {
+        // 'once_ever'
+        shouldShow = !saved && !dismissed;
+      }
+
+      if (shouldShow) {
+        const delay = typeof locationConfig?.autoShowDelayMs === 'number'
+          ? locationConfig.autoShowDelayMs
+          : 600;
+
         const timer = setTimeout(() => {
           setLocalityModalOpen(true);
-        }, 600);
+        }, delay);
         return () => clearTimeout(timer);
       }
     } catch (e) {
       // Ignore storage errors in restricted contexts
     }
-  }, [isBareRoute, isDashboardRoute]);
+  }, [isBareRoute, isDashboardRoute, locationConfig]);
 
   if (isBareRoute) {
     return (

@@ -21,6 +21,7 @@ import {
   Warning,
   Receipt,
   Slideshow,
+  MapPin,
 } from '@phosphor-icons/react';
 
 const navItems = [
@@ -44,6 +45,7 @@ const navItems = [
     group: 'Platform',
     items: [
       { label: 'Hero Carousel', href: '/admin/hero-slides', icon: Slideshow },
+      { label: 'Location Management', href: '/admin/locations', icon: MapPin },
       { label: 'Competition Management', href: '/admin/competitions', icon: Trophy },
       { label: 'Activities & Disciplines', href: '/admin/categories', icon: Palette },
     ],

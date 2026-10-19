@@ -16,6 +16,7 @@ interface DialogWrapperProps {
   id?: string;
   /** Max width for desktop centered dialog. Defaults to 'md:max-w-lg' */
   desktopWidth?: string;
+  hideCloseButton?: boolean;
 }
 
 export function DialogWrapper({
@@ -30,10 +31,11 @@ export function DialogWrapper({
   className = '',
   id,
   desktopWidth = 'md:max-w-lg',
+  hideCloseButton = false,
 }: DialogWrapperProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) onClose();
+      if (e.key === 'Escape' && isOpen && !hideCloseButton) onClose();
     };
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -43,7 +45,7 @@ export function DialogWrapper({
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, hideCloseButton]);
 
   if (!isOpen) return null;
 
@@ -54,7 +56,9 @@ export function DialogWrapper({
       id={id}
       role="dialog"
       aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (!hideCloseButton && e.target === e.currentTarget) onClose();
+      }}
       className="fixed inset-0 z-[200] flex items-end md:items-center justify-center backdrop-blur-sm bg-black/40 animate-fade-in"
     >
       <div
@@ -86,10 +90,12 @@ export function DialogWrapper({
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {headerRight}
-              <button type="button" onClick={onClose} aria-label="Close dialog"
-                className="w-8 h-8 rounded-full bg-white text-gray-400 hover:text-gray-700 flex items-center justify-center border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer">
-                <X size={15} weight="bold" />
-              </button>
+              {!hideCloseButton && (
+                <button type="button" onClick={onClose} aria-label="Close dialog"
+                  className="w-8 h-8 rounded-full bg-white text-gray-400 hover:text-gray-700 flex items-center justify-center border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer">
+                  <X size={15} weight="bold" />
+                </button>
+              )}
             </div>
           </div>
         )}

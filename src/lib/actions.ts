@@ -5661,3 +5661,85 @@ export async function verifyTournamentPaymentAction(params: {
   }
 }
 
+// ─── Location & Entry Modal Management Actions ───────────────────────────────
+
+export async function getLocationConfigAction() {
+  try {
+    const { readLocationConfig, getCityAcademyCounts } = await import('@/lib/location-server');
+    const config = await readLocationConfig();
+    const cityNames = config.cities.map((c) => c.city);
+    const counts = await getCityAcademyCounts(cityNames);
+    return { success: true, config, academyCounts: counts };
+  } catch (err: any) {
+    console.error("getLocationConfigAction error:", err);
+    const { DEFAULT_LOCATION_CONFIG } = await import('@/lib/location-config');
+    return { success: false, config: DEFAULT_LOCATION_CONFIG, academyCounts: {}, message: err?.message };
+  }
+}
+
+export async function updateLocationConfigAction(data: any) {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    const { writeLocationConfig, getCityAcademyCounts } = await import('@/lib/location-server');
+    const updated = await writeLocationConfig(data);
+    const cityNames = updated.cities.map((c) => c.city);
+    const counts = await getCityAcademyCounts(cityNames);
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          actorEmail: session.user.email || 'admin@knowurcoach.in',
+          actorRole: 'ADMIN',
+          action: 'LOCATION_CONFIG_UPDATED',
+          targetModel: 'PlatformConfig',
+          targetId: 'default',
+          details: {
+            defaultCity: updated.defaultCity,
+            autoShowModal: updated.autoShowModal,
+            sortMode: updated.sortMode,
+            cityCount: updated.cities.length,
+          },
+        },
+      });
+    } catch (auditErr) {
+      console.warn("Audit log write error for location config:", auditErr);
+    }
+
+    revalidatePath('/');
+    revalidatePath('/admin/locations');
+
+    return { success: true, config: updated, academyCounts: counts, message: 'Location configuration updated successfully!' };
+  } catch (err: any) {
+    console.error("updateLocationConfigAction error:", err);
+    return { success: false, message: err?.message || 'Failed to save location configuration.' };
+  }
+}
+
+export async function resetLocationConfigAction() {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    const { DEFAULT_LOCATION_CONFIG } = await import('@/lib/location-config');
+    const { writeLocationConfig, getCityAcademyCounts } = await import('@/lib/location-server');
+    const reset = await writeLocationConfig(DEFAULT_LOCATION_CONFIG);
+    const cityNames = reset.cities.map((c) => c.city);
+    const counts = await getCityAcademyCounts(cityNames);
+
+    revalidatePath('/');
+    revalidatePath('/admin/locations');
+
+    return { success: true, config: reset, academyCounts: counts, message: 'Location configuration restored to system defaults.' };
+  } catch (err: any) {
+    console.error("resetLocationConfigAction error:", err);
+    return { success: false, message: err?.message || 'Failed to reset location configuration.' };
+  }
+}
+
+
