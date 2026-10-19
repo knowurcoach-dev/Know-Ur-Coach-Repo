@@ -2,11 +2,14 @@ import type { MetadataRoute } from 'next';
 import { prisma } from '@/lib/prisma';
 import { APP_BASE_URL } from '@/lib/seo-config';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 3600; // Refresh dynamic sitemap hourly
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = APP_BASE_URL;
   const now = new Date();
 
-  // Core static pages
+  // Core static and discovery hub pages
   const staticRoutes: MetadataRoute.Sitemap = [
     {
       url: `${baseUrl}`,
@@ -21,10 +24,41 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.9,
     },
     {
+      url: `${baseUrl}/activities/explore`,
+      lastModified: now,
+      changeFrequency: 'daily',
+      priority: 0.9,
+    },
+    {
       url: `${baseUrl}/competitions`,
       lastModified: now,
       changeFrequency: 'daily',
       priority: 0.9,
+    },
+    // Top-level pillar category pages
+    {
+      url: `${baseUrl}/activities?category=sports`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/activities?category=brain-booster`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/activities?category=arts`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/activities?category=martial-arts`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
     },
     {
       url: `${baseUrl}/privacy`,
@@ -41,8 +75,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    // Dynamic Academy / Activity detail pages
+    // 1. Dynamic Categories & Disciplines from Database
+    const categories = await prisma.category.findMany({
+      where: { isActive: true },
+      select: { slug: true },
+    });
+
+    const categoryRoutes: MetadataRoute.Sitemap = categories.map((cat) => ({
+      url: `${baseUrl}/activities?activity=${encodeURIComponent(cat.slug)}`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    }));
+
+    // 2. Dynamic Academy / Activity detail pages
     const centres = await prisma.coachingCentre.findMany({
+      where: {
+        isSuspended: false,
+        isActive: true,
+      },
       select: {
         id: true,
       },
@@ -55,7 +106,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     }));
 
-    // Dynamic Competition / Tournament detail pages
+    // 3. Dynamic Competition / Tournament detail pages
     const competitions = await prisma.competition.findMany({
       select: {
         id: true,
@@ -69,7 +120,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     }));
 
-    return [...staticRoutes, ...centreRoutes, ...competitionRoutes];
+    return [
+      ...staticRoutes,
+      ...categoryRoutes,
+      ...centreRoutes,
+      ...competitionRoutes,
+    ];
   } catch (error) {
     console.error('Failed to generate dynamic sitemap routes:', error);
     return staticRoutes;
