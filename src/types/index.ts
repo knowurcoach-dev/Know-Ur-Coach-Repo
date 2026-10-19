@@ -20,6 +20,7 @@ export interface Academy {
   name: string;
   tagline: string;
   category: 'sports' | 'brain-booster' | 'arts' | 'cricket' | 'skating' | 'martial-arts' | string;
+  categorySlugs?: string[];
   activities: string[];
   activitiesText: string;
   locality: 'kamla-nagar' | 'sanjay-place' | 'sadar' | 'dayalbagh' | 'fatehabad-road' | string;
@@ -49,6 +50,8 @@ export interface Academy {
   planTier?: string;
   isVerifiedBatch?: boolean;
   coachType?: string;
+  kycStatus?: string;
+  safetyGrade?: string;
   batches: AcademyBatch[];
 }
 

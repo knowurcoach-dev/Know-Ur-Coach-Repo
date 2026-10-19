@@ -1093,6 +1093,7 @@ export async function approveCoachKyc(
     invalidateTag('academies');
     invalidateTag(`academy-${centreId}`);
     revalidatePath('/activities');
+    revalidatePath('/activities/explore');
     revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     revalidatePath('/admin');
@@ -1183,6 +1184,7 @@ export async function rejectCoachKyc(
     invalidateTag('academies');
     invalidateTag(`academy-${centreId}`);
     revalidatePath('/activities');
+    revalidatePath('/activities/explore');
     revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     revalidatePath('/admin');
@@ -1265,6 +1267,7 @@ export async function referBackCoachKyc(
     invalidateTag('academies');
     invalidateTag(`academy-${centreId}`);
     revalidatePath('/activities');
+    revalidatePath('/activities/explore');
     revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     revalidatePath('/admin');
@@ -1317,6 +1320,7 @@ export async function suspendCoach(centreId: string, notes: string = "Suspended 
     revalidatePath('/admin/coaches');
     revalidatePath('/admin/academies');
     revalidatePath('/activities');
+    revalidatePath('/activities/explore');
     revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     return { success: true, message: "Coach academy temporarily suspended." };
@@ -1377,6 +1381,7 @@ export async function unsuspendCoach(centreId: string) {
     revalidatePath('/admin/coaches');
     revalidatePath('/admin/academies');
     revalidatePath('/activities');
+    revalidatePath('/activities/explore');
     revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
     return {
@@ -2837,10 +2842,14 @@ export async function registerCoachAcademy(data: {
 
     // Non-blocking revalidation
     try {
+      invalidateTag('discovery');
+      invalidateTag('academies');
+      revalidatePath('/');
+      revalidatePath('/activities');
+      revalidatePath('/activities/explore');
       revalidatePath('/admin');
       revalidatePath('/admin/verify-coaches');
       revalidatePath('/admin/academies');
-      revalidatePath('/activities');
     } catch (revalErr) {
       console.warn('Non-blocking revalidatePath notice:', revalErr);
     }

@@ -56,48 +56,84 @@ function matchesAgeGroup(ageText: string | undefined, selectedAge: string): bool
 function matchesCategory(acad: Academy, catSlug: string): boolean {
   if (!catSlug || catSlug === 'all') return true;
 
+  const rawSlugs: string[] = (
+    acad.categorySlugs ||
+    (acad.category ? acad.category.split(',') : [])
+  )
+    .map((s: string) => s.trim().toLowerCase())
+    .filter(Boolean);
+
   // Pillar-wide "All in Pillar" matching
   if (catSlug === 'all-sports') {
-    return getCategoryPillar(acad.category) === 'sports';
+    return rawSlugs.some((s: string) => getCategoryPillar(s) === 'sports') || getCategoryPillar(acad.category) === 'sports';
   }
   if (catSlug === 'all-brain-booster') {
-    return getCategoryPillar(acad.category) === 'brain-booster';
+    return rawSlugs.some((s: string) => getCategoryPillar(s) === 'brain-booster') || getCategoryPillar(acad.category) === 'brain-booster';
   }
   if (catSlug === 'all-arts') {
-    return getCategoryPillar(acad.category) === 'arts';
+    return rawSlugs.some((s: string) => getCategoryPillar(s) === 'arts') || getCategoryPillar(acad.category) === 'arts';
   }
 
   const cleanSlug = catSlug.toLowerCase().trim();
+  const cleanHyphen = cleanSlug.replace(/\s+/g, '-');
+  const cleanSpace = cleanSlug.replace(/-/g, ' ');
+
   const name = (acad.name || '').toLowerCase();
   const tagline = (acad.tagline || '').toLowerCase();
   const cat = (acad.category || '').toLowerCase().trim();
-  const catSlugs = cat.split(',').map((s) => s.trim()).filter(Boolean);
   const activities = (acad.activities || []).map((a) => a.toLowerCase());
   const actText = (acad.activitiesText || '').toLowerCase();
 
-  if (cat === cleanSlug || catSlugs.includes(cleanSlug)) return true;
+  // 1. Direct slug or category list match
+  if (
+    rawSlugs.includes(cleanSlug) ||
+    rawSlugs.includes(cleanHyphen) ||
+    rawSlugs.includes(cleanSpace) ||
+    cat === cleanSlug ||
+    cat === cleanHyphen ||
+    cat === cleanSpace
+  ) {
+    return true;
+  }
 
-  switch (cleanSlug) {
+  switch (cleanHyphen) {
+    case 'table-tennis':
+      return (
+        rawSlugs.includes('table-tennis') ||
+        rawSlugs.includes('table tennis') ||
+        cat.includes('table-tennis') ||
+        cat.includes('table tennis') ||
+        name.includes('table tennis') ||
+        name.includes('ping pong') ||
+        name.includes('pingpong') ||
+        tagline.includes('table tennis') ||
+        actText.includes('table tennis') ||
+        activities.some((a) => a.includes('table tennis') || a.includes('table-tennis') || a.includes('ping pong') || a.includes('pingpong'))
+      );
     case 'tennis':
       return (
+        rawSlugs.includes('tennis') ||
+        rawSlugs.includes('lawn-tennis') ||
         cat === 'tennis' ||
         cat === 'lawn-tennis' ||
-        name.includes('tennis') ||
-        tagline.includes('tennis') ||
-        actText.includes('tennis') ||
+        (name.includes('tennis') && !name.includes('table tennis')) ||
+        (tagline.includes('tennis') && !tagline.includes('table tennis')) ||
+        (actText.includes('tennis') && !actText.includes('table tennis')) ||
         activities.some((a) => a.includes('tennis') && !a.includes('table tennis') && !a.includes('badminton'))
       );
     case 'badminton':
       return (
+        rawSlugs.includes('badminton') ||
         cat === 'badminton' ||
         name.includes('badminton') ||
         name.includes('shuttle') ||
         tagline.includes('badminton') ||
         actText.includes('badminton') ||
-        activities.some((a) => a.includes('badminton'))
+        activities.some((a) => a.includes('badminton') || a.includes('shuttle'))
       );
     case 'cricket':
       return (
+        rawSlugs.includes('cricket') ||
         cat === 'cricket' ||
         name.includes('cricket') ||
         tagline.includes('cricket') ||
@@ -106,6 +142,9 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'football':
       return (
+        rawSlugs.includes('football') ||
+        rawSlugs.includes('soccer') ||
+        rawSlugs.includes('futsal') ||
         cat === 'football' ||
         cat === 'soccer' ||
         cat === 'futsal' ||
@@ -118,6 +157,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'swimming':
       return (
+        rawSlugs.includes('swimming') ||
+        rawSlugs.includes('aquatics') ||
         cat === 'swimming' ||
         cat === 'aquatics' ||
         name.includes('swim') ||
@@ -128,6 +169,9 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'martial-arts':
       return (
+        rawSlugs.includes('martial-arts') ||
+        rawSlugs.includes('karate') ||
+        rawSlugs.includes('taekwondo') ||
         cat === 'martial-arts' ||
         cat === 'karate' ||
         cat === 'taekwondo' ||
@@ -144,6 +188,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'skating':
       return (
+        rawSlugs.includes('skating') ||
+        rawSlugs.includes('roller-skating') ||
         cat === 'skating' ||
         cat === 'roller-skating' ||
         name.includes('skating') ||
@@ -154,6 +200,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'athletics':
       return (
+        rawSlugs.includes('athletics') ||
+        rawSlugs.includes('gymnastics') ||
         cat === 'athletics' ||
         cat === 'gymnastics' ||
         name.includes('athletic') ||
@@ -164,6 +212,9 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
     case 'stem':
     case 'robotics':
       return (
+        rawSlugs.includes('stem') ||
+        rawSlugs.includes('robotics') ||
+        rawSlugs.includes('coding') ||
         cat === 'stem' ||
         cat === 'robotics' ||
         cat === 'coding' ||
@@ -175,6 +226,7 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'chess':
       return (
+        rawSlugs.includes('chess') ||
         cat === 'chess' ||
         name.includes('chess') ||
         tagline.includes('chess') ||
@@ -183,6 +235,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'coding':
       return (
+        rawSlugs.includes('coding') ||
+        rawSlugs.includes('python') ||
         cat === 'coding' ||
         name.includes('coding') ||
         name.includes('python') ||
@@ -192,6 +246,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'science-labs':
       return (
+        rawSlugs.includes('science-labs') ||
+        rawSlugs.includes('science') ||
         cat === 'science-labs' ||
         cat === 'science' ||
         name.includes('science') ||
@@ -200,6 +256,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'abacus':
       return (
+        rawSlugs.includes('abacus') ||
+        rawSlugs.includes('vedic-maths') ||
         cat === 'abacus' ||
         cat === 'vedic-maths' ||
         name.includes('abacus') ||
@@ -209,6 +267,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'dance':
       return (
+        rawSlugs.includes('dance') ||
+        rawSlugs.includes('kathak') ||
         cat === 'dance' ||
         name.includes('dance') ||
         name.includes('kathak') ||
@@ -217,6 +277,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'western-dance':
       return (
+        rawSlugs.includes('western-dance') ||
+        rawSlugs.includes('hip-hop') ||
         cat === 'western-dance' ||
         name.includes('hip hop') ||
         name.includes('western dance') ||
@@ -224,6 +286,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'instruments':
       return (
+        rawSlugs.includes('instruments') ||
+        rawSlugs.includes('guitar') ||
         cat === 'instruments' ||
         name.includes('guitar') ||
         name.includes('keyboard') ||
@@ -232,6 +296,8 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     case 'music':
       return (
+        rawSlugs.includes('music') ||
+        rawSlugs.includes('sangeet') ||
         cat === 'music' ||
         cat === 'sangeet' ||
         name.includes('music') ||
@@ -241,6 +307,9 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
     case 'arts':
     case 'fine-arts':
       return (
+        rawSlugs.includes('arts') ||
+        rawSlugs.includes('fine-arts') ||
+        rawSlugs.includes('painting') ||
         cat === 'arts' ||
         cat === 'fine-arts' ||
         cat === 'painting' ||
@@ -252,15 +321,78 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
       );
     default:
       return (
-        cat.includes(cleanSlug) ||
-        name.includes(cleanSlug) ||
-        tagline.includes(cleanSlug) ||
-        activities.some((a) => a.includes(cleanSlug))
+        rawSlugs.some((s: string) => s.includes(cleanHyphen) || s.includes(cleanSpace)) ||
+        cat.includes(cleanHyphen) ||
+        cat.includes(cleanSpace) ||
+        name.includes(cleanSpace) ||
+        tagline.includes(cleanSpace) ||
+        activities.some((a) => a.includes(cleanSpace) || a.includes(cleanHyphen))
       );
   }
 }
 
-export function ActivitiesExploreView() {
+function mapCentreToAcademy(c: any, activeCity: string): Academy {
+  const categorySlugs = (c.category ? c.category.split(',') : ['sports'])
+    .map((s: string) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
+
+  const locName = c.locality
+    ? c.locality.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+    : c.city || activeCity || 'City Center';
+
+  const catSlug = (c.category || 'sports').toLowerCase();
+
+  return {
+    id: c.id,
+    name: c.name,
+    tagline: c.tagline || 'Leading Academy for Youth',
+    category: catSlug,
+    categorySlugs,
+    activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(catSlug)],
+    activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(catSlug),
+    locality: c.locality,
+    localityName: locName,
+    city: c.city,
+    lat: c.latitude,
+    lon: c.longitude,
+    address: c.address,
+    phone: c.phone,
+    distance: 2.5,
+    distanceText: '2.5 km away',
+    age: ['u8', 'u12', 'u16'] as any,
+    ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
+    fee: Number(c.monthlyTuitionFee || c.fee || 1800),
+    trialFee: Number(c.trialFee || 0),
+    rating: Number(c.rating || 5.0),
+    reviewsCount: Number(c.reviewsCount || 0),
+    verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : (c.isVerifiedBatch ? 'Verified Batch' : 'Safety Inspected'),
+    image: c.image || resolveCategoryCoverImage(categorySlugs[0] || catSlug, ''),
+    coachName: c.headCoachName || c.coachName || 'NIS Certified Coach',
+    coachTitle: c.headCoachBio || c.coachTitle || '',
+    coachesCount: c.coachesCount || 2,
+    ratio: c.studentCoachRatio || '1 : 8',
+    facilities: (c.facilities || []).map((f: any) => f.description || f),
+    safety: '24/7 CCTV • First Aid • Police Verified',
+    isTopInArea: Boolean(c.isTopInArea),
+    planTier: c.planTier,
+    isVerifiedBatch: Boolean(c.isVerifiedBatch),
+    kycStatus: c.kycStatus,
+    safetyGrade: c.safetyGrade,
+    coachType: c.coachType,
+    batches: (c.batches || []).map((b: any) => ({
+      id: b.id,
+      name: b.name,
+      time: b.schedule || b.time,
+      schedule: b.schedule,
+      ageGroup: b.ageGroup,
+      seats: `${b.seatsFilled || 0}/${b.totalSeats || 20} Enrolled`,
+      monthlyFee: Number(b.monthlyFee || c.monthlyTuitionFee || 1800),
+    })),
+  };
+}
+
+export function ActivitiesExploreView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { activeCity: personaCity, activeLocality, setLocation } = usePersona();
@@ -279,10 +411,17 @@ export function ActivitiesExploreView() {
   const initialCategory = rawCat || inferred?.category || 'all';
   const initialActivityPillar = rawActivity || (initialCategory !== 'all' ? getCategoryPillar(initialCategory) : (inferred?.pillar || 'all'));
 
-  const [academiesList, setAcademiesList] = useState<Academy[]>([]);
-  const [activitiesList, setActivitiesList] = useState<any[]>([]);
-  const [isLoadingDb, setIsLoadingDb] = useState(true);
+  const [academiesList, setAcademiesList] = useState<Academy[]>(() => {
+    const raw = initialData?.centres || initialData?.academies || [];
+    if (raw.length > 0) {
+      return raw.map((c: any) => mapCentreToAcademy(c, activeCity));
+    }
+    return [];
+  });
+  const [activitiesList, setActivitiesList] = useState<any[]>(() => initialData?.activities || []);
+  const [isLoadingDb, setIsLoadingDb] = useState(!initialData?.centres || initialData.centres.length === 0);
   const [dbError, setDbError] = useState<string | null>(null);
+  const initialLoadedRef = useRef(Boolean(initialData?.centres && initialData.centres.length > 0));
 
   // Selected Activity Pillar: 'all' | 'sports' | 'brain-booster' | 'arts'
   const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(initialActivityPillar);
@@ -354,62 +493,7 @@ export function ActivitiesExploreView() {
       }
       const rawCentres = (res as any).centres || (res as any).academies || [];
       if (rawCentres.length > 0) {
-        const mapped: Academy[] = rawCentres.map((c: any) => {
-          const locName = c.locality
-            ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-            : c.city || activeCity || 'City Center';
-
-          const catSlug = (c.category || 'sports').toLowerCase();
-
-          return {
-            id: c.id,
-            name: c.name,
-            tagline: c.tagline || 'Leading Academy for Youth',
-            category: catSlug,
-            activities: Array.isArray(c.activities) && c.activities.length > 0 ? c.activities : [catSlug],
-            activitiesText: Array.isArray(c.activities) && c.activities.length > 0
-              ? c.activities.join(', ')
-              : getCategoryDisplayName(catSlug),
-            locality: c.locality,
-            localityName: locName,
-            city: c.city,
-            lat: c.latitude,
-            lon: c.longitude,
-            address: c.address,
-            phone: c.phone,
-            distance: 2.5,
-            distanceText: '2.5 km away',
-            age: ['u8', 'u12', 'u16'] as any,
-            ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
-            fee: Number(c.monthlyTuitionFee || c.fee || 1800),
-            trialFee: Number(c.trialFee || 0),
-            rating: Number(c.rating || 5.0),
-            reviewsCount: Number(c.reviewsCount || 0),
-            verifiedTag: c.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : (c.isVerifiedBatch ? 'Verified Batch' : 'Safety Inspected'),
-            image: c.image || resolveCategoryCoverImage(catSlug, ''),
-            coachName: c.headCoachName || c.coachName || 'NIS Certified Coach',
-            coachTitle: c.headCoachBio || c.coachTitle || '',
-            coachesCount: c.coachesCount || 2,
-            ratio: c.studentCoachRatio || '1 : 8',
-            facilities: (c.facilities || []).map((f: any) => f.description || f),
-            safety: '24/7 CCTV • First Aid • Police Verified',
-            isTopInArea: Boolean(c.isTopInArea),
-            planTier: c.planTier,
-            isVerifiedBatch: Boolean(c.isVerifiedBatch),
-            kycStatus: c.kycStatus,
-            safetyGrade: c.safetyGrade,
-            coachType: c.coachType,
-            batches: (c.batches || []).map((b: any) => ({
-              id: b.id,
-              name: b.name,
-              time: b.schedule || b.time,
-              schedule: b.schedule,
-              ageGroup: b.ageGroup,
-              seats: `${b.seatsFilled || 0}/${b.totalSeats || 20} Enrolled`,
-              monthlyFee: Number(b.monthlyFee || c.monthlyTuitionFee || 1800),
-            })),
-          };
-        });
+        const mapped: Academy[] = rawCentres.map((c: any) => mapCentreToAcademy(c, activeCity));
         setAcademiesList(mapped);
       } else {
         setAcademiesList([]);
@@ -424,6 +508,10 @@ export function ActivitiesExploreView() {
   }, [activeCity]);
 
   useEffect(() => {
+    if (initialLoadedRef.current) {
+      initialLoadedRef.current = false;
+      return;
+    }
     fetchDbData();
   }, [fetchDbData]);
 
@@ -492,7 +580,10 @@ export function ActivitiesExploreView() {
     };
 
     if (selectedActivityPillar === 'sports') {
-      const sportsCentres = cityAcademies.filter((a) => getCategoryPillar(a.category) === 'sports').length;
+      const sportsCentres = cityAcademies.filter((a) => {
+        const raw = ((a as any).categorySlugs || (a.category ? a.category.split(',') : [])).map((s: string) => s.trim().toLowerCase());
+        return raw.some((s: string) => getCategoryPillar(s) === 'sports') || getCategoryPillar(a.category) === 'sports';
+      }).length;
       rootItem = {
         slug: 'all-sports',
         name: 'All Sports & Athletics',
@@ -502,7 +593,10 @@ export function ActivitiesExploreView() {
         categoriesCount: 8,
       };
     } else if (selectedActivityPillar === 'brain-booster') {
-      const brainCentres = cityAcademies.filter((a) => getCategoryPillar(a.category) === 'brain-booster').length;
+      const brainCentres = cityAcademies.filter((a) => {
+        const raw = ((a as any).categorySlugs || (a.category ? a.category.split(',') : [])).map((s: string) => s.trim().toLowerCase());
+        return raw.some((s: string) => getCategoryPillar(s) === 'brain-booster') || getCategoryPillar(a.category) === 'brain-booster';
+      }).length;
       rootItem = {
         slug: 'all-brain-booster',
         name: 'All Brain & STEM',
@@ -512,7 +606,10 @@ export function ActivitiesExploreView() {
         categoriesCount: 5,
       };
     } else if (selectedActivityPillar === 'arts') {
-      const artsCentres = cityAcademies.filter((a) => getCategoryPillar(a.category) === 'arts').length;
+      const artsCentres = cityAcademies.filter((a) => {
+        const raw = ((a as any).categorySlugs || (a.category ? a.category.split(',') : [])).map((s: string) => s.trim().toLowerCase());
+        return raw.some((s: string) => getCategoryPillar(s) === 'arts') || getCategoryPillar(a.category) === 'arts';
+      }).length;
       rootItem = {
         slug: 'all-arts',
         name: 'All Cultural & Arts',
@@ -560,7 +657,7 @@ export function ActivitiesExploreView() {
     cityAcademies.forEach((a) => {
       if (a.locality && a.locality !== 'all') {
         const slug = a.locality.toLowerCase().replace(/\s+/g, '-');
-        const name = a.localityName || a.locality.replace('-', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+        const name = a.localityName || a.locality.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
         map.set(slug, name);
       }
     });
@@ -576,7 +673,10 @@ export function ActivitiesExploreView() {
       result = result.filter((a) => matchesCategory(a, selectedCategory));
     } else if (selectedActivityPillar !== 'all') {
       // If user selected a specific pillar tab but 'all' within that pillar
-      result = result.filter((a) => getCategoryPillar(a.category) === selectedActivityPillar);
+      result = result.filter((a) => {
+        const raw = ((a as any).categorySlugs || (a.category ? a.category.split(',') : [])).map((s: string) => s.trim().toLowerCase());
+        return raw.some((s: string) => getCategoryPillar(s) === selectedActivityPillar) || getCategoryPillar(a.category) === selectedActivityPillar;
+      });
     }
 
     // Search query keyword filter
@@ -591,15 +691,19 @@ export function ActivitiesExploreView() {
 
       if (!isCategoryKeyword) {
         result = result.filter((a) => {
+          const qClean = q.trim();
+          const qHyphen = qClean.replace(/\s+/g, '-');
+          const qSpace = qClean.replace(/-/g, ' ');
           return (
-            a.name.toLowerCase().includes(q) ||
-            (a.category && a.category.toLowerCase().includes(q)) ||
-            (a.locality && a.locality.toLowerCase().includes(q)) ||
-            (a.localityName && a.localityName.toLowerCase().includes(q)) ||
-            (a.tagline && a.tagline.toLowerCase().includes(q)) ||
-            (a.activitiesText && a.activitiesText.toLowerCase().includes(q)) ||
-            (a.coachName && a.coachName.toLowerCase().includes(q)) ||
-            (Array.isArray(a.activities) && a.activities.some((act: string) => act.toLowerCase().includes(q)))
+            a.name.toLowerCase().includes(qClean) ||
+            a.name.toLowerCase().includes(qSpace) ||
+            (a.category && (a.category.toLowerCase().includes(qClean) || a.category.toLowerCase().includes(qHyphen) || a.category.toLowerCase().includes(qSpace))) ||
+            (a.locality && a.locality.toLowerCase().includes(qClean)) ||
+            (a.localityName && a.localityName.toLowerCase().includes(qClean)) ||
+            (a.tagline && (a.tagline.toLowerCase().includes(qClean) || a.tagline.toLowerCase().includes(qSpace))) ||
+            (a.activitiesText && (a.activitiesText.toLowerCase().includes(qClean) || a.activitiesText.toLowerCase().includes(qSpace))) ||
+            (a.coachName && a.coachName.toLowerCase().includes(qClean)) ||
+            (Array.isArray(a.activities) && a.activities.some((act: string) => act.toLowerCase().includes(qClean) || act.toLowerCase().includes(qSpace) || act.toLowerCase().includes(qHyphen)))
           );
         });
       }

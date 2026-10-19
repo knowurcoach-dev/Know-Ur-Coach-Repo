@@ -524,7 +524,8 @@ export function resolveCentreCity(centre: {
     return centre.city.trim();
   }
 
-  const text = `${centre.address || ''} ${centre.locality || ''}`.toLowerCase();
+  const raw = `${centre.address || ''} ${centre.locality || ''}`.toLowerCase();
+  const text = raw.replace(/[-_]/g, ' ');
 
   // 1. Explicit text parsing for major Indian coaching hubs
   if (
@@ -589,7 +590,12 @@ export function resolveCentreCity(centre: {
     text.includes('sadar') ||
     text.includes('fatehabad') ||
     text.includes('bodla') ||
-    text.includes('shastri puram')
+    text.includes('shastri puram') ||
+    text.includes('sikandra') ||
+    text.includes('khandari') ||
+    text.includes('civil lines') ||
+    text.includes('2820') ||
+    text.includes('282')
   ) {
     return 'Agra';
   }

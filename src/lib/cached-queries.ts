@@ -144,6 +144,9 @@ const _getCachedDiscoveryData = unstable_cache(
 
 export async function getCachedDiscoveryData() {
   try {
+    if (process.env.NODE_ENV === 'development') {
+      return await fetchDiscoveryData();
+    }
     return await _getCachedDiscoveryData();
   } catch (err) {
     console.warn('[DB_FETCH_WARNING] Database query failed in getCachedDiscoveryData:', (err as any)?.message);

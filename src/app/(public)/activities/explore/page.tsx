@@ -1,7 +1,10 @@
 import React, { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { ActivitiesExploreView } from '@/components/views/ActivitiesExploreView';
+import { getCachedDiscoveryData } from '@/lib/cached-queries';
 import { SEO_BRAND_KEYWORDS } from '@/lib/seo-config';
+
+export const revalidate = 60; // ISR cache for 60 seconds with on-demand tag revalidation
 
 export const metadata: Metadata = {
   title: 'Explore Kids Coaching Classes & Sports Categories Across India | KnowUrCoach',
@@ -19,7 +22,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ActivitiesExplorePage() {
+export default async function ActivitiesExplorePage() {
+  const initialData = await getCachedDiscoveryData();
+
   return (
     <Suspense
       fallback={
@@ -29,7 +34,8 @@ export default function ActivitiesExplorePage() {
         </div>
       }
     >
-      <ActivitiesExploreView />
+      <ActivitiesExploreView initialData={initialData} />
     </Suspense>
   );
 }
+

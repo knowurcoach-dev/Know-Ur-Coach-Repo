@@ -7,6 +7,7 @@ import { usePersona } from '@/context/PersonaContext';
 import { useModalStore } from '@/hooks/useModalStore';
 import { getDiscoveryData } from '@/lib/actions';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
+import { resolveCentreCity } from '@/lib/location';
 import {
   getCategoryPillar,
   getCategoryDisplayName,
@@ -32,15 +33,44 @@ import {
   Lightning,
 } from '@phosphor-icons/react';
 
-function computeCountMap(centres: any[]) {
+function computeCountMap(centres: any[], activeCity?: string) {
   const countMap: Record<string, number> = {};
   if (!Array.isArray(centres)) return countMap;
   centres.forEach((a: any) => {
-    const cat = (a.category || '').toLowerCase();
+    // If activeCity is provided and not All India, verify centre is in that city
+    if (activeCity && activeCity.toLowerCase() !== 'all' && !activeCity.toLowerCase().includes('india')) {
+      const cCity = a.city || resolveCentreCity(a);
+      if (
+        cCity &&
+        cCity.toLowerCase() !== activeCity.toLowerCase() &&
+        !(
+          activeCity.toLowerCase() === 'delhi ncr' &&
+          (cCity.toLowerCase().includes('delhi') || cCity.toLowerCase() === 'noida' || cCity.toLowerCase() === 'gurugram')
+        )
+      ) {
+        return;
+      }
+    }
+
+    const catSlugs = (a.category || '')
+      .toLowerCase()
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
     const acts = (a.activities || []).map((x: string) => x.toLowerCase());
-    const allTags = [cat, ...acts];
+    const offerings = (a.offerings || []).map((o: any) => (o.categorySlug || o.activitySlug || '').toLowerCase());
+
+    const allTags = new Set<string>();
+    [...catSlugs, ...acts, ...offerings].forEach((t: string) => {
+      if (t) {
+        allTags.add(t);
+        allTags.add(t.replace(/-/g, ' '));
+        allTags.add(t.replace(/\s+/g, '-'));
+      }
+    });
+
     allTags.forEach((t) => {
-      if (t) countMap[t] = (countMap[t] || 0) + 1;
+      countMap[t] = (countMap[t] || 0) + 1;
     });
   });
   return countMap;
@@ -63,7 +93,7 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
 
   const [activitiesList, setActivitiesList] = useState<any[]>(() => initialData?.activities || []);
   const [academiesCountMap, setAcademiesCountMap] = useState<Record<string, number>>(() =>
-    initialData?.centres ? computeCountMap(initialData.centres) : {}
+    initialData?.centres ? computeCountMap(initialData.centres, activeCity) : {}
   );
   const [totalAcademiesCount, setTotalAcademiesCount] = useState<number>(() =>
     initialData?.centres?.length || 0
@@ -115,7 +145,7 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
       const rawCentres = (res as any).centres || (res as any).academies || [];
       if (rawCentres.length > 0) {
         setTotalAcademiesCount(rawCentres.length);
-        setAcademiesCountMap(computeCountMap(rawCentres));
+        setAcademiesCountMap(computeCountMap(rawCentres, activeCity));
       }
     } catch (err: any) {
       console.error('[DB_ERROR] Failed to fetch discovery data in ActivitiesView:', err);
@@ -226,20 +256,34 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
 
   // Handlers for navigating to Blinkit-style listing
   const handleCategoryClick = (catSlug: string) => {
-    router.push(`/activities/explore?category=${encodeURIComponent(catSlug)}`);
+    const params = new URLSearchParams();
+    if (activeCity) params.set('city', activeCity);
+    params.set('category', catSlug);
+    const pillar = getCategoryPillar(catSlug);
+    if (pillar) params.set('activity', pillar);
+    router.push(`/activities/explore?${params.toString()}`);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const params = new URLSearchParams();
+    if (activeCity) params.set('city', activeCity);
     if (searchQuery.trim()) {
-      router.push(`/activities/explore?search=${encodeURIComponent(searchQuery.trim())}`);
-    } else {
-      router.push('/activities/explore');
+      params.set('search', searchQuery.trim());
+      const inferred = resolveCategoryFromSearch(searchQuery.trim());
+      if (inferred) {
+        params.set('category', inferred.category);
+        params.set('activity', inferred.pillar);
+      }
     }
+    router.push(`/activities/explore?${params.toString()}`);
   };
 
   const handleAgeClick = (ageCode: string) => {
-    router.push(`/activities/explore?age=${encodeURIComponent(ageCode)}`);
+    const params = new URLSearchParams();
+    if (activeCity) params.set('city', activeCity);
+    params.set('age', ageCode);
+    router.push(`/activities/explore?${params.toString()}`);
   };
 
   return (
@@ -466,7 +510,11 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
         ) : displayCategories.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
             {displayCategories.map((cat: any) => {
-              const count = academiesCountMap[cat.slug] || 0;
+              const count =
+                academiesCountMap[cat.slug] ||
+                academiesCountMap[cat.slug.replace(/-/g, ' ')] ||
+                academiesCountMap[cat.slug.replace(/\s+/g, '-')] ||
+                0;
               return (
                 <button
                   key={cat.id || cat.slug}
