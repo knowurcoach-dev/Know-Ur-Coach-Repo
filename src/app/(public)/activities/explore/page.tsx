@@ -1,9 +1,22 @@
 import React, { Suspense } from 'react';
+import type { Metadata } from 'next';
 import { ActivitiesExploreView } from '@/components/views/ActivitiesExploreView';
+import { SEO_BRAND_KEYWORDS } from '@/lib/seo-config';
 
-export const metadata = {
-  title: 'Explore Coaching Centers & Activities | KnowUrCoach',
-  description: 'Blinkit-style category explorer and verified coaching academies listing.',
+export const metadata: Metadata = {
+  title: 'Explore Kids Coaching Classes & Sports Categories Across India | KnowUrCoach',
+  description:
+    'Browse kids coaching by category across India: sports, martial arts, swimming, cricket, badminton, arts, dance, chess, robotics and cognitive brain boosters with instant filters.',
+  alternates: {
+    canonical: '/activities/explore',
+  },
+  keywords: SEO_BRAND_KEYWORDS,
+  openGraph: {
+    title: 'Explore Kids Coaching Classes & Sports Categories Across India | KnowUrCoach',
+    description:
+      'Browse kids coaching by category across India: sports, martial arts, swimming, cricket, badminton, arts, dance, chess, robotics and brain boosters.',
+    url: '/activities/explore',
+  },
 };
 
 export default function ActivitiesExplorePage() {

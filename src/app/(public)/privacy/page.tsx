@@ -5,6 +5,14 @@ import { LockKey, ShieldCheck, ArrowLeft } from '@phosphor-icons/react/dist/ssr'
 export const metadata = {
   title: 'Privacy Policy | KnowUrCoach',
   description: 'Child privacy protection and data handling policies on KnowUrCoach.',
+  alternates: {
+    canonical: '/privacy',
+  },
+  openGraph: {
+    title: 'Privacy Policy | KnowUrCoach',
+    description: 'Child privacy protection and data handling policies on KnowUrCoach.',
+    url: '/privacy',
+  },
 };
 
 export default function PrivacyPage() {

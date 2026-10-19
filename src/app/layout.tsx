@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ClientProviders } from "@/components/providers/ClientProviders";
 import { AppShell } from "@/components/shell/AppShell";
+import { GlobalJsonLd } from "@/components/seo/JsonLd";
+import { siteMetadata, siteViewport } from "@/lib/seo-config";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta-sans",
@@ -10,10 +12,8 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "KnowUrCoach - Discover Kids Coaching, Brain Boosters & Sports Across India",
-  description: "Discover, compare & book verified kids activity classes, coaching centres, STEM labs, arts and sports academies across India. Free trials and 100% money back escrow protection.",
-};
+export const viewport: Viewport = siteViewport;
+export const metadata: Metadata = siteMetadata;
 
 export default function RootLayout({
   children,
@@ -26,6 +26,9 @@ export default function RootLayout({
       className={`${plusJakartaSans.variable} font-sans h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <GlobalJsonLd />
+      </head>
       <body
         className="antialiased min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col"
         suppressHydrationWarning

@@ -5,6 +5,14 @@ import { ShieldCheck, Handshake, CheckCircle, ArrowLeft } from '@phosphor-icons/
 export const metadata = {
   title: 'Terms of Service | KnowUrCoach',
   description: 'Terms of service and direct academy settlement policies on KnowUrCoach.',
+  alternates: {
+    canonical: '/terms',
+  },
+  openGraph: {
+    title: 'Terms of Service | KnowUrCoach',
+    description: 'Terms of service and direct academy settlement policies on KnowUrCoach.',
+    url: '/terms',
+  },
 };
 
 export default function TermsPage() {
