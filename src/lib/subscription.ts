@@ -82,6 +82,16 @@ export function calculateCyclePrice(baseMonthlyPrice: number, cycle: BillingCycl
   };
 }
 
+export type PublicListingStatus =
+  | 'LIVE'
+  | 'PENDING_DOCS'
+  | 'UNDER_REVIEW'
+  | 'REVISIONS_REQUESTED'
+  | 'KYC_REJECTED'
+  | 'PLAN_REQUIRED'
+  | 'EXPIRED'
+  | 'SUSPENDED';
+
 export interface SubscriptionStatus {
   tier: SubscriptionPlan;
   isActive: boolean;
@@ -98,8 +108,12 @@ export interface SubscriptionStatus {
   canPublicList: boolean;
   headline: string;
   subtext: string;
+  kycStatus: string;
+  isKycApproved: boolean;
+  isPublicLive: boolean;
+  publicListingStatus: PublicListingStatus;
+  publicListingMessage: string;
 }
-
 
 export function getCentreSubscriptionStatus(
   centre: {
@@ -112,6 +126,7 @@ export function getCentreSubscriptionStatus(
     isActive?: boolean;
     isSuspended?: boolean;
     isCustomExpiry?: boolean;
+    kycStatus?: string | null;
   } | null | undefined,
   config?: {
     enableFreePlan?: boolean;
@@ -136,6 +151,11 @@ export function getCentreSubscriptionStatus(
       canPublicList: false,
       headline: 'No Academy Profile Found',
       subtext: 'Please complete your academy registration to activate operations.',
+      kycStatus: 'PENDING',
+      isKycApproved: false,
+      isPublicLive: false,
+      publicListingStatus: 'PLAN_REQUIRED',
+      publicListingMessage: 'Please register your academy and select a plan.',
     };
   }
 
@@ -156,9 +176,66 @@ export function getCentreSubscriptionStatus(
   const enableFreePlan = config?.enableFreePlan ?? true;
   const allowFreeListing = config?.allowFreeTierPublicListing ?? true;
 
+  const kycStatus = (centre.kycStatus as string) || 'PENDING';
+  const isKycApproved = kycStatus === 'APPROVED';
+
+  const withPublicListing = (base: Omit<SubscriptionStatus, 'kycStatus' | 'isKycApproved' | 'isPublicLive' | 'publicListingStatus' | 'publicListingMessage'>): SubscriptionStatus => {
+    let publicListingStatus: PublicListingStatus = 'PLAN_REQUIRED';
+    let publicListingMessage = '';
+
+    if (centre.isSuspended) {
+      publicListingStatus = 'SUSPENDED';
+      publicListingMessage = 'Academy account suspended by administration. Public discovery is disabled.';
+    } else if (base.isExpired) {
+      publicListingStatus = 'EXPIRED';
+      publicListingMessage = `Subscription ended on ${base.formattedExpiry}. Renew to restore your public directory listing.`;
+    } else if (kycStatus === 'REJECTED') {
+      publicListingStatus = 'KYC_REJECTED';
+      publicListingMessage = 'Verification application was declined. Public directory listing is unavailable.';
+    } else if (kycStatus === 'REFERRED_BACK') {
+      publicListingStatus = 'REVISIONS_REQUESTED';
+      publicListingMessage = 'Revisions requested by platform admin. Public listing is on hold until updated documents are submitted and approved.';
+    } else if (kycStatus === 'DOCS_REVIEW') {
+      publicListingStatus = 'UNDER_REVIEW';
+      publicListingMessage = base.canOperate
+        ? 'Subscription active • Verification under review. Your public listing will automatically go live upon admin approval (24–48 hrs).'
+        : 'Verification under review. Select a partner plan to go live upon admin approval.';
+    } else if (kycStatus === 'PENDING') {
+      publicListingStatus = 'PENDING_DOCS';
+      publicListingMessage = base.canOperate
+        ? 'Subscription active • Submit your safety checklist & verification documents to launch your live public listing.'
+        : 'Setup incomplete. Submit verification documents and select a partner plan to launch your listing.';
+    } else if (isKycApproved) {
+      if (base.canOperate && base.canListPublicly) {
+        publicListingStatus = 'LIVE';
+        publicListingMessage = 'Live in Directory • Parents across your city can discover your academy and book free trials.';
+      } else {
+        publicListingStatus = 'PLAN_REQUIRED';
+        publicListingMessage = 'KYC Verified • Select or renew a partner plan to make your profile live to parents.';
+      }
+    }
+
+    const isPublicLive = Boolean(
+      base.canOperate &&
+      base.canListPublicly &&
+      isKycApproved &&
+      !centre.isSuspended &&
+      centre.isActive !== false
+    );
+
+    return {
+      ...base,
+      kycStatus,
+      isKycApproved,
+      isPublicLive,
+      publicListingStatus,
+      publicListingMessage,
+    };
+  };
+
   // Case 0A: Academy explicitly suspended by platform administration
   if (centre.isSuspended) {
-    return {
+    return withPublicListing({
       tier,
       isActive: false,
       isExpired: false,
@@ -174,12 +251,12 @@ export function getCentreSubscriptionStatus(
       canPublicList: false,
       headline: 'Academy Suspended by Platform Admin',
       subtext: 'Your academy account and operational tools have been suspended. Please contact platform administration.',
-    };
+    });
   }
 
   // Case 0B: Academy explicitly deactivated
   if (centre.isActive === false) {
-    return {
+    return withPublicListing({
       tier,
       isActive: false,
       isExpired: false,
@@ -195,14 +272,14 @@ export function getCentreSubscriptionStatus(
       canPublicList: false,
       headline: 'Academy Account Deactivated',
       subtext: 'Your academy profile is currently deactivated. Please contact support or update your settings to reactivate.',
-    };
+    });
   }
 
   // Case 1: FREE Tier
   if (tier === SubscriptionPlan.FREE) {
     // If Free Tier has an expiration date and it has passed
     if (expiresAt && isExpired) {
-      return {
+      return withPublicListing({
         tier: SubscriptionPlan.FREE,
         isActive: false,
         isExpired: true,
@@ -218,12 +295,12 @@ export function getCentreSubscriptionStatus(
         canPublicList: false,
         headline: 'Free Trial Expired',
         subtext: `Your free trial ended on ${formattedExpiry}. Choose a subscription plan to resume operations.`,
-      };
+      });
     }
 
     // If platform admin completely disabled Free Tier and centre does not have a valid active trial
     if (!enableFreePlan && !centre.isTrialActive && !centre.isCustomExpiry) {
-      return {
+      return withPublicListing({
         tier: SubscriptionPlan.FREE,
         isActive: false,
         isExpired: false,
@@ -239,12 +316,12 @@ export function getCentreSubscriptionStatus(
         canPublicList: false,
         headline: 'Platform Free Trial Inactive',
         subtext: 'Free trial is currently disabled on this platform. Please choose a partner plan to unlock operations.',
-      };
+      });
     }
 
     // If centre is on Free tier but never had a trial activated or has no expiry date
     if (!centre.isTrialActive && !centre.isCustomExpiry && !expiresAt) {
-      return {
+      return withPublicListing({
         tier: SubscriptionPlan.FREE,
         isActive: false,
         isExpired: false,
@@ -260,13 +337,13 @@ export function getCentreSubscriptionStatus(
         canPublicList: false,
         headline: 'Subscription Required',
         subtext: 'Please activate your complimentary trial or choose a subscription plan to unlock operations.',
-      };
+      });
     }
 
     // Active Free Trial or Admin Extended Free Access
     const isExpiringSoon = Boolean(expiresAt && daysRemaining <= 7);
     const isSpecialAccess = Boolean(centre.isCustomExpiry && !centre.isTrialActive);
-    return {
+    return withPublicListing({
       tier: SubscriptionPlan.FREE,
       isActive: true,
       isExpired: false,
@@ -286,12 +363,12 @@ export function getCentreSubscriptionStatus(
       subtext: expiresAt
         ? (isSpecialAccess ? `Special access valid until ${formattedExpiry}.` : `Trial valid until ${formattedExpiry}. Upgrade anytime for priority search ranking.`)
         : 'Active coverage.',
-    };
+    });
   }
 
   // Case 2: Paid Tiers (STANDARD or PREMIUM)
   if (expiresAt && isExpired) {
-    return {
+    return withPublicListing({
       tier,
       isActive: false,
       isExpired: true,
@@ -307,11 +384,11 @@ export function getCentreSubscriptionStatus(
       canPublicList: false,
       headline: `${tier === SubscriptionPlan.PREMIUM ? 'Premier' : 'Standard'} Plan Expired`,
       subtext: `Your subscription ended on ${formattedExpiry}. Public search listing and operations are paused until renewal.`,
-    };
+    });
   }
 
   const isExpiringSoon = Boolean(expiresAt && daysRemaining <= 7);
-  return {
+  return withPublicListing({
     tier,
     isActive: true,
     isExpired: false,
@@ -331,5 +408,5 @@ export function getCentreSubscriptionStatus(
     subtext: expiresAt
       ? `Active coverage until ${formattedExpiry}.`
       : 'Lifetime / Permanent partner access active.',
-  };
+  });
 }

@@ -165,11 +165,18 @@ export async function POST(req: NextRequest) {
           const durationDays = billingCycle === 'annual' ? 365 : 30;
           const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
+          const existingCentre = await prisma.coachingCentre.findUnique({
+            where: { id: notes.centreId },
+            select: { kycStatus: true, isSuspended: true },
+          });
+          const isApprovedAndActive = existingCentre?.kycStatus === 'APPROVED' && !existingCentre?.isSuspended;
+
           const updatedCentre = await prisma.coachingCentre.update({
             where: { id: notes.centreId },
             data: {
               planTier,
-              isTopInArea: planTier === 'PREMIUM',
+              isTopInArea: planTier === 'PREMIUM' && isApprovedAndActive,
+              isVerifiedBatch: isApprovedAndActive,
               planPaymentId: payment.id,
               planPurchasedAt: new Date(),
               planExpiresAt: expiresAt,
@@ -213,11 +220,28 @@ export async function POST(req: NextRequest) {
           // Create notification for coach
           if (updatedCentre.ownerUserId) {
             const tierName = planTier === 'PREMIUM' ? 'Verified Pro Partner' : 'Standard Partner';
+            let notifTitle = `Subscription Activated: ${tierName} 🚀`;
+            let notifMessage = `Your ${tierName} subscription (${billingCycle}) is active via Razorpay. Payment Ref: ${payment.id}.`;
+
+            if (updatedCentre.kycStatus === 'DOCS_REVIEW') {
+              notifTitle = `Payment Confirmed • Review in Progress 🚀`;
+              notifMessage = `Your ${tierName} subscription (${billingCycle}) is active (Ref: ${payment.id})! Your verification review is in progress. Your public listing will automatically go live upon admin approval.`;
+            } else if (updatedCentre.kycStatus === 'PENDING') {
+              notifTitle = `Payment Confirmed • KYC Upload Needed 🚀`;
+              notifMessage = `Your ${tierName} subscription is active (Ref: ${payment.id})! Please upload your verification documents to launch your live public listing.`;
+            } else if (updatedCentre.kycStatus === 'REFERRED_BACK') {
+              notifTitle = `Payment Confirmed • Revisions Requested 🚀`;
+              notifMessage = `Your ${tierName} subscription is active (Ref: ${payment.id})! Please address compliance feedback so your listing can go live.`;
+            } else if (updatedCentre.kycStatus === 'REJECTED') {
+              notifTitle = `Payment Recorded • Verification Attention Needed ⚠️`;
+              notifMessage = `Payment confirmed (Ref: ${payment.id}), but your KYC status is declined. Contact support@knowurcoach.in for review.`;
+            }
+
             await prisma.notification.create({
               data: {
                 userId: updatedCentre.ownerUserId,
-                title: `Subscription Activated: ${tierName} 🚀`,
-                message: `Your ${tierName} subscription (${billingCycle}) is active via Razorpay Webhook. Payment Ref: ${payment.id}.`,
+                title: notifTitle,
+                message: notifMessage,
                 type: 'subscription',
               },
             }).catch(() => null);

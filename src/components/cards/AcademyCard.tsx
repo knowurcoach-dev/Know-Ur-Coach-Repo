@@ -144,11 +144,6 @@ export function AcademyCard({
                 <Star size={10} weight="fill" /> TOP IN AREA
               </span>
             )}
-            {academy.isVerifiedBatch && (
-              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md flex items-center gap-0.5 shrink-0 whitespace-nowrap">
-                <SealCheck size={10} weight="fill" /> VERIFIED BATCH
-              </span>
-            )}
             {academy.reviewsCount && academy.reviewsCount > 0 ? (
               <>
                 <span className="bg-yellow-100 text-yellow-900 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shrink-0 whitespace-nowrap font-bold">
@@ -169,7 +164,7 @@ export function AcademyCard({
           <div className="flex items-center gap-1.5 shrink-0">
             {academy.isVerifiedBatch ? (
               <span className="bg-blue-50 text-blue-700 text-[9px] font-bold px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap border border-blue-100 flex items-center gap-0.5">
-                <SealCheck size={11} weight="fill" /> Verified
+                <SealCheck size={11} weight="fill" /> Verified Academy
               </span>
             ) : (
               <span className="bg-slate-100 text-slate-500 text-[9px] font-medium px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap border border-slate-200">

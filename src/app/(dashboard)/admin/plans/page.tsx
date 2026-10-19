@@ -766,13 +766,30 @@ export default function AdminPlansPage() {
 
                         {/* Public Directory Status */}
                         <td className="py-3.5 px-4">
-                          {subStatus.canPublicList ? (
+                          {subStatus.isPublicLive ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                               <Eye size={12} weight="bold" /> Listed in Directory
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                              <EyeSlash size={12} weight="bold" /> {subStatus.isExpired ? 'Hidden (Expired)' : 'Hidden (Requires Plan)'}
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200"
+                              title={subStatus.publicListingMessage}
+                            >
+                              <EyeSlash size={12} weight="bold" /> {
+                                subStatus.publicListingStatus === 'SUSPENDED'
+                                  ? 'Hidden (Suspended)'
+                                  : subStatus.publicListingStatus === 'UNDER_REVIEW'
+                                  ? 'Hidden (KYC In Review)'
+                                  : subStatus.publicListingStatus === 'PENDING_DOCS'
+                                  ? 'Hidden (KYC Pending)'
+                                  : subStatus.publicListingStatus === 'REVISIONS_REQUESTED'
+                                  ? 'Hidden (Revisions Needed)'
+                                  : subStatus.publicListingStatus === 'KYC_REJECTED'
+                                  ? 'Hidden (KYC Declined)'
+                                  : subStatus.publicListingStatus === 'EXPIRED'
+                                  ? 'Hidden (Expired)'
+                                  : 'Hidden (Plan Required)'
+                              }
                             </span>
                           )}
                         </td>

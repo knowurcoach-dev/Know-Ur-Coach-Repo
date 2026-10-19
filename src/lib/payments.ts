@@ -287,6 +287,14 @@ export async function createSubscriptionOrder(params: {
       return { success: false, message: 'Academy centre not found.' };
     }
 
+    if (centre.isSuspended) {
+      return { success: false, message: 'This academy account is currently suspended. Subscriptions are locked. Please contact support@knowurcoach.in.' };
+    }
+
+    if (centre.kycStatus === 'REJECTED') {
+      return { success: false, message: 'This academy application was declined. Please contact support@knowurcoach.in for appeal options before purchasing.' };
+    }
+
     // Free tier needs no payment gateway order
     if (planTier === SubscriptionPlan.FREE) {
       return {
@@ -449,8 +457,9 @@ export async function verifyAndActivateSubscription(params: {
 
     const existingCentre = await prisma.coachingCentre.findUnique({
       where: { id: centreId },
-      select: { planExpiresAt: true, planTier: true, isTrialActive: true },
+      select: { planExpiresAt: true, planTier: true, isTrialActive: true, kycStatus: true, isSuspended: true },
     });
+    const isApprovedAndActive = existingCentre?.kycStatus === 'APPROVED' && !existingCentre?.isSuspended;
     const hasUnexpiredPlan = Boolean(
       existingCentre?.planExpiresAt &&
       new Date(existingCentre.planExpiresAt).getTime() > now.getTime() &&
@@ -464,7 +473,8 @@ export async function verifyAndActivateSubscription(params: {
       where: { id: centreId },
       data: {
         planTier,
-        isTopInArea: planTier === SubscriptionPlan.PREMIUM,
+        isTopInArea: planTier === SubscriptionPlan.PREMIUM && isApprovedAndActive,
+        isVerifiedBatch: isApprovedAndActive,
         planPaymentId: razorpayPaymentId,
         planPurchasedAt: now,
         planExpiresAt: expiresAt,
@@ -508,13 +518,31 @@ export async function verifyAndActivateSubscription(params: {
         ? 'Verified Pro Partner'
         : 'Standard Partner';
 
+    // Construct KYC-aware notification title and message
+    let notifTitle = `Subscription Activated: ${tierName} 🚀`;
+    let notifMessage = `Your ${tierName} plan (${billingCycle}) is active! Razorpay Ref: ${razorpayPaymentId}. Locality priority placement and analytics are live.`;
+
+    if (updatedCentre.kycStatus === 'DOCS_REVIEW') {
+      notifTitle = `Payment Confirmed • Review in Progress 🚀`;
+      notifMessage = `Your ${tierName} subscription (${billingCycle}) is active (Ref: ${razorpayPaymentId})! Your verification documents are currently under review. Your public listing will automatically go live with top priority as soon as admin review is approved (24–48 hrs).`;
+    } else if (updatedCentre.kycStatus === 'PENDING') {
+      notifTitle = `Payment Confirmed • KYC Upload Needed 🚀`;
+      notifMessage = `Your ${tierName} subscription (${billingCycle}) is active (Ref: ${razorpayPaymentId})! Complete your facility safety checklist and upload verification documents to launch your live public listing.`;
+    } else if (updatedCentre.kycStatus === 'REFERRED_BACK') {
+      notifTitle = `Payment Confirmed • Revisions Requested 🚀`;
+      notifMessage = `Your ${tierName} subscription (${billingCycle}) is active (Ref: ${razorpayPaymentId})! Please submit the changes requested by compliance audit so your public listing can go live.`;
+    } else if (updatedCentre.kycStatus === 'REJECTED') {
+      notifTitle = `Payment Received • Verification Attention Needed ⚠️`;
+      notifMessage = `Payment recorded (Ref: ${razorpayPaymentId}), but your KYC application was declined. Please contact support@knowurcoach.in for appeal or refund options.`;
+    }
+
     // Send in-app notification to the coach
     if (updatedCentre.ownerUserId) {
       await prisma.notification.create({
         data: {
           userId: updatedCentre.ownerUserId,
-          title: `Subscription Activated: ${tierName} 🚀`,
-          message: `Your ${tierName} plan is active! Razorpay Payment Ref: ${razorpayPaymentId}. Locality priority placement and analytics are live.`,
+          title: notifTitle,
+          message: notifMessage,
           type: 'subscription',
         },
       }).catch(() => null);
@@ -535,6 +563,7 @@ export async function verifyAndActivateSubscription(params: {
         orderId: razorpayOrderId,
         isTestMode: creds.isTestMode,
         expiresAt,
+        kycStatus: updatedCentre.kycStatus,
       },
     });
 
@@ -544,15 +573,21 @@ export async function verifyAndActivateSubscription(params: {
     safeRevalidatePath('/admin/plans');
     safeRevalidatePath('/admin/payments');
     safeRevalidatePath('/admin/coaches');
+    safeRevalidatePath('/activities');
+    safeRevalidatePath(`/activities/${centreId}`);
+    safeRevalidatePath('/');
 
     return {
       success: true,
-      message: `Successfully verified and activated ${tierName}!`,
+      message: updatedCentre.kycStatus === 'APPROVED'
+        ? `Successfully verified and activated ${tierName}!`
+        : `Subscription ${tierName} active! Public listing will go live once verification review is approved.`,
       centre: updatedCentre,
       paymentId: razorpayPaymentId,
       orderId: razorpayOrderId,
       expiresAt: expiresAt.toISOString(),
       tierName,
+      isKycApproved: updatedCentre.kycStatus === 'APPROVED',
     };
   } catch (error: any) {
     console.error('[verifyAndActivateSubscription] Error:', error);

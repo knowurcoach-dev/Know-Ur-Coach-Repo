@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { prisma } from '@/lib/prisma';
+import { KycStatus, SubscriptionPlan } from '@prisma/client';
 import { APP_BASE_URL } from '@/lib/seo-config';
 
 export const dynamic = 'force-dynamic';
@@ -88,11 +89,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     }));
 
-    // 2. Dynamic Academy / Activity detail pages
+    // 2. Dynamic Academy / Activity detail pages (strictly KYC verified and active)
     const centres = await prisma.coachingCentre.findMany({
       where: {
         isSuspended: false,
         isActive: true,
+        kycStatus: KycStatus.APPROVED,
+        OR: [
+          {
+            planTier: { in: [SubscriptionPlan.STANDARD, SubscriptionPlan.PREMIUM] },
+            OR: [
+              { planExpiresAt: null },
+              { planExpiresAt: { gt: now } },
+            ],
+          },
+          {
+            planTier: SubscriptionPlan.FREE,
+            planExpiresAt: { gt: now },
+          },
+        ],
       },
       select: {
         id: true,

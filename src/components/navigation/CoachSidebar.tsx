@@ -21,9 +21,12 @@ import {
   Megaphone,
   CreditCard,
   Lock,
+  Clock,
   Trophy,
 } from '@phosphor-icons/react';
 import { getCoachDashboardData } from '@/lib/actions';
+import { getCentreSubscriptionStatus } from '@/lib/subscription';
+import { WarningCircle } from '@phosphor-icons/react';
 
 const navItems = [
   {
@@ -92,22 +95,10 @@ export function CoachSidebar({ isMobile = false, onNavigate }: CoachSidebarProps
     loadCentre();
   }, [userEmail, pathname]);
 
-  const hasBasicProfile = Boolean(centreData?.name?.trim() && centreData?.address?.trim());
-  const hasSubmittedKyc =
-    centreData?.kycStatus === 'DOCS_REVIEW' ||
-    centreData?.kycStatus === 'APPROVED' ||
-    centreData?.kycStatus === 'INSPECTION_SCHEDULED' ||
-    Boolean(centreData?.statusNotes && centreData.statusNotes.includes('In-app digital KYC submitted'));
+  const subStatus = getCentreSubscriptionStatus(centreData, null);
 
-  const hasActivePlan =
-    centreData?.planTier === 'STANDARD' ||
-    centreData?.planTier === 'PREMIUM' ||
-    Boolean(centreData?.planPurchasedAt || centreData?.planPaymentId);
-
-  const isKycApproved = centreData?.kycStatus === 'APPROVED';
-
-  // Operations are unlocked strictly when an active purchased plan is held
-  const isOperationsUnlocked = loading ? true : hasActivePlan;
+  // Operations are unlocked when subscription or free trial is valid
+  const isOperationsUnlocked = loading ? true : subStatus.canOperate;
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -140,12 +131,37 @@ export function CoachSidebar({ isMobile = false, onNavigate }: CoachSidebarProps
               <div className="w-20 h-3 bg-slate-100 rounded mt-1 animate-pulse" />
             ) : (
               <div className="flex items-center gap-1 mt-0.5">
-                <SealCheck size={12} weight="fill" className={centreData?.kycStatus === 'APPROVED' ? "text-emerald-600 shrink-0" : "text-amber-500 shrink-0"} />
-                <span className={`text-[10px] font-bold truncate ${
-                  centreData?.kycStatus === 'APPROVED' ? 'text-emerald-700' : 'text-amber-700'
-                }`}>
-                  {centreData?.kycStatus === 'APPROVED' ? 'KYC Verified' : 'Compliance Pending'}
-                </span>
+                {centreData?.isSuspended ? (
+                  <>
+                    <WarningCircle size={12} weight="fill" className="text-red-600 shrink-0" />
+                    <span className="text-[10px] font-bold truncate text-red-700">Account Suspended</span>
+                  </>
+                ) : centreData?.kycStatus === 'APPROVED' ? (
+                  <>
+                    <SealCheck size={12} weight="fill" className="text-emerald-600 shrink-0" />
+                    <span className="text-[10px] font-bold truncate text-emerald-700">KYC Verified</span>
+                  </>
+                ) : centreData?.kycStatus === 'DOCS_REVIEW' ? (
+                  <>
+                    <Clock size={12} weight="bold" className="text-blue-600 shrink-0" />
+                    <span className="text-[10px] font-bold truncate text-blue-700">Under Review</span>
+                  </>
+                ) : centreData?.kycStatus === 'REFERRED_BACK' ? (
+                  <>
+                    <WarningCircle size={12} weight="fill" className="text-amber-500 shrink-0" />
+                    <span className="text-[10px] font-bold truncate text-amber-700">Action Required</span>
+                  </>
+                ) : centreData?.kycStatus === 'REJECTED' ? (
+                  <>
+                    <WarningCircle size={12} weight="fill" className="text-red-600 shrink-0" />
+                    <span className="text-[10px] font-bold truncate text-red-700">KYC Declined</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock size={12} weight="bold" className="text-amber-500 shrink-0" />
+                    <span className="text-[10px] font-bold truncate text-amber-700">Setup Incomplete</span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -165,8 +181,14 @@ export function CoachSidebar({ isMobile = false, onNavigate }: CoachSidebarProps
           <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Academy</span>
-              <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800">
-                {plan}
+              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                subStatus.isExpired
+                  ? 'bg-red-100 text-red-800'
+                  : subStatus.isTrial
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-indigo-100 text-indigo-800'
+              }`}>
+                {subStatus.isExpired ? 'EXPIRED' : subStatus.isTrial ? 'FREE TRIAL' : plan}
               </span>
             </div>
             <div className="text-xs font-extrabold text-slate-900 truncate">

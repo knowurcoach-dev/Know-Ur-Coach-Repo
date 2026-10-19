@@ -23,7 +23,7 @@ import { DEFAULT_HERO_SLIDES, HeroSlideData } from "@/lib/hero-slides";
 import { DEFAULT_HERO_CAROUSEL_THEME, HeroCarouselTheme } from "@/lib/hero-theme";
 import { readHeroCarouselTheme, writeHeroCarouselTheme } from "@/lib/hero-theme-server";
 import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail, sendCoachTrialWelcomeEmail } from "@/lib/mail";
-import { calculateCyclePrice, BillingCycle, BILLING_CYCLES } from "@/lib/subscription";
+import { calculateCyclePrice, BillingCycle, BILLING_CYCLES, getCentreSubscriptionStatus } from "@/lib/subscription";
 import { buildStatusNotesWithDocs, parseDocsPayload, updateDocStatusInStatusNotes } from "@/lib/coach-docs";
 import { formatBatchItem, serializeBatchSchedule } from "@/lib/batch-helpers";
 import { verifyOtp } from "@/lib/otp";
@@ -195,6 +195,29 @@ export async function checkInStudent(
             status,
             timestamp,
             message: 'Unauthorized: Cannot check in student from another coaching academy.',
+          };
+        }
+        if (coachCentre.isSuspended) {
+          return {
+            success: false,
+            studentId,
+            studentName: studentName || 'Student',
+            batchId: batchId || '',
+            status,
+            timestamp,
+            message: 'Academy account is currently suspended. Operational check-ins are locked.',
+          };
+        }
+        const subStatus = getCentreSubscriptionStatus(coachCentre, null);
+        if (!subStatus.canOperate) {
+          return {
+            success: false,
+            studentId,
+            studentName: studentName || 'Student',
+            batchId: batchId || '',
+            status,
+            timestamp,
+            message: `Academy operations are locked: ${subStatus.headline}. Please renew your plan to check in students.`,
           };
         }
       }
@@ -468,6 +491,38 @@ export async function bookTrialSession(data: {
       throw new Error('Parent profile could not be resolved. Please log in again.');
     }
     const centre = await resolveCentre(data.centreId, data.centreName);
+    if (centre) {
+      if (centre.isSuspended) {
+        return {
+          success: false,
+          isExisting: false,
+          bookingId: '',
+          centreId: data.centreId,
+          childName: data.childName || 'Child',
+          date: data.date,
+          timeSlot: data.timeSlot,
+          feePaid: 0,
+          qrCode: '',
+          status: 'CANCELLED',
+          message: 'This academy is currently suspended and cannot accept trial bookings.',
+        };
+      }
+      if (centre.kycStatus !== KycStatus.APPROVED) {
+        return {
+          success: false,
+          isExisting: false,
+          bookingId: '',
+          centreId: data.centreId,
+          childName: data.childName || 'Child',
+          date: data.date,
+          timeSlot: data.timeSlot,
+          feePaid: 0,
+          qrCode: '',
+          status: 'CANCELLED',
+          message: 'This academy is currently undergoing verification and cannot accept bookings yet.',
+        };
+      }
+    }
     const children = await resolveChildren(parent, data.childNames, data.childIds, data.childName, data.childId);
 
     const newlyBookedChildren: any[] = [];
@@ -642,6 +697,26 @@ export async function enrollMonthlyBatch(data: {
       throw new Error('Parent profile could not be resolved. Please log in again.');
     }
     const centre = await resolveCentre(data.centreId, data.centreName);
+    if (centre) {
+      if (centre.isSuspended) {
+        return {
+          success: false,
+          isExisting: false,
+          bookingId: '',
+          passId: '',
+          message: 'This academy is currently suspended and cannot accept new enrollments.',
+        };
+      }
+      if (centre.kycStatus !== KycStatus.APPROVED) {
+        return {
+          success: false,
+          isExisting: false,
+          bookingId: '',
+          passId: '',
+          message: 'This academy is currently undergoing verification and cannot accept enrollments yet.',
+        };
+      }
+    }
     const children = await resolveChildren(parent, data.childNames, undefined, data.childName, data.childId);
 
     const selectedBatch = centre?.batches?.find((b: any) => b.id === data.batchId) || (centre?.batches && centre.batches[0]) || null;
@@ -858,9 +933,19 @@ export async function registerTournamentEntry(data: {
     if (comp?.organizer) {
       const hostCentre = await prisma.coachingCentre.findFirst({
         where: { name: { equals: comp.organizer.trim(), mode: 'insensitive' } },
-        select: { id: true },
+        select: { id: true, isSuspended: true },
       });
-      if (hostCentre) hostCentreId = hostCentre.id;
+      if (hostCentre) {
+        if (hostCentre.isSuspended) {
+          return {
+            success: false,
+            bookingId: '',
+            passId: '',
+            message: 'This tournament is hosted by an academy that is currently suspended.',
+          };
+        }
+        hostCentreId = hostCentre.id;
+      }
     }
 
     for (let i = 0; i < children.length; i++) {
@@ -981,12 +1066,24 @@ export async function approveCoachKyc(
       }).catch(err => console.warn('Non-blocking KYC approval email error:', err));
     }
 
+    const { getCentreSubscriptionStatus } = await import('@/lib/subscription');
+    const config = await prisma.platformConfig.findUnique({ where: { id: 'default' } });
+    const subStatus = getCentreSubscriptionStatus(updated, config);
+    const isPublicLive = subStatus.isPublicLive;
+
     if (updated?.owner?.id) {
+      const title = isPublicLive
+        ? 'Academy KYC Verified & Listing Live! 🎉'
+        : 'Academy Verification Approved! 🎉';
+      const message = isPublicLive
+        ? `Congratulations! Your academy ${updated.name} has been verified and approved by platform admin. With your active plan, your public listing is now LIVE in the directory!`
+        : `Congratulations! Your academy verification documents for ${updated.name} have been approved. To launch your public listing to parents across India, please select or activate a partner plan in your dashboard.`;
+
       await prisma.notification.create({
         data: {
           userId: updated.owner.id,
-          title: 'Academy Application Approved! 🎉',
-          message: `Congratulations! Your academy ${updated.name} has been verified and approved by the platform admin. Your public listing is now active and live!`,
+          title,
+          message,
           type: 'kyc',
         },
       }).catch(() => null);
@@ -1007,7 +1104,10 @@ export async function approveCoachKyc(
       status: 'APPROVED',
       inspector,
       approvedAt: new Date().toISOString(),
-      message: `${centreName} successfully verified and approved!`,
+      isPublicLive,
+      message: isPublicLive
+        ? `${centreName} verified & approved! Listing is now live.`
+        : `${centreName} verified! Listing will go live once coach activates a partner plan.`,
     };
   } catch (err: any) {
     console.error("DB approveCoachKyc error:", err);
@@ -1040,6 +1140,7 @@ export async function rejectCoachKyc(
       where: { id: centreId },
       data: {
         kycStatus: KycStatus.REJECTED,
+        isVerifiedBatch: false,
         rejectionReason: reason,
         statusNotes: newStatusNotes,
       },
@@ -1121,6 +1222,7 @@ export async function referBackCoachKyc(
       where: { id: centreId },
       data: {
         kycStatus: KycStatus.REFERRED_BACK,
+        isVerifiedBatch: false,
         referredBackRemarks: remarks,
         statusNotes: newStatusNotes,
       },
@@ -1185,15 +1287,29 @@ export async function referBackCoachKyc(
 export async function suspendCoach(centreId: string, notes: string = "Suspended by admin") {
   await requireAdminSession();
   try {
-    await prisma.coachingCentre.update({
+    const updated = await prisma.coachingCentre.update({
       where: { id: centreId },
       data: {
         isSuspended: true,
         isActive: false,
         kycStatus: KycStatus.SUSPENDED,
+        isVerifiedBatch: false,
         statusNotes: notes,
       },
+      include: { owner: true },
     });
+
+    if (updated?.ownerUserId) {
+      await prisma.notification.create({
+        data: {
+          userId: updated.ownerUserId,
+          title: 'Academy Account Suspended ⚠️',
+          message: `Your academy account for ${updated.name} has been suspended by administration. Reason: ${notes}. Operational tools and public listings are paused. Please contact support@knowurcoach.in.`,
+          type: 'kyc',
+        },
+      }).catch(() => null);
+    }
+
     invalidateTag('discovery');
     invalidateTag('academies');
     invalidateTag(`academy-${centreId}`);
@@ -1214,18 +1330,46 @@ export async function unsuspendCoach(centreId: string) {
   await requireAdminSession();
   try {
     const existing = await prisma.coachingCentre.findUnique({ where: { id: centreId } });
-    const isPremier = existing?.planTier === SubscriptionPlan.PREMIUM;
-    await prisma.coachingCentre.update({
+    if (!existing) {
+      return { success: false, message: "Coach academy not found." };
+    }
+    const isPremier = existing.planTier === SubscriptionPlan.PREMIUM;
+    const hadApproval = Boolean(
+      existing.statusNotes?.toLowerCase().includes('approved') &&
+      !existing.statusNotes?.toLowerCase().includes('rejected')
+    );
+    const restoredKycStatus = hadApproval ? KycStatus.APPROVED : KycStatus.PENDING;
+    const restoredVerifiedBatch = hadApproval;
+
+    const updated = await prisma.coachingCentre.update({
       where: { id: centreId },
       data: {
         isSuspended: false,
         isActive: true,
-        kycStatus: KycStatus.APPROVED,
-        isVerifiedBatch: true,
-        isTopInArea: isPremier ? true : (existing?.isTopInArea ?? false),
+        kycStatus: restoredKycStatus,
+        isVerifiedBatch: restoredVerifiedBatch,
+        isTopInArea: (isPremier && hadApproval) ? true : (hadApproval ? existing.isTopInArea : false),
         statusNotes: `Reactivated on ${new Date().toLocaleDateString('en-IN')}`,
       },
+      include: { owner: true },
     });
+
+    if (updated?.ownerUserId) {
+      const title = hadApproval ? 'Academy Account Reactivated! 🎉' : 'Academy Account Unsuspended ℹ️';
+      const message = hadApproval
+        ? `Your academy account for ${updated.name} has been restored and returned to active standing in the directory.`
+        : `Your academy account for ${updated.name} has been unsuspended. Please complete your verification documents in your dashboard so our team can approve your live directory listing.`;
+
+      await prisma.notification.create({
+        data: {
+          userId: updated.ownerUserId,
+          title,
+          message,
+          type: 'kyc',
+        },
+      }).catch(() => null);
+    }
+
     invalidateTag('discovery');
     invalidateTag('academies');
     invalidateTag(`academy-${centreId}`);
@@ -1235,7 +1379,12 @@ export async function unsuspendCoach(centreId: string) {
     revalidatePath('/activities');
     revalidatePath(`/activities/${centreId}`);
     revalidatePath('/');
-    return { success: true, message: "Coach academy reactivated and restored to live directory." };
+    return {
+      success: true,
+      message: hadApproval
+        ? "Coach academy reactivated and restored to live directory."
+        : "Coach academy unsuspended. Returned to KYC verification queue.",
+    };
   } catch (err: any) {
     console.error("DB unsuspendCoach error:", err);
     return { success: false, message: err?.message || "Failed to reactivate coach academy." };
@@ -1251,8 +1400,12 @@ export async function updateCoachPlan(
 ) {
   await requireAdminSession();
   try {
-    const finalTopInArea = isTopInArea !== undefined ? isTopInArea : planTier === SubscriptionPlan.PREMIUM;
-    const finalVerifiedBatch = isVerifiedBatch !== undefined ? isVerifiedBatch : (planTier === SubscriptionPlan.PREMIUM || planTier === SubscriptionPlan.STANDARD);
+    const existing = await prisma.coachingCentre.findUnique({ where: { id: centreId } });
+    const isApproved = existing?.kycStatus === KycStatus.APPROVED && !existing?.isSuspended;
+    const finalTopInArea = isApproved ? (isTopInArea !== undefined ? isTopInArea : (planTier === SubscriptionPlan.PREMIUM)) : false;
+    const finalVerifiedBatch = isApproved 
+      ? (isVerifiedBatch !== undefined ? isVerifiedBatch : (planTier === SubscriptionPlan.PREMIUM || planTier === SubscriptionPlan.STANDARD))
+      : false;
     await prisma.coachingCentre.update({
       where: { id: centreId },
       data: {
@@ -1338,21 +1491,26 @@ export async function updateCoachDetails(
 ) {
   await requireAdminSession();
   try {
-    // If planTier is being updated, apply account tier rules:
-    // Premier Account: Automatically grant both "Verified" and "Top of Area Sponsored" placement
-    // Standard Account: Automatically grant "Verified"
+    const existingCentre = await prisma.coachingCentre.findUnique({ where: { id: centreId } });
+    const effectiveKycStatus = data.kycStatus !== undefined ? data.kycStatus : existingCentre?.kycStatus;
+    const effectiveIsSuspended = data.isSuspended !== undefined ? data.isSuspended : (data.kycStatus === KycStatus.SUSPENDED || existingCentre?.isSuspended);
+    const isApprovedKyc = effectiveKycStatus === KycStatus.APPROVED && !effectiveIsSuspended;
+    const isSuspendedKyc = Boolean(effectiveIsSuspended);
+
     let finalTopInArea = data.isTopInArea;
     let finalVerifiedBatch = data.isVerifiedBatch;
 
     if (data.planTier === SubscriptionPlan.PREMIUM) {
-      if (finalTopInArea === undefined) finalTopInArea = true;
-      if (finalVerifiedBatch === undefined) finalVerifiedBatch = true;
+      if (finalTopInArea === undefined) finalTopInArea = isApprovedKyc;
+      if (finalVerifiedBatch === undefined) finalVerifiedBatch = isApprovedKyc;
     } else if (data.planTier === SubscriptionPlan.STANDARD) {
-      if (finalVerifiedBatch === undefined) finalVerifiedBatch = true;
+      if (finalVerifiedBatch === undefined) finalVerifiedBatch = isApprovedKyc;
     }
 
-    const isApprovedKyc = data.kycStatus === KycStatus.APPROVED;
-    const isSuspendedKyc = data.kycStatus === KycStatus.SUSPENDED;
+    if (!isApprovedKyc) {
+      finalVerifiedBatch = false;
+      finalTopInArea = false;
+    }
 
     await prisma.coachingCentre.update({
       where: { id: centreId },
@@ -1373,7 +1531,6 @@ export async function updateCoachDetails(
         ...(data.safetyGrade !== undefined && { safetyGrade: data.safetyGrade }),
         ...(data.kycStatus !== undefined && {
           kycStatus: data.kycStatus,
-          isActive: isApprovedKyc,
           isSuspended: isSuspendedKyc,
         }),
         ...(data.isSuspended !== undefined && {
@@ -1951,16 +2108,28 @@ export async function createCompetition(data: {
         return { success: false, message: 'Coaching centre profile not found. Please setup your academy profile first.' };
       }
 
-      const isSubscribed =
-        coachCentre.planTier === SubscriptionPlan.STANDARD ||
-        coachCentre.planTier === SubscriptionPlan.PREMIUM ||
-        coachCentre.isTrialActive;
-
-      if (!isSubscribed) {
+      if (coachCentre.isSuspended) {
         return {
           success: false,
           isLocked: true,
-          message: 'Tournament hosting is an exclusive feature for Standard & Premium partner academies. Please upgrade your subscription to host tournaments.',
+          message: 'Your academy account is currently suspended. Tournament hosting is unavailable.',
+        };
+      }
+
+      if (coachCentre.kycStatus !== KycStatus.APPROVED) {
+        return {
+          success: false,
+          isLocked: true,
+          message: `Tournament hosting requires platform verification. Your academy KYC status is currently ${coachCentre.kycStatus.replace('_', ' ')}. Please complete verification first.`,
+        };
+      }
+
+      const subStatus = getCentreSubscriptionStatus(coachCentre, null);
+      if (!subStatus.canOperate || subStatus.tier === SubscriptionPlan.FREE) {
+        return {
+          success: false,
+          isLocked: true,
+          message: 'Tournament hosting is an exclusive feature for active Standard & Premium partner academies. Please upgrade or renew your subscription.',
         };
       }
 
@@ -2627,15 +2796,26 @@ export async function registerCoachAcademy(data: {
       }).catch((err) => console.warn('[MAIL_WARNING] Failed to send trial welcome email:', err));
     }
 
-    if (initialKycStatus === KycStatus.DOCS_REVIEW && user?.id) {
-      await prisma.notification.create({
-        data: {
-          userId: user.id,
-          title: 'Application Submitted for Review',
-          message: `Your academy registration and verification documents for ${data.acadName} have been submitted to the platform admin. Review takes 24–48 hours.`,
-          type: 'kyc',
-        },
-      }).catch(() => null);
+    if (user?.id) {
+      if (initialKycStatus === KycStatus.DOCS_REVIEW) {
+        await prisma.notification.create({
+          data: {
+            userId: user.id,
+            title: 'Application Submitted for Review 📋',
+            message: `Your academy registration and verification documents for ${data.acadName} have been submitted. Review takes 24–48 hours. Your listing will go live upon approval!`,
+            type: 'kyc',
+          },
+        }).catch(() => null);
+      } else {
+        await prisma.notification.create({
+          data: {
+            userId: user.id,
+            title: 'Action Needed: Complete Facility Verification 📋',
+            message: `Welcome to KnowUrCoach! Your academy profile ${data.acadName} has been created. Please complete your safety checklist and upload verification documents in your dashboard to launch your public listing.`,
+            type: 'kyc',
+          },
+        }).catch(() => null);
+      }
     }
 
     // Send welcome email to coach (non-blocking)
@@ -3031,6 +3211,10 @@ export async function submitCoachKycProfile(data: {
       return { success: false, message: 'Academy centre not found in database.' };
     }
 
+    if (!isAdmin && centreToUpdate.isSuspended) {
+      return { success: false, message: 'This academy account is currently suspended. KYC submission is disabled. Please contact support@knowurcoach.in.' };
+    }
+
     if (!isAdmin && centreToUpdate.ownerUserId !== user.id && centreToUpdate.owner?.email?.toLowerCase() !== user.email?.toLowerCase()) {
       return { success: false, message: 'Access denied: You do not have permission to submit KYC for this academy.' };
     }
@@ -3081,6 +3265,7 @@ export async function submitCoachKycProfile(data: {
       where: { id: targetCentreId },
       data: {
         kycStatus: KycStatus.DOCS_REVIEW,
+        isVerifiedBatch: false,
         cctvMonitored: Boolean(data.safetyChecklist.cctvMonitored),
         nisCertified: Boolean(data.safetyChecklist.nisCertified),
         policeVerifiedStaff: Boolean(data.safetyChecklist.policeVerifiedStaff),
@@ -3217,6 +3402,10 @@ export async function updateCoachAcademyProfile(data: {
     });
     if (!targetCentre) {
       return { success: false, message: 'Academy centre not found.' };
+    }
+
+    if (!isAdmin && targetCentre.isSuspended) {
+      return { success: false, message: 'This academy profile is currently suspended. Profile updates are disabled. Please contact support@knowurcoach.in.' };
     }
 
     if (!isAdmin && targetCentre.ownerUserId !== user.id && targetCentre.owner?.email?.toLowerCase() !== user.email?.toLowerCase()) {
@@ -3620,6 +3809,10 @@ export async function updateCoachLeadStatus(leadId: string, status: string) {
       return { success: false, message: 'Lead not found.' };
     }
 
+    if (!isAdmin && targetLead.centre.isSuspended) {
+      return { success: false, message: 'This academy account is currently suspended. Lead management is locked.' };
+    }
+
     if (!isAdmin && targetLead.centre.ownerUserId !== sessionUser.id && targetLead.centre.phone !== sessionUser.phone) {
       return { success: false, message: 'Unauthorized: Cannot modify lead belonging to another academy.' };
     }
@@ -3646,6 +3839,20 @@ export async function createCoachLead(data: {
   status?: string;
 }) {
   try {
+    const centre = await prisma.coachingCentre.findUnique({
+      where: { id: data.centreId },
+      select: { id: true, isSuspended: true, kycStatus: true },
+    });
+    if (!centre) {
+      return { success: false, message: 'Coaching academy not found.' };
+    }
+    if (centre.isSuspended) {
+      return { success: false, message: 'This academy is currently suspended and cannot receive inquiries.' };
+    }
+    if (centre.kycStatus !== KycStatus.APPROVED) {
+      return { success: false, message: 'This academy is currently undergoing verification and cannot receive inquiries yet.' };
+    }
+
     const lead = await prisma.lead.create({
       data: {
         coachingCentreId: data.centreId,
@@ -3910,6 +4117,10 @@ export async function saveCoachBatch(
       return { success: false, message: 'Coaching centre not found.' };
     }
 
+    if (!isAdmin && centre.isSuspended) {
+      return { success: false, message: 'This academy account is currently suspended. Batch management is locked.' };
+    }
+
     if (!isAdmin && centre.ownerUserId !== user.id && centre.phone !== user.phone) {
       return { success: false, message: 'Access denied: You are not authorized to manage batches for this academy.' };
     }
@@ -3976,6 +4187,10 @@ export async function deleteCoachBatch(batchId: string) {
     });
     if (!batch) {
       return { success: false, message: 'Batch not found.' };
+    }
+
+    if (!isAdmin && batch.centre.isSuspended) {
+      return { success: false, message: 'This academy account is currently suspended. Batch management is locked.' };
     }
 
     if (!isAdmin && batch.centre.ownerUserId !== user.id && batch.centre.phone !== user.phone) {
@@ -4277,6 +4492,14 @@ export async function updateCoachSubscriptionPlan(
       return { success: false, message: 'Access denied: You are not authorized to manage this academy.' };
     }
 
+    if (!isAdmin && centre.isSuspended) {
+      return { success: false, message: 'This academy account is currently suspended. Subscription changes are locked. Please contact support@knowurcoach.in.' };
+    }
+
+    if (!isAdmin && centre.kycStatus === KycStatus.REJECTED) {
+      return { success: false, message: 'This academy application was declined. Please contact support@knowurcoach.in for appeal options.' };
+    }
+
     // Coaches can only activate FREE tier directly. Paid tiers require verified payment checkout
     if (!isAdmin && planTier !== SubscriptionPlan.FREE) {
       return {
@@ -4320,11 +4543,13 @@ export async function updateCoachSubscriptionPlan(
 
     const finalPaymentId = paymentId || (planTier === SubscriptionPlan.FREE ? `free_trial_${Date.now()}` : `pay_manual_${Date.now()}`);
 
+    const isApprovedAndActive = centre.kycStatus === KycStatus.APPROVED && !centre.isSuspended;
     const updated = await prisma.coachingCentre.update({
       where: { id: centreId },
       data: {
         planTier,
-        isTopInArea: planTier === SubscriptionPlan.PREMIUM,
+        isTopInArea: planTier === SubscriptionPlan.PREMIUM && isApprovedAndActive,
+        isVerifiedBatch: isApprovedAndActive,
         planPaymentId: finalPaymentId,
         planPurchasedAt: now,
         planExpiresAt: expiresAt,
@@ -4343,13 +4568,36 @@ export async function updateCoachSubscriptionPlan(
         : 'Starter Partner (Free Tier)';
 
     if (centre.ownerUserId) {
+      let notifTitle = `Subscription Plan Active: ${planName} 🚀`;
+      let notifMessage = planTier === SubscriptionPlan.FREE
+        ? `Your Free Partner plan is now active for ${config?.freeTierDurationDays || 90} days! Valid until ${expiresAt.toLocaleDateString('en-IN')}. All academy operations are unlocked.`
+        : `Your ${planName} subscription (${effectiveBillingCycle}) is active! Valid until ${expiresAt.toLocaleDateString('en-IN')}. Payment Ref: ${finalPaymentId}.`;
+
+      if (centre.kycStatus === 'DOCS_REVIEW') {
+        notifTitle = planTier === SubscriptionPlan.FREE
+          ? `Free Partner Trial Active • Review in Progress 🚀`
+          : `Subscription Active • Review in Progress 🚀`;
+        notifMessage = planTier === SubscriptionPlan.FREE
+          ? `Your Free Partner trial is active for ${config?.freeTierDurationDays || 90} days! Dashboard operations are unlocked. Your public listing will automatically go live as soon as admin review is approved.`
+          : `Your ${planName} subscription is confirmed and active! Your public directory listing will automatically go live with top priority once admin review is approved.`;
+      } else if (centre.kycStatus === 'PENDING') {
+        notifTitle = planTier === SubscriptionPlan.FREE
+          ? `Free Partner Trial Active • KYC Upload Needed 🚀`
+          : `Subscription Active • KYC Upload Needed 🚀`;
+        notifMessage = `Your ${planName} plan is active! Complete your facility safety checklist and upload verification documents to launch your live public listing.`;
+      } else if (centre.kycStatus === 'REFERRED_BACK') {
+        notifTitle = `Plan Active • Revisions Requested 🚀`;
+        notifMessage = `Your ${planName} plan is active. Please submit the revisions requested by compliance audit so your public listing can go live.`;
+      } else if (centre.kycStatus === 'REJECTED') {
+        notifTitle = `Plan Recorded • Verification Attention Needed ⚠️`;
+        notifMessage = `Your plan was recorded, but your KYC application was declined. Please contact support@knowurcoach.in for appeal or refund options.`;
+      }
+
       await prisma.notification.create({
         data: {
           userId: centre.ownerUserId,
-          title: `Subscription Plan Active: ${planName} 🚀`,
-          message: planTier === SubscriptionPlan.FREE
-            ? `Your Free Partner plan is now active for ${config?.freeTierDurationDays || 90} days! Valid until ${expiresAt.toLocaleDateString('en-IN')}. All academy operations are unlocked.`
-            : `Your ${planName} subscription (${effectiveBillingCycle}) is active! Valid until ${expiresAt.toLocaleDateString('en-IN')}. Payment Ref: ${finalPaymentId}.`,
+          title: notifTitle,
+          message: notifMessage,
           type: 'subscription',
         },
       }).catch(() => null);

@@ -56,6 +56,33 @@ export async function checkParentReviewEligibility(academyId: string): Promise<R
     const user = session.user as any;
     const userId = user.id;
 
+    // Verify target academy standing
+    const centre = await prisma.coachingCentre.findUnique({
+      where: { id: academyId },
+      select: { isSuspended: true, kycStatus: true },
+    });
+    if (!centre) {
+      return {
+        isEligible: false,
+        reason: 'NOT_ENROLLED',
+        message: 'Coaching academy not found.',
+      };
+    }
+    if (centre.isSuspended) {
+      return {
+        isEligible: false,
+        reason: 'NOT_ENROLLED',
+        message: 'This academy is currently suspended. Reviews are locked.',
+      };
+    }
+    if (centre.kycStatus !== 'APPROVED' && user.role !== 'ADMIN') {
+      return {
+        isEligible: false,
+        reason: 'NOT_ENROLLED',
+        message: 'This academy is currently undergoing verification. Reviews are enabled once verified.',
+      };
+    }
+
     // Check if user has an existing review for this academy
     const existing = await (prisma as any).review.findFirst({
       where: {
@@ -166,6 +193,17 @@ export async function submitAcademyReview(data: {
 
     const user = session.user as any;
     const userId = user.id;
+
+    const centre = await prisma.coachingCentre.findUnique({
+      where: { id: data.academyId },
+      select: { isSuspended: true, kycStatus: true },
+    });
+    if (!centre) {
+      return { success: false, message: 'Coaching academy not found.' };
+    }
+    if (centre.isSuspended) {
+      return { success: false, message: 'This academy is currently suspended. Reviews are locked.' };
+    }
 
     // Verify rating bounds
     const rating = Math.min(5, Math.max(1, Math.round(Number(data.rating) || 5)));

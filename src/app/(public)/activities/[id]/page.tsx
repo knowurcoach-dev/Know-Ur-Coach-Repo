@@ -13,6 +13,7 @@ import { ActivityDetailSkeleton } from '@/components/dashboard/DashboardSkeleton
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import { AcademyReviewsSection } from '@/components/reviews/AcademyReviewsSection';
 import { useBookmarks } from '@/hooks/useBookmarks';
+import { getCentreSubscriptionStatus } from '@/lib/subscription';
 import {
   Star,
   SealCheck,
@@ -56,6 +57,7 @@ export default function AcademyDetailPage() {
   const [selectedBatchIndex, setSelectedBatchIndex] = useState(0);
   const [batchCategoryFilter, setBatchCategoryFilter] = useState<string>('all');
   const [isOwnerPreview, setIsOwnerPreview] = useState(false);
+  const [previewReason, setPreviewReason] = useState<string>('');
 
   // Direct Academy Inquiry state
   const [inquiryParentName, setInquiryParentName] = useState('');
@@ -76,6 +78,10 @@ export default function AcademyDetailPage() {
   const handleSendInquiry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!academy) return;
+    if (isOwnerPreview) {
+      showToast('ℹ️ Listing Preview Mode: Direct inquiries will be enabled for parents once your academy is live.');
+      return;
+    }
     if (!inquiryParentName.trim() || !inquiryPhone.trim() || !inquiryMessage.trim()) {
       showToast('⚠️ Please enter your name, contact number, and question');
       return;
@@ -124,6 +130,33 @@ export default function AcademyDetailPage() {
           );
         }
         if (foundInDb) {
+          const subStatus = getCentreSubscriptionStatus(foundInDb);
+          const isPublicLive = subStatus.isPublicLive;
+          const isOwner = Boolean(
+            userEmail &&
+              (foundInDb.owner?.email === userEmail ||
+                foundInDb.ownerUserId === session?.user?.id ||
+                (user as any)?.centreId === foundInDb.id)
+          );
+          const isAdmin =
+            (session?.user as any)?.role === 'ADMIN' || (user as any)?.role === 'ADMIN';
+
+          // Guard: If not live and not owner/admin, prevent unauthorized public access
+          if (!isPublicLive && !isOwner && !isAdmin) {
+            setAcademy(null);
+            setIsOwnerPreview(false);
+            setLoading(false);
+            return;
+          }
+
+          const isPreview = !isPublicLive && (isOwner || isAdmin);
+          setIsOwnerPreview(isPreview);
+          if (isPreview) {
+            setPreviewReason(subStatus.publicListingMessage);
+          } else {
+            setPreviewReason('');
+          }
+
           const categorySlugs = (foundInDb.category ? foundInDb.category.split(',') : ['tennis'])
             .map((s: string) => s.trim().toLowerCase())
             .filter(Boolean);
@@ -153,7 +186,7 @@ export default function AcademyDetailPage() {
             trialFee: Number(foundInDb.trialFee) || 0,
             rating: Number(foundInDb.rating) || 5.0,
             reviewsCount: typeof foundInDb.reviewsCount === 'number' ? foundInDb.reviewsCount : (Number(foundInDb.reviewsCount) || 0),
-            verifiedTag: foundInDb.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Inspected',
+            verifiedTag: foundInDb.kycStatus === 'APPROVED' ? (foundInDb.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Audited') : 'Pending Verification',
             image: (foundInDb as any).image || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600&auto=format&fit=crop',
             coachName: foundInDb.headCoachName || 'Certified Head Coach',
             coachTitle: 'NIS Certified Head Coach',
@@ -163,7 +196,7 @@ export default function AcademyDetailPage() {
             safety: '24/7 CCTV • First Aid • Police Verified Staff',
             isTopInArea: foundInDb.isTopInArea,
             planTier: foundInDb.planTier,
-            isVerifiedBatch: foundInDb.isVerifiedBatch,
+            isVerifiedBatch: foundInDb.kycStatus === 'APPROVED' && Boolean(foundInDb.isVerifiedBatch),
             coachType: foundInDb.coachType,
             batches: (foundInDb.batches || []).map((b: any) => ({
               id: b.id,
@@ -195,6 +228,7 @@ export default function AcademyDetailPage() {
               coachCentre &&
               (coachCentre.id === id || coachCentre.id?.toLowerCase() === id?.toLowerCase())
             ) {
+              const subStatus = getCentreSubscriptionStatus(coachCentre);
               const coachCatSlugs = (coachCentre.category ? coachCentre.category.split(',') : ['tennis'])
                 .map((s: string) => s.trim().toLowerCase())
                 .filter(Boolean);
@@ -224,7 +258,7 @@ export default function AcademyDetailPage() {
                 trialFee: Number(coachCentre.trialFee) || 0,
                 rating: Number(coachCentre.rating) || 5.0,
                 reviewsCount: typeof coachCentre.reviewsCount === 'number' ? coachCentre.reviewsCount : (Number(coachCentre.reviewsCount) || 0),
-                verifiedTag: coachCentre.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Inspected',
+                verifiedTag: coachCentre.kycStatus === 'APPROVED' ? (coachCentre.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Audited') : 'Pending Verification',
                 image: (coachCentre as any).image || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600&auto=format&fit=crop',
                 coachName: coachCentre.headCoachName || 'Certified Head Coach',
                 coachTitle: 'NIS Certified Head Coach',
@@ -234,7 +268,7 @@ export default function AcademyDetailPage() {
                 safety: '24/7 CCTV • First Aid • Police Verified Staff',
                 isTopInArea: coachCentre.isTopInArea,
                 planTier: coachCentre.planTier,
-                isVerifiedBatch: coachCentre.isVerifiedBatch,
+                isVerifiedBatch: coachCentre.kycStatus === 'APPROVED' && Boolean(coachCentre.isVerifiedBatch),
                 coachType: coachCentre.coachType,
                 batches: (coachCentre.batches || []).map((b: any) => ({
                   id: b.id,
@@ -253,6 +287,7 @@ export default function AcademyDetailPage() {
               };
               setAcademy(mapped);
               setIsOwnerPreview(true);
+              setPreviewReason(subStatus.publicListingMessage);
               setLoading(false);
               return;
             }
@@ -298,6 +333,10 @@ export default function AcademyDetailPage() {
 
   const handleBookTrial = (targetBatch?: any) => {
     if (!academy) return;
+    if (isOwnerPreview) {
+      showToast('ℹ️ Listing Preview Mode: Free trial bookings will be enabled for parents once your academy is verified and live.');
+      return;
+    }
     if (isGuest) {
       showToast('🎁 Please create a free parent account to claim your Free Trial pass!');
       router.push('/register-parent');
@@ -320,6 +359,10 @@ export default function AcademyDetailPage() {
 
   const handleEnrollBatch = (targetBatch?: any) => {
     if (!academy) return;
+    if (isOwnerPreview) {
+      showToast('ℹ️ Listing Preview Mode: Monthly batch enrollments will be enabled for parents once your academy is verified and live.');
+      return;
+    }
     if (isGuest) {
       showToast('Please sign in to enroll in monthly batches');
       router.push(`/login?callbackUrl=/activities/${id}`);
@@ -364,9 +407,9 @@ export default function AcademyDetailPage() {
         <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-2xl font-black shadow-inner">
           🔒
         </div>
-        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Profile is Currently Private</h2>
+        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Profile Currently Unavailable</h2>
         <p className="text-sm text-slate-600 leading-relaxed">
-          This academy profile is either unlisted or currently on a private plan. Under platform rules, only verified academies on <strong>Standard</strong> and <strong>Premier</strong> tiers are publicly listed in the directory.
+          This academy listing is either undergoing verification or currently not published in the public directory. Only verified academies with approved safety credentials and active plans are available for parent bookings.
         </p>
         <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
           <Link
@@ -425,18 +468,18 @@ export default function AcademyDetailPage() {
         <div className="bg-amber-500/10 border-b border-amber-300/60 px-4 py-3">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-950 text-xs font-bold">
             <div className="flex items-center gap-2">
-              <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase shrink-0">
-                Private Preview
+              <span className="bg-amber-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase shrink-0">
+                Owner Preview Mode
               </span>
               <span>
-                🔒 <strong>Unlisted Profile Notice:</strong> Your academy page is not listed publicly. Purchase a Standard or Premier subscription to make this page visible to parents.
+                🔒 <strong>Private Preview:</strong> {previewReason || 'This academy profile is not yet live to parents. Complete onboarding and verification to publish.'}
               </span>
             </div>
             <Link
-              href="/coach/plans"
+              href="/coach/dashboard"
               className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-black px-4 py-1.5 rounded-xl transition-all shrink-0 shadow-xs"
             >
-              Activate Standard or Premier Plan →
+              Go to Coach Dashboard →
             </Link>
           </div>
         </div>
@@ -464,7 +507,7 @@ export default function AcademyDetailPage() {
                 </>
               ) : (
                 <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-md flex items-center gap-1">
-                  Self-Listed Profile
+                  {isOwnerPreview ? 'Pending Physical Verification' : 'Self-Listed Profile'}
                 </span>
               )}
               {(academy.activities && academy.activities.length > 0

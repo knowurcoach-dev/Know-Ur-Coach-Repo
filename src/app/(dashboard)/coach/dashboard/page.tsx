@@ -294,6 +294,14 @@ export default function CoachDashboardPage() {
   }, [session, user, status]);
 
   const handleCheckIn = (student: StudentRosterItem) => {
+    if (centreData?.isSuspended) {
+      showToast('🔒 Academy account is suspended. Student check-ins are locked.');
+      return;
+    }
+    if (!subStatus.canOperate) {
+      showToast(`🔒 ${subStatus.headline}. Please renew your plan to check in students.`);
+      return;
+    }
     if (kycStatus !== 'APPROVED' && !centreData?.isActive) {
       showToast('🔒 Student check-in is locked until your academy profile is verified.');
       return;
@@ -590,7 +598,7 @@ export default function CoachDashboardPage() {
   const subStatus = getCentreSubscriptionStatus(centreData, platformConfig);
   const isPlanActive = subStatus.canOperate;
   const isOperationsUnlocked = isPlanActive;
-  const isPublicLive = isApproved && isPlanActive;
+  const isPublicLive = subStatus.isPublicLive;
   const isCoachSubscribed =
     (centreData?.planTier === 'STANDARD' ||
       centreData?.planTier === 'PREMIUM' ||
@@ -626,7 +634,12 @@ export default function CoachDashboardPage() {
         <div className="bg-gradient-to-r from-slate-950 via-[#0a1128] to-blue-950 text-white p-6 sm:p-8 rounded-3xl shadow-lg relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div className="space-y-2 z-10">
             <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider">
-              {isApproved ? (
+              {centreData?.isSuspended ? (
+                <>
+                  <WarningCircle size={14} weight="fill" className="text-red-400" />
+                  <span className="text-red-300">Account Suspended</span>
+                </>
+              ) : isApproved ? (
                 <>
                   <SealCheck size={14} weight="fill" className="text-emerald-400" />
                   <span className="text-emerald-300">Approved &amp; Verified Academy</span>
@@ -640,6 +653,11 @@ export default function CoachDashboardPage() {
                 <>
                   <WarningCircle size={14} weight="fill" className="text-amber-400" />
                   <span className="text-amber-200">Action Required — Revisions Requested</span>
+                </>
+              ) : isRejected ? (
+                <>
+                  <WarningCircle size={14} weight="fill" className="text-rose-400" />
+                  <span className="text-rose-300">Application Declined</span>
                 </>
               ) : (
                 <>
@@ -687,7 +705,17 @@ export default function CoachDashboardPage() {
             ) : (
               <div className="bg-white/10 border border-white/10 text-slate-300 font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5">
                 <Lock size={14} />
-                <span>Public Listing Locked</span>
+                <span>
+                  {centreData?.isSuspended
+                    ? 'Account Suspended'
+                    : isPendingReview
+                    ? 'Listing Queued (Under Review)'
+                    : isReferredBack
+                    ? 'Revisions Required'
+                    : isRejected
+                    ? 'Application Declined'
+                    : 'Public Listing Locked'}
+                </span>
               </div>
             )}
 
@@ -730,7 +758,42 @@ export default function CoachDashboardPage() {
             DYNAMIC APPLICATION & SUBSCRIPTION STATUS ALERT BANNERS
            ══════════════════════════════════════════ */}
 
-        {/* 0. SUBSCRIPTION EXPIRED / LOCKED / WARNING ALERTS */}
+        {/* 0. ACCOUNT SUSPENSION BANNER */}
+        {centreData?.isSuspended && (
+          <div className="bg-gradient-to-r from-red-500/15 via-rose-500/20 to-red-500/15 border-2 border-red-500 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-3 animate-fade-in overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div className="w-11 h-11 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <WarningCircle size={26} weight="bold" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="inline-flex items-center gap-1.5 bg-red-200 text-red-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-1">
+                    Account Suspended
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-red-950 leading-snug">
+                    Academy Operations &amp; Public Visibility Temporarily Suspended
+                  </h3>
+                  <p className="text-xs text-red-900 font-medium leading-relaxed mt-0.5">
+                    Your academy has been placed on administrative hold by trust &amp; safety compliance. Public listings and operational tools are paused. Please contact{' '}
+                    <a href="mailto:support@knowurcoach.in" className="font-bold underline text-red-950">
+                      support@knowurcoach.in
+                    </a>{' '}
+                    to review your account status.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="mailto:support@knowurcoach.in?subject=Suspended%20Academy%20Review%20Appeal"
+                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white text-xs font-black px-5 py-3 rounded-xl shadow-md transition-all shrink-0 flex items-center justify-center gap-2"
+              >
+                <span>Contact Compliance Desk</span>
+                <ArrowRight size={14} weight="bold" />
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* 0B. SUBSCRIPTION EXPIRED / LOCKED / WARNING ALERTS */}
         {subStatus.status === 'EXPIRED' && (
           <div className="bg-gradient-to-r from-red-500/10 via-rose-500/15 to-red-500/10 border-2 border-red-400 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-3 animate-fade-in overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -896,7 +959,9 @@ export default function CoachDashboardPage() {
                     Application Pending Admin Review
                   </h3>
                   <p className="text-xs text-blue-800 leading-relaxed mt-1 break-words">
-                    Your details and verification documents have been submitted to our platform verification desk. Our team is validating your credentials and facility photos. No payment is required for onboarding or approval. Your profile will go live as soon as approved!
+                    {isPlanActive
+                      ? 'Your subscription is active and your verification documents have been submitted to our platform verification desk. Our team is validating your credentials and facility photos. Your public listing will automatically go live as soon as approved (typically within 24–48 hours)!'
+                      : 'Your details and verification documents have been submitted to our platform verification desk. Our team is validating your credentials and facility photos. No payment is required for onboarding or approval. Once approved, activate your partner plan or free trial to make your public listing live!'}
                   </p>
                 </div>
               </div>
@@ -1007,8 +1072,8 @@ export default function CoachDashboardPage() {
         )}
 
         {/* 5. APPROVED BANNER */}
-        {isApproved && (
-          isPlanActive ? (
+        {isApproved && !centreData?.isSuspended && (
+          subStatus.isPublicLive ? (
             <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
@@ -1065,7 +1130,7 @@ export default function CoachDashboardPage() {
           const isStandardPlan = centreData?.planTier === 'STANDARD';
           const isTrial = subStatus.isTrial;
           const isPaidPlan = (isProPlan || isStandardPlan) && !isTrial;
-          const isPubliclyListed = subStatus.canPublicList && isApproved;
+          const isPubliclyListed = subStatus.isPublicLive;
 
           return (
             <div className="bg-gradient-to-br from-[#0a1128] via-[#101f42] to-[#0d1b3e] text-white rounded-3xl p-6 sm:p-7 shadow-xl border border-indigo-900/50 space-y-5 relative overflow-hidden">
@@ -1078,7 +1143,12 @@ export default function CoachDashboardPage() {
                       Partner Membership Tier
                     </span>
 
-                    {subStatus.isExpired ? (
+                    {centreData?.isSuspended ? (
+                      <span className="inline-flex items-center gap-1.5 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-sm">
+                        <WarningCircle size={14} weight="fill" />
+                        Account Suspended
+                      </span>
+                    ) : subStatus.isExpired ? (
                       <span className="inline-flex items-center gap-1.5 bg-red-500 text-white font-black text-xs px-3 py-1 rounded-full shadow-sm">
                         <WarningCircle size={14} weight="fill" />
                         Subscription Expired ({subStatus.formattedExpiry})
@@ -1086,12 +1156,12 @@ export default function CoachDashboardPage() {
                     ) : isProPlan ? (
                       <span className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black text-xs px-3 py-1 rounded-full shadow-sm">
                         <Crown size={14} weight="fill" />
-                        Verified Premier Partner Active ({subStatus.daysRemaining}d left)
+                        Premier Pro Partner ({subStatus.daysRemaining}d left)
                       </span>
                     ) : isStandardPlan ? (
                       <span className="inline-flex items-center gap-1.5 bg-indigo-500 text-white font-black text-xs px-3 py-1 rounded-full shadow-sm">
                         <Sparkle size={14} weight="fill" />
-                        Standard Growth Partner Active ({subStatus.daysRemaining}d left)
+                        Standard Growth Partner ({subStatus.daysRemaining}d left)
                       </span>
                     ) : isTrial ? (
                       <span className="inline-flex items-center gap-1.5 bg-blue-500 text-white font-black text-xs px-3 py-1 rounded-full shadow-sm">
@@ -1101,13 +1171,15 @@ export default function CoachDashboardPage() {
                     ) : (
                       <span className="inline-flex items-center gap-1.5 bg-rose-500/20 text-rose-300 font-extrabold text-xs px-3 py-1 rounded-full border border-rose-500/30">
                         <EyeSlash size={14} weight="bold" />
-                        Unlisted Profile • Subscription Required
+                        Unlisted Profile • Plan Required
                       </span>
                     )}
                   </div>
 
                   <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                    {subStatus.isExpired
+                    {centreData?.isSuspended
+                      ? 'Account Under Administrative Hold'
+                      : subStatus.isExpired
                       ? 'Plan Expired — Renewal Required'
                       : isProPlan
                       ? 'Premier Pro Academy Tier'
@@ -1119,15 +1191,33 @@ export default function CoachDashboardPage() {
                   </h2>
 
                   <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                    {subStatus.isExpired
+                    {centreData?.isSuspended
+                      ? 'Your academy is temporarily suspended by compliance. Operations and public listings are paused. Please contact support@knowurcoach.in.'
+                      : subStatus.isExpired
                       ? 'Your subscription period has ended. Operational rosters and public listings are paused. Renew your subscription below to restore instant WhatsApp leads and attendance management.'
+                      : isPaidPlan && !isApproved
+                      ? isPendingReview
+                        ? 'Your paid subscription is active! Your public directory listing will automatically activate the moment our verification desk finishes reviewing your credentials (usually within 24–48 hours).'
+                        : isReferredBack
+                        ? 'Your paid subscription is active. Please address the revisions requested on your documents so our verification desk can approve and publish your listing.'
+                        : isRejected
+                        ? 'Your paid subscription is active, but your KYC verification was declined. Please reach out to support@knowurcoach.in to submit revised documents.'
+                        : 'Your paid subscription is active! Please complete your facility safety checklist and upload verification documents below to launch your public listing.'
+                      : isTrial && !isApproved
+                      ? isPendingReview
+                        ? 'Your free partner trial is active! Your public directory listing will automatically activate once admin approval is granted.'
+                        : isReferredBack
+                        ? 'Your free trial is active. Please address the revisions requested on your documents to get verified and published.'
+                        : isRejected
+                        ? 'Your free trial is active, but KYC verification was declined. Please reach out to support to appeal.'
+                        : 'Your free partner trial is active! Complete your facility safety checklist and upload verification documents below to launch your public listing.'
                       : isProPlan
                       ? 'Your academy receives #1 top priority placement, instant WhatsApp lead alerts, and unlimited batch rosters.'
                       : isStandardPlan
                       ? 'Your academy is listed in the activities directory with priority search ranking and unlimited trial booking leads.'
                       : isTrial
-                      ? 'You are enjoying complimentary free access to KnowUrCoach operations. Upgrade anytime to Standard or Premier to secure continuous visibility and enhanced rankings.'
-                      : '⚠️ Newly registered academies are unlisted by default. Purchase either the Standard Plan or Premier Plan to make your academy live to parents across India.'}
+                      ? 'You are enjoying complimentary free access to KnowUrCoach operations and directory listing during your trial period. Upgrade anytime to Standard or Premier to secure continuous visibility and enhanced rankings.'
+                      : '⚠️ Newly registered academies are unlisted by default. Choose a partner plan or activate your complimentary trial to make your academy live to parents across India.'}
                   </p>
 
                   {/* Status & Expiry details */}
@@ -1152,9 +1242,33 @@ export default function CoachDashboardPage() {
                         <span className="text-emerald-400 flex items-center gap-1 font-extrabold">
                           <Eye size={13} weight="bold" /> Public Directory: Live in Directory
                         </span>
-                      ) : (
+                      ) : subStatus.publicListingStatus === 'UNDER_REVIEW' ? (
+                        <span className="text-blue-400 flex items-center gap-1 font-extrabold">
+                          <Clock size={13} weight="bold" /> Public Directory: Queued (Pending KYC Review)
+                        </span>
+                      ) : subStatus.publicListingStatus === 'PENDING_DOCS' ? (
+                        <span className="text-amber-400 flex items-center gap-1 font-extrabold">
+                          <Clock size={13} weight="bold" /> Public Directory: Inactive (Upload Verification Docs)
+                        </span>
+                      ) : subStatus.publicListingStatus === 'REVISIONS_REQUESTED' ? (
+                        <span className="text-amber-400 flex items-center gap-1 font-extrabold">
+                          <WarningCircle size={13} weight="bold" /> Public Directory: Inactive (Revisions Requested)
+                        </span>
+                      ) : subStatus.publicListingStatus === 'KYC_REJECTED' ? (
                         <span className="text-rose-400 flex items-center gap-1 font-extrabold">
-                          <EyeSlash size={13} weight="bold" /> Public Directory: Unlisted ({subStatus.isExpired ? 'Expired Plan' : 'Requires Active Subscription'})
+                          <WarningCircle size={13} weight="bold" /> Public Directory: Blocked (KYC Declined)
+                        </span>
+                      ) : subStatus.publicListingStatus === 'SUSPENDED' ? (
+                        <span className="text-red-400 flex items-center gap-1 font-extrabold">
+                          <WarningCircle size={13} weight="bold" /> Public Directory: Paused (Account Suspended)
+                        </span>
+                      ) : subStatus.publicListingStatus === 'EXPIRED' ? (
+                        <span className="text-red-400 flex items-center gap-1 font-extrabold">
+                          <EyeSlash size={13} weight="bold" /> Public Directory: Paused (Plan Expired)
+                        </span>
+                      ) : (
+                        <span className="text-amber-400 flex items-center gap-1 font-extrabold">
+                          <EyeSlash size={13} weight="bold" /> Public Directory: Unlisted (Subscription Required)
                         </span>
                       )}
                     </div>
@@ -1982,7 +2096,7 @@ export default function CoachDashboardPage() {
                     {kycStatus === 'DOCS_REVIEW'
                       ? 'Verification Application Status'
                       : isApproved
-                      ? 'Academy Live & Operational'
+                      ? (subStatus.isPublicLive ? 'Academy Live & Operational' : 'Verification Approved • Plan Needed to Go Live')
                       : 'Ready to Submit?'}
                   </div>
                   {kycStatus === 'DOCS_REVIEW' && (
@@ -2005,7 +2119,7 @@ export default function CoachDashboardPage() {
                   {kycStatus === 'DOCS_REVIEW'
                     ? 'Your documents have been submitted to compliance. You can update details anytime before final approval.'
                     : isApproved
-                    ? 'Save your latest batch schedules, safety checklist, and gallery photos.'
+                    ? (subStatus.isPublicLive ? 'Save your latest batch schedules, safety checklist, and gallery photos.' : 'Your safety credentials are approved! Activate a partner plan to publish your live directory listing.')
                     : 'Submit your checklist and digital documents for in-app verification.'}
                 </div>
               </div>

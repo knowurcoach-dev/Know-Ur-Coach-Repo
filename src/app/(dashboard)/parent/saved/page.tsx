@@ -16,6 +16,7 @@ import {
   Sparkle,
   Spinner,
   Trash,
+  Lock,
 } from '@phosphor-icons/react';
 
 const BOOKMARK_EVENT = 'kuc_bookmarks_updated';
@@ -177,9 +178,19 @@ export default function ParentSavedPage() {
                   <div className="p-6 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                          {centre.category || 'Sports'}
-                        </span>
+                        {centre.isSuspended ? (
+                          <span className="text-[10px] font-black uppercase tracking-wider text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full inline-block">
+                            Temporarily Unavailable
+                          </span>
+                        ) : centre.kycStatus !== 'APPROVED' ? (
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full inline-block">
+                            Verification In Progress
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                            {centre.category || 'Sports'}
+                          </span>
+                        )}
                         <h3 className="font-black text-slate-900 text-base mt-1.5 leading-snug">
                           {centre.name}
                         </h3>
@@ -215,20 +226,27 @@ export default function ParentSavedPage() {
                   </div>
 
                   <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center gap-2">
-                    <button
-                      onClick={() =>
-                        openModal('trial-booking', {
-                          acadId: centre.id,
-                          acadName: centre.name,
-                          locality: centre.locality,
-                          category: centre.category,
-                        })
-                      }
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-2.5 px-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                    >
-                      <Ticket size={15} weight="bold" />
-                      <span>Book Free Trial</span>
-                    </button>
+                    {centre.isSuspended || centre.kycStatus !== 'APPROVED' ? (
+                      <div className="flex-1 bg-slate-200/80 text-slate-500 font-extrabold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed">
+                        <Lock size={14} />
+                        <span>{centre.isSuspended ? 'Temporarily Suspended' : 'Under Verification'}</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          openModal('trial-booking', {
+                            acadId: centre.id,
+                            acadName: centre.name,
+                            locality: centre.locality,
+                            category: centre.category,
+                          })
+                        }
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-2.5 px-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <Ticket size={15} weight="bold" />
+                        <span>Book Free Trial</span>
+                      </button>
+                    )}
                     <Link
                       href={`/activities/${centre.id}`}
                       className="px-3 py-2.5 rounded-xl border border-slate-200 hover:bg-white text-slate-700 font-bold text-xs transition-colors"

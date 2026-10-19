@@ -344,4 +344,180 @@ describe('Phase 1: Subscription & Pricing Engine Unit Tests', () => {
       assert.strictEqual(status.daysRemaining, 9999);
     });
   });
+
+  describe('PublicListingStatus & KYC Synchronization Matrix', () => {
+    it('Case 3A: Paid plan purchased before KYC review (kycStatus: DOCS_REVIEW)', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-paid-review',
+        planTier: SubscriptionPlan.STANDARD,
+        planExpiresAt: null,
+        kycStatus: 'DOCS_REVIEW',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.canOperate, true, 'Paid plan must unlock operations');
+      assert.strictEqual(status.isKycApproved, false);
+      assert.strictEqual(status.isPublicLive, false, 'Public listing must NOT be live before KYC approval');
+      assert.strictEqual(status.publicListingStatus, 'UNDER_REVIEW');
+      assert.ok(status.publicListingMessage.includes('review'), 'Must inform that listing is queued under review');
+      assert.ok(!status.publicListingMessage.toLowerCase().includes('subscription required'), 'Must not claim subscription required when already paid');
+    });
+
+    it('Case 3B: Paid plan with KYC pending onboarding (kycStatus: PENDING)', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-paid-pending',
+        planTier: SubscriptionPlan.PREMIUM,
+        planExpiresAt: null,
+        kycStatus: 'PENDING',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.canOperate, true);
+      assert.strictEqual(status.isPublicLive, false);
+      assert.strictEqual(status.publicListingStatus, 'PENDING_DOCS');
+      assert.ok(status.publicListingMessage.includes('documents'), 'Must request verification documents');
+    });
+
+    it('Case 3C: Paid plan with revisions requested (kycStatus: REFERRED_BACK)', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-paid-revisions',
+        planTier: SubscriptionPlan.STANDARD,
+        planExpiresAt: null,
+        kycStatus: 'REFERRED_BACK',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.canOperate, true);
+      assert.strictEqual(status.isPublicLive, false);
+      assert.strictEqual(status.publicListingStatus, 'REVISIONS_REQUESTED');
+      assert.ok(status.publicListingMessage.includes('Revisions requested'));
+    });
+
+    it('Case 3D: Paid plan with KYC rejected (kycStatus: REJECTED)', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-paid-rejected',
+        planTier: SubscriptionPlan.STANDARD,
+        planExpiresAt: null,
+        kycStatus: 'REJECTED',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.isPublicLive, false);
+      assert.strictEqual(status.publicListingStatus, 'KYC_REJECTED');
+      assert.ok(status.publicListingMessage.includes('declined'));
+    });
+
+    it('Case 3E: Free trial activated before KYC approval (kycStatus: DOCS_REVIEW)', () => {
+      const futureDate = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+      const status = getCentreSubscriptionStatus({
+        id: 'c-trial-review',
+        planTier: SubscriptionPlan.FREE,
+        planExpiresAt: futureDate,
+        isTrialActive: true,
+        kycStatus: 'DOCS_REVIEW',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.canOperate, true, 'Trial unlocks coach operations');
+      assert.strictEqual(status.isTrial, true);
+      assert.strictEqual(status.isKycApproved, false);
+      assert.strictEqual(status.isPublicLive, false, 'Free trial must not be live to public before KYC approval');
+      assert.strictEqual(status.publicListingStatus, 'UNDER_REVIEW');
+    });
+
+    it('Case 3F: Account suspended by admin with active paid plan', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-suspended',
+        planTier: SubscriptionPlan.PREMIUM,
+        planExpiresAt: null,
+        kycStatus: 'APPROVED',
+        isSuspended: true,
+      });
+
+      assert.strictEqual(status.status, 'LOCKED');
+      assert.strictEqual(status.statusBadge, 'LOCKED');
+      assert.strictEqual(status.canOperate, false, 'Suspended academy cannot operate');
+      assert.strictEqual(status.isPublicLive, false, 'Suspended academy cannot be live');
+      assert.strictEqual(status.publicListingStatus, 'SUSPENDED');
+      assert.ok(status.publicListingMessage.toLowerCase().includes('suspended'));
+    });
+
+    it('Case 3G: KYC approved and active plan (Happy Path)', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-live',
+        planTier: SubscriptionPlan.STANDARD,
+        planExpiresAt: null,
+        kycStatus: 'APPROVED',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.canOperate, true);
+      assert.strictEqual(status.isKycApproved, true);
+      assert.strictEqual(status.isPublicLive, true);
+      assert.strictEqual(status.publicListingStatus, 'LIVE');
+      assert.ok(status.publicListingMessage.toLowerCase().includes('live'));
+    });
+
+    it('Case 3H: KYC approved but plan expired', () => {
+      const pastDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      const status = getCentreSubscriptionStatus({
+        id: 'c-approved-expired',
+        planTier: SubscriptionPlan.STANDARD,
+        planExpiresAt: pastDate,
+        kycStatus: 'APPROVED',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.isKycApproved, true);
+      assert.strictEqual(status.canOperate, false);
+      assert.strictEqual(status.isPublicLive, false);
+      assert.strictEqual(status.publicListingStatus, 'EXPIRED');
+    });
+
+    it('Case 3I: Unapproved academy on Premium plan cannot be public live', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-premium-unapproved',
+        planTier: SubscriptionPlan.PREMIUM,
+        planExpiresAt: null,
+        kycStatus: 'DOCS_REVIEW',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.tier, SubscriptionPlan.PREMIUM);
+      assert.strictEqual(status.canOperate, true);
+      assert.strictEqual(status.isKycApproved, false);
+      assert.strictEqual(status.isPublicLive, false);
+      assert.strictEqual(status.publicListingStatus, 'UNDER_REVIEW');
+    });
+
+    it('Case 3J: Suspended academy with active standard plan is locked and not live', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-suspended-active-plan',
+        planTier: SubscriptionPlan.STANDARD,
+        planExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        kycStatus: 'APPROVED',
+        isSuspended: true,
+      });
+
+      assert.strictEqual(status.canOperate, false, 'Suspended academy cannot operate regardless of plan');
+      assert.strictEqual(status.isPublicLive, false, 'Suspended academy cannot be live');
+      assert.strictEqual(status.publicListingStatus, 'SUSPENDED');
+      assert.strictEqual(status.status, 'LOCKED');
+    });
+
+    it('Case 3K: KYC rejected academy with recorded plan cannot be live', () => {
+      const status = getCentreSubscriptionStatus({
+        id: 'c-rejected-plan',
+        planTier: SubscriptionPlan.STANDARD,
+        planExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        kycStatus: 'REJECTED',
+        isSuspended: false,
+      });
+
+      assert.strictEqual(status.isPublicLive, false);
+      assert.strictEqual(status.publicListingStatus, 'KYC_REJECTED');
+      assert.ok(status.publicListingMessage.toLowerCase().includes('declined'));
+    });
+  });
 });
+

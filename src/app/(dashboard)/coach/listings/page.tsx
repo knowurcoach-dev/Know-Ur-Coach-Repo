@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersona } from '@/context/PersonaContext';
 import { getCoachDashboardData } from '@/lib/actions';
+import { getCentreSubscriptionStatus } from '@/lib/subscription';
 import { GeneralCoachPageSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { getCategoryDisplayName, getCategoryEmoji } from '@/lib/categories';
 import {
@@ -59,11 +60,15 @@ export default function CoachListingsPage() {
   const academyName =
     centreData?.name || (session?.user?.name ? `${session.user.name}'s Academy` : 'Your Academy');
   const plan = centreData?.planTier || 'FREE';
-  const isPro = plan === 'PREMIUM' || plan === 'PRO';
-  const isStandard = plan === 'STANDARD';
-  const isPaid = isPro || isStandard || Boolean(centreData?.planPurchasedAt || centreData?.planPaymentId);
+  const subStatus = getCentreSubscriptionStatus(centreData, null);
   const isApproved = centreData?.kycStatus === 'APPROVED';
-  const isPublicLive = isPaid && isApproved;
+  const isPendingReview = centreData?.kycStatus === 'DOCS_REVIEW';
+  const isReferredBack = centreData?.kycStatus === 'REFERRED_BACK';
+  const isRejected = centreData?.kycStatus === 'REJECTED';
+  const isPendingDocs = centreData?.kycStatus === 'PENDING';
+  const isSuspended = Boolean(centreData?.isSuspended);
+  const isPlanActive = subStatus.canOperate;
+  const isPublicLive = subStatus.isPublicLive;
 
   const publicUrl = centreData?.id
     ? typeof window !== 'undefined'
@@ -127,7 +132,45 @@ export default function CoachListingsPage() {
         </div>
 
         {/* Status Alert Banner */}
-        {isPublicLive ? (
+        {isSuspended ? (
+          <div className="bg-gradient-to-r from-red-950 via-slate-900 to-red-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5 border border-red-500/40">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-red-300 bg-red-500/20 border border-red-500/30 px-2.5 py-0.5 rounded-full inline-block">
+                Account Suspended
+              </span>
+              <h2 className="text-xl font-black">{academyName} — Listing Suspended</h2>
+              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                Your academy profile has been suspended by platform administration. Operational tools and public search listings are currently disabled.
+                {centreData?.statusNotes ? ` Notice: "${centreData.statusNotes}"` : ''}
+              </p>
+            </div>
+            <a
+              href="mailto:support@knowurcoach.in?subject=Appeal%20Academy%20Suspension"
+              className="inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-black text-xs px-6 py-3.5 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              <span>Contact Support Desk</span>
+            </a>
+          </div>
+        ) : subStatus.isExpired ? (
+          <div className="bg-gradient-to-r from-red-950 via-slate-900 to-red-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5 border border-red-500/40">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-red-300 bg-red-500/20 border border-red-500/30 px-2.5 py-0.5 rounded-full inline-block">
+                Subscription Expired
+              </span>
+              <h2 className="text-xl font-black">{academyName} — Listing Paused</h2>
+              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                Your subscription expired on <span className="text-white font-bold">{subStatus.formattedExpiry}</span>. Public search listing and parent discovery are paused. Renew your subscription to restore your live directory presence.
+              </p>
+            </div>
+            <Link
+              href="/coach/plans"
+              className="inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-black text-xs px-6 py-3.5 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              <Crown size={16} weight="bold" />
+              <span>Renew Subscription Now</span>
+            </Link>
+          </div>
+        ) : isPublicLive ? (
           <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -164,7 +207,90 @@ export default function CoachListingsPage() {
               </Link>
             </div>
           </div>
-        ) : !isPaid && isApproved ? (
+        ) : isPlanActive && isPendingReview ? (
+          <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5 border border-blue-500/30">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-300 bg-blue-500/20 border border-blue-500/30 px-2.5 py-0.5 rounded-full inline-block">
+                  Subscription Active • Verification In Review
+                </span>
+                <span className="text-[10px] font-bold text-slate-300">
+                  Plan: {plan} ({subStatus.daysRemaining}d left)
+                </span>
+              </div>
+              <h2 className="text-xl font-black">{academyName} — Listing Queued</h2>
+              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                Your partner plan is confirmed and active! Your verification documents are currently under compliance review (turnaround 24–48 hours). Your public listing will automatically go live as soon as approved.
+              </p>
+            </div>
+
+            <Link
+              href={`/activities/${centreData?.id}`}
+              target="_blank"
+              className="inline-flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 text-slate-950 font-black text-xs px-6 py-3.5 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              <ArrowSquareOut size={16} weight="bold" />
+              <span>Preview Profile Draft</span>
+            </Link>
+          </div>
+        ) : isPlanActive && isReferredBack ? (
+          <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5 border border-amber-500/30">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 rounded-full inline-block">
+                Subscription Active • Revisions Requested
+              </span>
+              <h2 className="text-xl font-black">{academyName} — Action Required</h2>
+              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                Your subscription is active, but admin requested document revisions before publishing your profile. Feedback: "{centreData?.referredBackRemarks || 'Please upload updated documents.'}"
+              </p>
+            </div>
+
+            <Link
+              href="/coach/dashboard#onboarding-hub"
+              className="inline-flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-6 py-3.5 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              <span>Update Documents</span>
+            </Link>
+          </div>
+        ) : isPlanActive && isPendingDocs ? (
+          <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5 border border-amber-500/30">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 rounded-full inline-block">
+                Subscription Active • KYC Upload Needed
+              </span>
+              <h2 className="text-xl font-black">{academyName} — Complete Setup to Go Live</h2>
+              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                Your plan is active! Complete your facility safety checklist and upload verification documents to publish your academy live to parents.
+              </p>
+            </div>
+
+            <Link
+              href="/coach/dashboard#onboarding-hub"
+              className="inline-flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-6 py-3.5 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              <span>Upload Documents</span>
+            </Link>
+          </div>
+        ) : isRejected ? (
+          <div className="bg-gradient-to-r from-red-950 via-slate-900 to-red-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5 border border-red-500/30">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-red-300 bg-red-500/20 border border-red-500/30 px-2.5 py-0.5 rounded-full inline-block">
+                Application Declined
+              </span>
+              <h2 className="text-xl font-black">{academyName} — Verification Declined</h2>
+              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                Reason: {centreData?.rejectionReason || 'Submitted documentation could not be verified'}. Please reach out to support at support@knowurcoach.in to submit an appeal or request refund options.
+              </p>
+            </div>
+
+            <a
+              href="mailto:support@knowurcoach.in?subject=Appeal%20KYC%20Rejection"
+              className="inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-black text-xs px-6 py-3.5 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              <span>Contact Support</span>
+            </a>
+          </div>
+        ) : isApproved && !isPlanActive ? (
           <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-5 border border-amber-500/30">
             <div className="space-y-1.5">
               <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 rounded-full inline-block">
@@ -325,7 +451,7 @@ export default function CoachListingsPage() {
               Search Placement
             </div>
             <div className="text-lg font-black text-slate-900">
-              {isPro ? 'Top in City Sponsored' : isStandard ? 'Verified City Directory' : 'Private / Unlisted'}
+              {centreData?.planTier === 'PREMIUM' ? 'Top in City Sponsored' : centreData?.planTier === 'STANDARD' ? 'Verified City Directory' : subStatus.isTrial ? 'Trial Listing' : 'Private / Unlisted'}
             </div>
             <div className="text-xs text-slate-500 font-medium">
               Regional sports &amp; activity search rankings

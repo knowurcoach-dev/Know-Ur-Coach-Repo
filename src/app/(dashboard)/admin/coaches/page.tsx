@@ -51,6 +51,7 @@ import {
 } from '@phosphor-icons/react';
 import { DocViewerModal } from '@/components/modals/DocViewerModal';
 import { parseCoachDocuments, getCoachDocCount, cleanStatusNotes } from '@/lib/coach-docs';
+import { getCentreSubscriptionStatus } from '@/lib/subscription';
 
 export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean = false) {
   if (!coach) {
@@ -66,7 +67,9 @@ export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean =
     };
   }
 
-  if (coach.isSuspended) {
+  const sub = getCentreSubscriptionStatus(coach);
+
+  if (coach.isSuspended || sub.publicListingStatus === 'SUSPENDED') {
     return {
       code: 'SUSPENDED',
       label: 'SUSPENDED',
@@ -79,40 +82,36 @@ export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean =
     };
   }
 
-  const isKycApproved = coach.kycStatus === 'APPROVED';
-  const isPaid =
-    coach.planTier === 'STANDARD' ||
-    coach.planTier === 'PREMIUM' ||
-    Boolean(coach.planPaymentId);
+  if (sub.publicListingStatus === 'LIVE') {
+    const isFree = sub.tier === 'FREE';
+    return {
+      code: isFree ? 'FREE_LIVE' : 'LIVE',
+      label: isFree ? 'APPROVED • FREE LIVE' : 'APPROVED & LIVE',
+      badgeClass: isFree
+        ? 'bg-teal-50 text-teal-800 border-teal-200 font-extrabold'
+        : 'bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold',
+      dotClass: isFree ? 'bg-teal-500' : 'bg-emerald-500 animate-pulse',
+      visibilityText: isFree ? 'Free Listing Live' : 'Public Profile Live',
+      visibilitySub: coach.planTier === 'PREMIUM' ? 'Premier Sponsored Live' : 'Standard Verified Live',
+      isLive: true,
+      isPaymentPending: false,
+    };
+  }
 
-  if (isKycApproved) {
-    if (isPaid) {
-      return {
-        code: 'LIVE',
-        label: 'APPROVED & LIVE',
-        badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold',
-        dotClass: 'bg-emerald-500 animate-pulse',
-        visibilityText: 'Public Profile Live',
-        visibilitySub: coach.planTier === 'PREMIUM' ? 'Premier Sponsored Live' : 'Standard Verified Live',
-        isLive: true,
-        isPaymentPending: false,
-      };
-    }
+  if (sub.publicListingStatus === 'EXPIRED') {
+    return {
+      code: 'EXPIRED',
+      label: 'PLAN EXPIRED',
+      badgeClass: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold',
+      dotClass: 'bg-rose-500',
+      visibilityText: 'Subscription Expired',
+      visibilitySub: `Ended on ${sub.formattedExpiry}`,
+      isLive: false,
+      isPaymentPending: true,
+    };
+  }
 
-    if (allowFreeListing) {
-      return {
-        code: 'FREE_LIVE',
-        label: 'APPROVED • FREE LIVE',
-        badgeClass: 'bg-teal-50 text-teal-800 border-teal-200 font-extrabold',
-        dotClass: 'bg-teal-500',
-        visibilityText: 'Free Listing Live',
-        visibilitySub: 'Basic public search visible',
-        isLive: true,
-        isPaymentPending: false,
-      };
-    }
-
-    // KYC approved, but plan payment is pending from coach/academy side
+  if (sub.publicListingStatus === 'PLAN_REQUIRED') {
     return {
       code: 'PAYMENT_PENDING',
       label: 'APPROVED • PAYMENT PENDING',
@@ -125,7 +124,7 @@ export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean =
     };
   }
 
-  if (coach.kycStatus === 'DOCS_REVIEW') {
+  if (coach.kycStatus === 'DOCS_REVIEW' || sub.publicListingStatus === 'UNDER_REVIEW') {
     return {
       code: 'DOCS_REVIEW',
       label: 'DOCS REVIEW',
@@ -138,7 +137,7 @@ export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean =
     };
   }
 
-  if (coach.kycStatus === 'REFERRED_BACK') {
+  if (coach.kycStatus === 'REFERRED_BACK' || sub.publicListingStatus === 'REVISIONS_REQUESTED') {
     return {
       code: 'REFERRED_BACK',
       label: 'NEEDS CHANGES',
@@ -151,7 +150,7 @@ export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean =
     };
   }
 
-  if (coach.kycStatus === 'REJECTED') {
+  if (coach.kycStatus === 'REJECTED' || sub.publicListingStatus === 'KYC_REJECTED') {
     return {
       code: 'REJECTED',
       label: 'REJECTED',
@@ -442,6 +441,7 @@ export default function AdminCoachRegistryPage() {
   };
 
   const openEditModal = (coach: any) => {
+    const isApproved = coach.kycStatus === 'APPROVED' && !coach.isSuspended;
     const isPremier = coach.planTier === 'PREMIUM';
     const isStandard = coach.planTier === 'STANDARD';
 
@@ -457,26 +457,27 @@ export default function AdminCoachRegistryPage() {
       trialFee: Number(coach.trialFee) || 0,
       planTier: coach.planTier || 'FREE',
       coachType: coach.coachType || 'INDIVIDUAL',
-      isTopInArea: isPremier ? true : Boolean(coach.isTopInArea),
-      isVerifiedBatch: (isPremier || isStandard) ? true : Boolean(coach.isVerifiedBatch),
+      isTopInArea: (isPremier && isApproved) ? true : Boolean(coach.isTopInArea),
+      isVerifiedBatch: isApproved && ((isPremier || isStandard) ? true : Boolean(coach.isVerifiedBatch)),
       statusNotes: cleanStatusNotes(coach.statusNotes),
     });
   };
 
   // When changing tier inside the edit modal, automatically adjust badge defaults
   const handleTierChange = (newTier: string) => {
+    const isApproved = editModal.coach?.kycStatus === 'APPROVED' && !editModal.coach?.isSuspended;
     if (newTier === 'PREMIUM') {
       setEditModal((prev) => ({
         ...prev,
         planTier: newTier,
-        isTopInArea: true,
-        isVerifiedBatch: true,
+        isTopInArea: isApproved,
+        isVerifiedBatch: isApproved,
       }));
     } else if (newTier === 'STANDARD') {
       setEditModal((prev) => ({
         ...prev,
         planTier: newTier,
-        isVerifiedBatch: true,
+        isVerifiedBatch: isApproved,
       }));
     } else {
       setEditModal((prev) => ({
@@ -559,7 +560,7 @@ export default function AdminCoachRegistryPage() {
         if (isUnsuspend) {
           const res = await unsuspendCoach(coach.id);
           if (res.success) {
-            showToast(`✅ Reactivated ${coach.name}. Profile is now public.`);
+            showToast(`✅ ${res.message || `Reactivated ${coach.name}.`}`);
           } else {
             showToast(res.message || "Failed to reactivate coach");
           }

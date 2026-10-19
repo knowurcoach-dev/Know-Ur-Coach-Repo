@@ -257,7 +257,7 @@ export default function AdminVerifyCoachesPage() {
       try {
         const res = await approveCoachKyc(coach.id, coach.name, 'Admin Verification Desk');
         if (res.success) {
-          showToast(`✅ ${coach.name} verified and approved! Listing is now live.`);
+          showToast(`✅ ${res.message || `${coach.name} verified and approved!`}`);
           setCoaches((prev) =>
             prev.map((c) =>
               c.id === coach.id

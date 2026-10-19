@@ -92,6 +92,61 @@ export function CoachRouteGate({ children }: CoachRouteGateProps) {
     return <>{children}</>;
   }
 
+  // If explicitly suspended, display critical compliance suspension gate
+  if (centreData?.isSuspended) {
+    return (
+      <div className="w-full bg-slate-50 min-h-[85vh] p-4 sm:p-8 flex items-center justify-center">
+        <div className="w-full max-w-xl bg-white rounded-3xl p-6 sm:p-9 border-2 border-red-300 shadow-xl space-y-6 text-center animate-fade-scale-in">
+          <div className="w-16 h-16 rounded-3xl bg-red-100 text-red-600 flex items-center justify-center mx-auto shadow-sm">
+            <WarningCircle size={34} weight="bold" />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 bg-red-100 text-red-900 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider">
+              Account Suspended
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Academy Operations Suspended by Admin
+            </h2>
+            <p className="text-xs text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
+              Your academy operational privileges and public search directory listings have been suspended by platform administration.
+              {centreData?.statusNotes ? ` Notice: "${centreData.statusNotes}"` : ''}
+            </p>
+          </div>
+
+          <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 text-left space-y-2">
+            <div className="text-xs font-black text-red-900 flex items-center gap-2">
+              <Lock size={16} weight="bold" className="text-red-600" />
+              <span>Suspension Impact:</span>
+            </div>
+            <ul className="text-[11px] text-red-800 space-y-1 ml-5 list-disc font-medium">
+              <li>Academy hidden from parent discovery &amp; public directory</li>
+              <li>Attendance marking, student registration, and lead intake locked</li>
+              <li>Tournament hosting disabled</li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Link
+              href="/coach/dashboard"
+              className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Buildings size={16} weight="bold" />
+              <span>Coach Dashboard</span>
+            </Link>
+            <a
+              href="mailto:support@knowurcoach.in?subject=Appeal%20Academy%20Suspension"
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <span>Contact Platform Support</span>
+              <ArrowRight size={14} weight="bold" />
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // If expired specifically, show high-urgency renewal gate
   if (subStatus.status === 'EXPIRED') {
     return (
