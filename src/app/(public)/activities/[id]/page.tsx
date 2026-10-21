@@ -301,6 +301,8 @@ import {
   WhatsappLogo,
   ShareNetwork,
   CaretRight,
+  CaretDown,
+  X,
   ArrowLeft,
   Sparkle,
   FirstAid,
@@ -329,6 +331,7 @@ export default function AcademyDetailPage() {
   const [selectedBatchIndex, setSelectedBatchIndex] = useState(0);
   const [batchCategoryFilter, setBatchCategoryFilter] = useState<string>('all');
   const [selectedDisciplineIndex, setSelectedDisciplineIndex] = useState(0);
+  const [showAllActivities, setShowAllActivities] = useState(false);
   const [isOwnerPreview, setIsOwnerPreview] = useState(false);
   const [previewReason, setPreviewReason] = useState<string>('');
 
@@ -814,35 +817,157 @@ export default function AcademyDetailPage() {
         {/* Top Header Card */}
         <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 border border-slate-200/80 shadow-xs flex flex-col md:flex-row gap-4 sm:gap-6 items-start md:items-center justify-between">
           <div className="space-y-2.5 sm:space-y-3 flex-1 min-w-0 w-full">
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider">
-              {academy.isTopInArea && (
-                <span className="bg-amber-400 text-slate-950 px-2.5 py-1 rounded-md flex items-center gap-1 shadow-2xs">
-                  <Star size={12} weight="fill" /> TOP IN AREA
-                </span>
-              )}
-              {academy.isVerifiedBatch ? (
-                <>
-                  <span className="bg-blue-100 text-blue-800 px-2.5 py-1 rounded-md flex items-center gap-1">
-                    <SealCheck size={12} weight="fill" /> VERIFIED BATCH
-                  </span>
-                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md flex items-center gap-1">
-                    <ShieldCheck size={12} weight="fill" /> Physical Safety Verified
-                  </span>
-                </>
-              ) : (
-                <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-md flex items-center gap-1">
-                  {isOwnerPreview ? 'Pending Physical Verification' : 'Self-Listed Profile'}
-                </span>
-              )}
-              {(academy.activities && academy.activities.length > 0
-                ? academy.activities
-                : [getCategoryDisplayName(academy.category)]
-              ).map((act, idx) => (
-                <span key={idx} className="bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1 rounded-md">
-                  {act}
-                </span>
-              ))}
-            </div>
+            {(() => {
+              const allActivities =
+                academy.activities && academy.activities.length > 0
+                  ? academy.activities
+                  : [getCategoryDisplayName(academy.category)];
+
+              const allCategorySlugs =
+                academy.categorySlugs && academy.categorySlugs.length > 0
+                  ? academy.categorySlugs
+                  : (academy.category
+                      ? academy.category.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+                      : ['education']);
+
+              const primaryActivity = allActivities[0];
+              const primarySlug = allCategorySlugs[0] || primaryActivity.toLowerCase().replace(/\s+/g, '-');
+              const primaryEmoji = getCategoryEmoji(primarySlug || primaryActivity);
+              const remainingCount = allActivities.length - 1;
+
+              return (
+                <div className="space-y-2.5">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider">
+                    {academy.isTopInArea && (
+                      <span className="bg-amber-400 text-slate-950 px-2.5 py-1 rounded-md flex items-center gap-1 shadow-2xs">
+                        <Star size={12} weight="fill" /> TOP IN AREA
+                      </span>
+                    )}
+                    {academy.isVerifiedBatch ? (
+                      <>
+                        <span className="bg-blue-100 text-blue-800 px-2.5 py-1 rounded-md flex items-center gap-1">
+                          <SealCheck size={12} weight="fill" /> VERIFIED BATCH
+                        </span>
+                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md flex items-center gap-1">
+                          <ShieldCheck size={12} weight="fill" /> Physical Safety Verified
+                        </span>
+                      </>
+                    ) : (
+                      <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-md flex items-center gap-1">
+                        {isOwnerPreview ? 'Pending Physical Verification' : 'Self-Listed Profile'}
+                      </span>
+                    )}
+
+                    {/* Primary Activity Pill */}
+                    <span className="bg-purple-50 text-purple-800 border border-purple-200/90 px-2.5 py-1 rounded-md flex items-center gap-1.5 font-bold shadow-2xs">
+                      <span className="text-xs">{primaryEmoji}</span>
+                      <span>{primaryActivity}</span>
+                    </span>
+
+                    {/* Interactive '+X more' Badge Button */}
+                    {remainingCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllActivities(!showAllActivities)}
+                        aria-expanded={showAllActivities}
+                        className="bg-purple-100/80 hover:bg-purple-200/90 text-purple-900 border border-purple-300/90 px-2 sm:px-2.5 py-1 rounded-md flex items-center gap-1 font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95 text-[9px] sm:text-[10px]"
+                        title={showAllActivities ? 'Collapse extra offerings' : `View all ${allActivities.length} programs offered`}
+                      >
+                        <span>+{remainingCount} more</span>
+                        <CaretDown
+                          size={11}
+                          weight="bold"
+                          className={`transition-transform duration-200 ${showAllActivities ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Expanded Offerings & Curriculum Drawer */}
+                  {showAllActivities && remainingCount > 0 && (
+                    <div className="w-full bg-gradient-to-br from-purple-50/95 via-indigo-50/80 to-slate-50 border border-purple-200/90 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xs space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex items-center justify-between border-b border-purple-200/60 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs sm:text-sm font-black text-purple-950 flex items-center gap-1.5">
+                            <span>🎓</span>
+                            <span>All {allActivities.length} Programs &amp; Disciplines Offered</span>
+                          </span>
+                          <span className="hidden sm:inline-block text-[10px] text-purple-700 font-semibold bg-purple-100/90 px-2 py-0.5 rounded-full">
+                            Interactive Explorer
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAllActivities(false)}
+                          className="text-[11px] font-bold text-slate-500 hover:text-slate-800 px-2 py-0.5 rounded-md hover:bg-white/80 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Close</span>
+                          <X size={12} weight="bold" />
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-0.5">
+                        {allActivities.map((act, idx) => {
+                          const slug = allCategorySlugs[idx] || act.toLowerCase().replace(/\s+/g, '-');
+                          const emoji = getCategoryEmoji(slug || act);
+                          const isPrimary = idx === 0;
+
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                setSelectedDisciplineIndex(idx);
+                                const currEl = document.getElementById('curriculum-explorer');
+                                if (currEl) {
+                                  currEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                } else {
+                                  const batchEl = document.getElementById('batches-section');
+                                  if (batchEl) {
+                                    batchEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                  }
+                                }
+                              }}
+                              className={`group text-left px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-2 shadow-2xs hover:shadow-xs active:scale-95 ${
+                                isPrimary
+                                  ? 'bg-purple-600 text-white border-purple-700 hover:bg-purple-700'
+                                  : 'bg-white hover:bg-purple-50/90 text-slate-800 border-slate-200/90 hover:border-purple-300'
+                              }`}
+                            >
+                              <span className="text-sm">{emoji}</span>
+                              <span className="leading-tight">{act}</span>
+                              <CaretRight
+                                size={12}
+                                weight="bold"
+                                className={`transition-transform group-hover:translate-x-0.5 ${
+                                  isPrimary ? 'text-white/80' : 'text-slate-400 group-hover:text-purple-600'
+                                }`}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500">
+                        <span className="flex items-center gap-1 text-purple-700 font-medium">
+                          <span>💡</span> Tap any program to view syllabus, age eligibility &amp; batch schedules below
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const el = document.getElementById('curriculum-explorer') || document.getElementById('batches-section');
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }}
+                          className="text-purple-700 hover:text-purple-900 font-extrabold underline decoration-purple-300 cursor-pointer hidden sm:inline"
+                        >
+                          View Curriculum Explorer ↓
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-[#0a1128] tracking-tight">
               {academy.name}
@@ -1022,7 +1147,7 @@ export default function AcademyDetailPage() {
           const disciplineData = getDisciplineHighlights(activeDisciplineSlug, activeDisciplinePillar);
 
           return (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch">
+            <div id="curriculum-explorer" className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch scroll-mt-24">
               {/* Left Side (2 cols on lg): Interactive Curriculum Deck */}
               <div
                 className={`lg:col-span-2 rounded-2xl sm:rounded-3xl p-4 sm:p-7 bg-gradient-to-br ${pillarStyles.gradient} text-white border ${pillarStyles.border} shadow-lg relative overflow-hidden flex flex-col justify-between`}
