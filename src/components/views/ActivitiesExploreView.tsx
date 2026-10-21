@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Academy } from '@/types';
@@ -18,6 +18,7 @@ import {
   resolveCategoryCoverImage,
   resolveCategoryFromSearch,
   CATEGORY_SHORT_NAMES,
+  registerDynamicTaxonomy,
 } from '@/lib/categories';
 import {
   ArrowLeft,
@@ -30,27 +31,111 @@ import {
   Trophy,
   Brain,
   Palette,
+  GraduationCap,
+  MapPin,
 } from '@phosphor-icons/react';
+
+const KNOWN_LOCALITIES: Array<{ pattern: RegExp; slug: string; name: string }> = [
+  { pattern: /kamla\s*nagar/i, slug: 'kamla-nagar', name: 'Kamla Nagar' },
+  { pattern: /sanjay\s*place/i, slug: 'sanjay-place', name: 'Sanjay Place' },
+  { pattern: /dayalbagh/i, slug: 'dayalbagh', name: 'Dayalbagh' },
+  { pattern: /sadar(?:\s*bazar)?/i, slug: 'sadar', name: 'Sadar Bazar' },
+  { pattern: /fatehabad\s*road/i, slug: 'fatehabad-road', name: 'Fatehabad Road' },
+  { pattern: /shastri\s*puram/i, slug: 'shastri-puram', name: 'Shastri Puram' },
+  { pattern: /bodla/i, slug: 'bodla', name: 'Bodla' },
+  { pattern: /civil\s*lines/i, slug: 'civil-lines', name: 'Civil Lines' },
+  { pattern: /khandari/i, slug: 'khandari', name: 'Khandari' },
+  { pattern: /etmadpur/i, slug: 'etmadpur', name: 'Etmadpur' },
+  { pattern: /shahganj/i, slug: 'shahganj', name: 'Shahganj' },
+  { pattern: /sikandra/i, slug: 'sikandra', name: 'Sikandra' },
+  { pattern: /trans\s*yamuna/i, slug: 'trans-yamuna', name: 'Trans Yamuna' },
+  { pattern: /vasant\s*kunj/i, slug: 'vasant-kunj', name: 'Vasant Kunj' },
+  { pattern: /connaught\s*place/i, slug: 'connaught-place', name: 'Connaught Place' },
+  { pattern: /dwarka/i, slug: 'dwarka', name: 'Dwarka' },
+  { pattern: /rohini/i, slug: 'rohini', name: 'Rohini' },
+  { pattern: /saket/i, slug: 'saket', name: 'Saket' },
+  { pattern: /noida/i, slug: 'noida', name: 'Noida' },
+  { pattern: /gurugram|gurgaon/i, slug: 'gurugram', name: 'Gurugram' },
+  { pattern: /bandra/i, slug: 'bandra', name: 'Bandra' },
+  { pattern: /andheri/i, slug: 'andheri', name: 'Andheri' },
+  { pattern: /juhu/i, slug: 'juhu', name: 'Juhu' },
+  { pattern: /powai/i, slug: 'powai', name: 'Powai' },
+];
+
+function extractCleanLocality(
+  rawLocality?: string | null,
+  rawAddress?: string | null
+): { slug: string; name: string } | null {
+  if (!rawLocality && !rawAddress) return null;
+  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase();
+
+  for (const known of KNOWN_LOCALITIES) {
+    if (known.pattern.test(combined)) {
+      return { slug: known.slug, name: known.name };
+    }
+  }
+
+  if (!rawLocality) return null;
+  const clean = rawLocality.trim().replace(/^[-_]+|[-_]+$/g, '');
+  if (!clean || clean.length < 2) return null;
+
+  const parts = clean.split(/[-_,/]/).map((p) => p.trim()).filter(Boolean);
+  const bestPart = parts[parts.length - 1] || clean;
+  const slug = bestPart.toLowerCase().replace(/\s+/g, '-');
+  const name = bestPart.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return { slug, name };
+}
+
+function parseAgeRange(ageText?: string): { min: number; max: number } | null {
+  if (!ageText) return null;
+  const clean = ageText.toLowerCase().trim();
+  const rangeMatch = clean.match(/(\d+)\s*(?:-|to)\s*(\d+)/);
+  if (rangeMatch) {
+    return { min: parseInt(rangeMatch[1], 10), max: parseInt(rangeMatch[2], 10) };
+  }
+  const plusMatch = clean.match(/(\d+)\s*\+/);
+  if (plusMatch) {
+    return { min: parseInt(plusMatch[1], 10), max: 25 };
+  }
+  const underMatch = clean.match(/(?:under|u)\s*(\d+)/);
+  if (underMatch) {
+    return { min: 3, max: parseInt(underMatch[1], 10) };
+  }
+  const singleMatch = clean.match(/(\d+)/);
+  if (singleMatch) {
+    const val = parseInt(singleMatch[1], 10);
+    return { min: val, max: val };
+  }
+  return null;
+}
 
 function matchesAgeGroup(ageText: string | undefined, selectedAge: string): boolean {
   if (selectedAge === 'all') return true;
-  if (!ageText) return true;
-  const match = ageText.match(/(\d+)\s*[-to]+\s*(\d+)/i);
-  if (match) {
-    const min = parseInt(match[1], 10);
-    const max = parseInt(match[2], 10);
-    switch (selectedAge) {
-      case 'u5':
-        return min <= 5;
-      case 'u8':
-        return min <= 8 && max >= 6;
-      case 'u12':
-        return min <= 12 && max >= 9;
-      case 'u16':
-        return max >= 13;
-    }
+  const range = parseAgeRange(ageText);
+  if (!range) return true;
+
+  let bMin = 3;
+  let bMax = 18;
+  switch (selectedAge) {
+    case 'u5':
+      bMin = 3;
+      bMax = 5;
+      break;
+    case 'u8':
+      bMin = 6;
+      bMax = 8;
+      break;
+    case 'u12':
+      bMin = 9;
+      bMax = 12;
+      break;
+    case 'u16':
+      bMin = 13;
+      bMax = 25;
+      break;
   }
-  return true;
+
+  return range.min <= bMax && range.max >= bMin;
 }
 
 function matchesCategory(acad: Academy, catSlug: string): boolean {
@@ -63,15 +148,13 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
     .map((s: string) => s.trim().toLowerCase())
     .filter(Boolean);
 
-  // Pillar-wide "All in Pillar" matching
-  if (catSlug === 'all-sports') {
-    return rawSlugs.some((s: string) => getCategoryPillar(s) === 'sports') || getCategoryPillar(acad.category) === 'sports';
-  }
-  if (catSlug === 'all-brain-booster') {
-    return rawSlugs.some((s: string) => getCategoryPillar(s) === 'brain-booster') || getCategoryPillar(acad.category) === 'brain-booster';
-  }
-  if (catSlug === 'all-arts') {
-    return rawSlugs.some((s: string) => getCategoryPillar(s) === 'arts') || getCategoryPillar(acad.category) === 'arts';
+  // Pillar-wide "All in Pillar" dynamic matching: works for any pillar from DB (sports, education, or newly added activities)
+  if (catSlug.startsWith('all-')) {
+    const targetPillar = catSlug.replace(/^all-/, '');
+    return (
+      rawSlugs.some((s: string) => getCategoryPillar(s) === targetPillar) ||
+      getCategoryPillar(acad.category) === targetPillar
+    );
   }
 
   const cleanSlug = catSlug.toLowerCase().trim();
@@ -97,6 +180,53 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
   }
 
   switch (cleanHyphen) {
+    case 'education':
+    case 'coaching-centres':
+    case 'coaching-center':
+    case 'coaching-centers':
+    case 'academic-coaching':
+    case 'tuition':
+    case 'tuitions':
+    case 'olympiad':
+    case 'olympiads':
+      return (
+        rawSlugs.some((s) => s.includes('coaching') || s.includes('tuition') || s.includes('academic') || s.includes('olympiad') || s.includes('education')) ||
+        cat.includes('coaching') ||
+        cat.includes('tuition') ||
+        cat.includes('academic') ||
+        cat.includes('olympiad') ||
+        cat.includes('education') ||
+        name.includes('classes') ||
+        name.includes('coaching') ||
+        (name.includes('academy') && (name.includes('mb') || name.includes('study') || name.includes('science') || name.includes('math'))) ||
+        tagline.includes('coaching') ||
+        tagline.includes('tuition') ||
+        tagline.includes('cbse') ||
+        tagline.includes('icse') ||
+        actText.includes('coaching') ||
+        actText.includes('tuition') ||
+        activities.some((a) => a.includes('coaching') || a.includes('tuition') || a.includes('olympiad'))
+      );
+    case 'home-tutor':
+    case 'home-tutors':
+      return (
+        rawSlugs.includes('home-tutor') ||
+        cat.includes('home-tutor') ||
+        name.includes('home tutor') ||
+        tagline.includes('home tutor') ||
+        actText.includes('home tutor') ||
+        activities.some((a) => a.includes('home tutor'))
+      );
+    case 'online-tutors':
+    case 'online-tutors-(one-to-one-sessions)':
+      return (
+        rawSlugs.some((s) => s.includes('online-tutor')) ||
+        cat.includes('online') ||
+        name.includes('online') ||
+        tagline.includes('online') ||
+        actText.includes('online') ||
+        activities.some((a) => a.includes('online'))
+      );
     case 'table-tennis':
       return (
         rawSlugs.includes('table-tennis') ||
@@ -265,6 +395,35 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
         tagline.includes('abacus') ||
         activities.some((a) => a.includes('abacus') || a.includes('vedic'))
       );
+    case "rubik's-cube":
+    case 'rubiks-cube':
+      return (
+        rawSlugs.includes("rubik's-cube") ||
+        rawSlugs.includes('rubiks-cube') ||
+        cat.includes('rubik') ||
+        name.includes('rubik') ||
+        tagline.includes('rubik') ||
+        actText.includes('rubik') ||
+        activities.some((a) => a.includes('rubik') || a.includes('cube'))
+      );
+    case 'phonics':
+      return (
+        rawSlugs.includes('phonics') ||
+        cat.includes('phonics') ||
+        name.includes('phonic') ||
+        tagline.includes('phonic') ||
+        actText.includes('phonic') ||
+        activities.some((a) => a.includes('phonic') || a.includes('reading'))
+      );
+    case 'handwriting':
+      return (
+        rawSlugs.includes('handwriting') ||
+        cat.includes('handwriting') ||
+        name.includes('handwriting') ||
+        tagline.includes('handwriting') ||
+        actText.includes('handwriting') ||
+        activities.some((a) => a.includes('handwriting') || a.includes('cursive'))
+      );
     case 'dance':
       return (
         rawSlugs.includes('dance') ||
@@ -337,9 +496,11 @@ function mapCentreToAcademy(c: any, activeCity: string): Academy {
     .filter(Boolean);
   const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
 
-  const locName = c.locality
-    ? c.locality.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-    : c.city || activeCity || 'City Center';
+  const resolvedCity = c.city || resolveCentreCity(c) || activeCity || 'Agra';
+  const cleanLoc = extractCleanLocality(c.locality, c.address);
+
+  const locSlug = cleanLoc ? cleanLoc.slug : (c.locality ? c.locality.toLowerCase().replace(/\s+/g, '-') : '');
+  const locName = cleanLoc ? cleanLoc.name : (c.locality ? c.locality.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : resolvedCity);
 
   const catSlug = (c.category || 'sports').toLowerCase();
 
@@ -351,9 +512,9 @@ function mapCentreToAcademy(c: any, activeCity: string): Academy {
     categorySlugs,
     activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(catSlug)],
     activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(catSlug),
-    locality: c.locality,
+    locality: locSlug,
     localityName: locName,
-    city: c.city,
+    city: resolvedCity,
     lat: c.latitude,
     lon: c.longitude,
     address: c.address,
@@ -392,13 +553,40 @@ function mapCentreToAcademy(c: any, activeCity: string): Academy {
   };
 }
 
+function resolveActivityIcon(slug?: string, iconName?: string | null) {
+  const s = (slug || '').toLowerCase();
+  const ic = (iconName || '').toLowerCase();
+
+  if (s === 'education' || ic.includes('grad') || ic.includes('book') || ic.includes('school')) {
+    return GraduationCap;
+  }
+  if (s === 'brain-booster' || ic.includes('brain') || ic.includes('stem')) {
+    return Brain;
+  }
+  if (s === 'arts' || ic.includes('palette') || ic.includes('paint') || ic.includes('art')) {
+    return Palette;
+  }
+  if (s === 'sports' || ic.includes('trophy') || ic.includes('sport')) {
+    return Trophy;
+  }
+  return SquaresFour;
+}
+
 export function ActivitiesExploreView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { activeCity: personaCity, activeLocality, setLocation } = usePersona();
+  const { openModal } = useModalStore();
 
   const cityParam = searchParams.get('city');
-  const activeCity = cityParam && cityParam.trim() ? cityParam.trim() : personaCity;
+
+  // Resolved activeCity: priority personaCity -> URL cityParam -> fallback 'Agra'
+  const [activeCity, setActiveCity] = useState<string>(() => {
+    if (cityParam && cityParam.trim()) return cityParam.trim();
+    return personaCity || 'Agra';
+  });
+
+  const isInitialMountedRef = useRef(false);
 
   const rawCat = searchParams.get('category');
   const rawSearch = searchParams.get('search') || '';
@@ -423,7 +611,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
   const [dbError, setDbError] = useState<string | null>(null);
   const initialLoadedRef = useRef(Boolean(initialData?.centres && initialData.centres.length > 0));
 
-  // Selected Activity Pillar: 'all' | 'sports' | 'brain-booster' | 'arts'
+  // Selected Activity Pillar: 'all' | 'sports' | 'education' | 'brain-booster' | 'arts'
   const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(initialActivityPillar);
 
   // Filter States
@@ -437,7 +625,50 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
 
   const resultsContainerRef = useRef<HTMLDivElement>(null);
 
-  // Sync category, search, locality, age, and pillar from URL parameter changes
+  // Helper to synchronize URL query parameters without full page reloads
+  const updateUrl = useCallback((newParams: Record<string, string | null | undefined>) => {
+    if (typeof window === 'undefined') return;
+    const current = new URLSearchParams(window.location.search);
+    Object.entries(newParams).forEach(([k, v]) => {
+      if (
+        v === null ||
+        v === undefined ||
+        v === '' ||
+        v === 'all' ||
+        (k === 'city' && (v.toLowerCase() === 'all' || v.toLowerCase().includes('india')))
+      ) {
+        current.delete(k);
+      } else {
+        current.set(k, v);
+      }
+    });
+    const searchStr = current.toString();
+    const newUrl = `${window.location.pathname}${searchStr ? `?${searchStr}` : ''}`;
+    window.history.replaceState(null, '', newUrl);
+  }, []);
+
+  // 1. Initial Mount: If city is provided in URL, sync it into PersonaContext
+  useEffect(() => {
+    if (!isInitialMountedRef.current) {
+      isInitialMountedRef.current = true;
+      if (cityParam && cityParam.trim() && cityParam.toLowerCase() !== (personaCity || '').toLowerCase()) {
+        setLocation({ city: cityParam.trim(), locality: cityParam.trim() });
+        setActiveCity(cityParam.trim());
+      }
+    }
+  }, []);
+
+  // 2. React to location changes from LocalityModal or header
+  useEffect(() => {
+    if (!isInitialMountedRef.current) return;
+    if (personaCity && personaCity !== activeCity) {
+      setActiveCity(personaCity);
+      setSelectedLocality('all');
+      updateUrl({ city: personaCity, locality: null });
+    }
+  }, [personaCity, activeCity, updateUrl]);
+
+  // 3. React to browser back/forward or external searchParams changes
   useEffect(() => {
     const cat = searchParams.get('category');
     const act = searchParams.get('activity');
@@ -477,13 +708,24 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     if (age && age !== selectedAge) {
       setSelectedAge(age);
     }
-    if (city && city !== personaCity) {
-      setLocation({ city, locality: activeLocality || '' });
+    if (city && city !== activeCity) {
+      setActiveCity(city);
     }
   }, [searchParams]);
 
+  // 4. Debounced sync for search keyword input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const currentQueryInUrl = searchParams.get('search') || '';
+      if (searchQuery.trim() !== currentQueryInUrl) {
+        updateUrl({ search: searchQuery.trim() ? searchQuery.trim() : null });
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchParams, updateUrl]);
+
   // Fetch verified academies and taxonomy from DB
-  const fetchDbData = React.useCallback(async () => {
+  const fetchDbData = useCallback(async () => {
     setIsLoadingDb(true);
     setDbError(null);
     try {
@@ -533,6 +775,13 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     });
   }, [academiesList, activeCity]);
 
+  // Register dynamic DB taxonomy whenever activitiesList changes
+  useEffect(() => {
+    if (activitiesList && activitiesList.length > 0) {
+      registerDynamicTaxonomy(activitiesList);
+    }
+  }, [activitiesList]);
+
   // Master list of categories compiled from DB activities
   const masterCategoriesList = useMemo(() => {
     const list: Array<{
@@ -541,7 +790,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
       shortName: string;
       imageUrl: string;
       badge?: string;
-      pillar: 'sports' | 'brain-booster' | 'arts';
+      pillar: string;
     }> = [];
 
     const seenSlugs = new Set<string>();
@@ -555,9 +804,9 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
               slug: cat.slug,
               name: cat.name,
               shortName: CATEGORY_SHORT_NAMES[cat.slug] || cat.name,
-              imageUrl: resolveCategoryCoverImage(cat.slug, cat.imageUrl),
+              imageUrl: cat.imageUrl || resolveCategoryCoverImage(cat.slug, cat.imageUrl),
               badge: cat.badge,
-              pillar: getCategoryPillar(cat.slug),
+              pillar: act.slug || getCategoryPillar(cat.slug),
             });
           }
         });
@@ -566,6 +815,30 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
 
     return list;
   }, [activitiesList]);
+
+  // Dynamic tabs generated directly from DB MajorActivity records (sports, education, brain-booster, arts, or new)
+  const pillarTabs = useMemo(() => {
+    const allTab = {
+      id: 'all',
+      label: 'All Activities',
+      icon: SquaresFour,
+      count: masterCategoriesList.length,
+    };
+
+    const fromDb = activitiesList.map((act) => {
+      const Icon = resolveActivityIcon(act.slug, act.icon);
+      const catCount = (act.categories || []).length || masterCategoriesList.filter((c) => c.pillar === act.slug).length;
+
+      return {
+        id: act.slug,
+        label: act.name,
+        icon: Icon,
+        count: catCount,
+      };
+    });
+
+    return [allTab, ...fromDb];
+  }, [activitiesList, masterCategoriesList]);
 
   // Categories currently displayed in the Blinkit Left Rail (filtered by selected activity pillar)
   const displayedRailCategories = useMemo(() => {
@@ -579,53 +852,32 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
       categoriesCount: number;
     };
 
-    if (selectedActivityPillar === 'sports') {
-      const sportsCentres = cityAcademies.filter((a) => {
+    const currentAct = activitiesList.find((a) => a.slug === selectedActivityPillar);
+
+    if (selectedActivityPillar !== 'all' && currentAct) {
+      const pillarCentres = cityAcademies.filter((a) => {
         const raw = ((a as any).categorySlugs || (a.category ? a.category.split(',') : [])).map((s: string) => s.trim().toLowerCase());
-        return raw.some((s: string) => getCategoryPillar(s) === 'sports') || getCategoryPillar(a.category) === 'sports';
+        return raw.some((s: string) => getCategoryPillar(s) === selectedActivityPillar) || getCategoryPillar(a.category) === selectedActivityPillar;
       }).length;
+
+      const actCategories = masterCategoriesList.filter((c) => c.pillar === selectedActivityPillar);
+
       rootItem = {
-        slug: 'all-sports',
-        name: 'All Sports & Athletics',
-        shortName: 'All Sports',
-        imageUrl: '',
-        count: sportsCentres,
-        categoriesCount: 8,
-      };
-    } else if (selectedActivityPillar === 'brain-booster') {
-      const brainCentres = cityAcademies.filter((a) => {
-        const raw = ((a as any).categorySlugs || (a.category ? a.category.split(',') : [])).map((s: string) => s.trim().toLowerCase());
-        return raw.some((s: string) => getCategoryPillar(s) === 'brain-booster') || getCategoryPillar(a.category) === 'brain-booster';
-      }).length;
-      rootItem = {
-        slug: 'all-brain-booster',
-        name: 'All Brain & STEM',
-        shortName: 'All Brain',
-        imageUrl: '',
-        count: brainCentres,
-        categoriesCount: 5,
-      };
-    } else if (selectedActivityPillar === 'arts') {
-      const artsCentres = cityAcademies.filter((a) => {
-        const raw = ((a as any).categorySlugs || (a.category ? a.category.split(',') : [])).map((s: string) => s.trim().toLowerCase());
-        return raw.some((s: string) => getCategoryPillar(s) === 'arts') || getCategoryPillar(a.category) === 'arts';
-      }).length;
-      rootItem = {
-        slug: 'all-arts',
-        name: 'All Cultural & Arts',
-        shortName: 'All Arts',
-        imageUrl: '',
-        count: artsCentres,
-        categoriesCount: 5,
+        slug: `all-${selectedActivityPillar}`,
+        name: `All ${currentAct.name}`,
+        shortName: `All ${currentAct.name.split('&')[0].trim()}`,
+        imageUrl: currentAct.imageUrl || '',
+        count: pillarCentres,
+        categoriesCount: actCategories.length,
       };
     } else {
       rootItem = {
         slug: 'all',
         name: 'All Activities',
-        shortName: 'All (18)',
+        shortName: `All (${masterCategoriesList.length})`,
         imageUrl: '',
         count: cityAcademies.length,
-        categoriesCount: 18,
+        categoriesCount: masterCategoriesList.length,
       };
     }
 
@@ -651,18 +903,30 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     return [rootItem, ...mapped];
   }, [masterCategoriesList, selectedActivityPillar, cityAcademies]);
 
-  // Available localities in active city
+  // Available clean localities in active city (Excludes activeCity itself to prevent "Agra in Agra")
   const availableLocalities = useMemo(() => {
     const map = new Map<string, string>();
+    const cityLower = (activeCity || '').toLowerCase().trim();
+
     cityAcademies.forEach((a) => {
       if (a.locality && a.locality !== 'all') {
-        const slug = a.locality.toLowerCase().replace(/\s+/g, '-');
-        const name = a.localityName || a.locality.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
-        map.set(slug, name);
+        const clean = extractCleanLocality(a.locality, a.address);
+        if (clean) {
+          const slugLower = clean.slug.toLowerCase();
+          if (
+            slugLower !== cityLower &&
+            !slugLower.includes('india') &&
+            slugLower !== 'delhi-ncr' &&
+            slugLower !== 'all'
+          ) {
+            map.set(clean.slug, clean.name);
+          }
+        }
       }
     });
+
     return Array.from(map.entries()).map(([slug, name]) => ({ slug, name }));
-  }, [cityAcademies]);
+  }, [cityAcademies, activeCity]);
 
   // Filtered academies for right content panel
   const filteredAcademies = useMemo(() => {
@@ -773,13 +1037,11 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
 
   const handleSelectRailCategory = (slug: string) => {
     setSelectedCategory(slug);
-    const params = new URLSearchParams(searchParams.toString());
-    if (slug === 'all' || slug.startsWith('all-')) {
-      params.delete('category');
-    } else {
-      params.set('category', slug);
-    }
-    window.history.replaceState(null, '', `?${params.toString()}`);
+    const isRoot = slug === 'all' || slug.startsWith('all-');
+    updateUrl({
+      category: isRoot ? null : slug,
+      activity: selectedActivityPillar === 'all' ? null : selectedActivityPillar,
+    });
 
     // Scroll results panel smoothly to top
     if (resultsContainerRef.current) {
@@ -789,14 +1051,16 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
 
   const handlePillarChange = (pillar: string) => {
     setSelectedActivityPillar(pillar);
-    if (pillar === 'all') {
-      handleSelectRailCategory('all');
-    } else if (pillar === 'sports') {
-      handleSelectRailCategory('all-sports');
-    } else if (pillar === 'brain-booster') {
-      handleSelectRailCategory('all-brain-booster');
-    } else if (pillar === 'arts') {
-      handleSelectRailCategory('all-arts');
+    const targetRoot = pillar === 'all' ? 'all' : `all-${pillar}`;
+
+    setSelectedCategory(targetRoot);
+    updateUrl({
+      activity: pillar === 'all' ? null : pillar,
+      category: null,
+    });
+
+    if (resultsContainerRef.current) {
+      resultsContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -809,17 +1073,22 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     setOnlyTopInArea(false);
     setOnlyVerified(false);
     setSortBy('top');
+    updateUrl({
+      category: null,
+      activity: null,
+      search: null,
+      locality: null,
+      age: null,
+    });
   };
 
   const activeCategoryObj = masterCategoriesList.find((c) => c.slug === selectedCategory);
+  const currentActObj = activitiesList.find((a) => a.slug === selectedActivityPillar);
+
   const activeCategoryTitle =
     selectedCategory === 'all' || selectedCategory.startsWith('all-')
-      ? selectedActivityPillar === 'sports'
-        ? 'Sports & Athletics Academies'
-        : selectedActivityPillar === 'brain-booster'
-        ? 'Brain Booster & STEM Labs'
-        : selectedActivityPillar === 'arts'
-        ? 'Cultural & Fine Arts Studios'
+      ? currentActObj
+        ? currentActObj.name
         : 'All Kids Activities & Academies'
       : activeCategoryObj?.name || getCategoryDisplayName(selectedCategory);
 
@@ -839,7 +1108,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
   return (
     <div className="w-full h-[calc(100vh-104px)] md:h-[calc(100vh-65px)] bg-slate-50 flex flex-col overflow-hidden">
       {/* ========================================================
-          TOP BREADCRUMB & ACTIVITY PILLAR SWITCHER BAR
+          TOP BREADCRUMB & ACTIVITY PILLAR SWITCHER BAR (DYNAMIC DB TABS)
          ======================================================== */}
       <div className="bg-white border-b border-slate-200 px-3.5 sm:px-6 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0 z-20">
         {/* Breadcrumb back to Browse Page */}
@@ -857,65 +1126,37 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
           </span>
         </div>
 
-        {/* Activity Pillar Switcher (All 18 vs Specific Pillars) */}
+        {/* Dynamic Activity Pillar Switcher Tabs from Database (All, Sports, Education, Brain, Arts, or any new DB activity) */}
         <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar py-0.5">
-          <button
-            type="button"
-            onClick={() => handlePillarChange('all')}
-            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-              selectedActivityPillar === 'all'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <SquaresFour size={12} weight="bold" />
-            <span>All Activities (18)</span>
-          </button>
+          {pillarTabs.map((p) => {
+            const Icon = p.icon;
+            const isSelected = selectedActivityPillar === p.id;
 
-          <button
-            type="button"
-            onClick={() => handlePillarChange('sports')}
-            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-              selectedActivityPillar === 'sports'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Trophy size={12} weight="bold" />
-            <span>Sports (8)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handlePillarChange('brain-booster')}
-            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-              selectedActivityPillar === 'brain-booster'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Brain size={12} weight="bold" />
-            <span>Brain &amp; STEM (5)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handlePillarChange('arts')}
-            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-              selectedActivityPillar === 'arts'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Palette size={12} weight="bold" />
-            <span>Arts &amp; Culture (5)</span>
-          </button>
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handlePillarChange(p.id)}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  isSelected
+                    ? p.id === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Icon size={13} weight="bold" />
+                <span>
+                  {p.label} ({p.count})
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Main Blinkit-Style Split Experience */}
       <div className="flex-1 flex w-full relative min-h-0">
-        
         {/* ========================================================
             BLINKIT-STYLE FIXED LEFT SIDEBAR (Category Rail)
            ======================================================== */}
@@ -929,6 +1170,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
                 selectedCategory === cat.slug ||
                 (cat.slug === 'all' && selectedCategory === 'all') ||
                 (cat.slug === 'all-sports' && selectedCategory === 'all-sports') ||
+                (cat.slug === 'all-education' && selectedCategory === 'all-education') ||
                 (cat.slug === 'all-brain-booster' && selectedCategory === 'all-brain-booster') ||
                 (cat.slug === 'all-arts' && selectedCategory === 'all-arts');
 
@@ -953,7 +1195,11 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
                   {/* Thumbnail Image / Icon */}
                   <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-slate-200/80 flex items-center justify-center">
                     {isRootItem ? (
-                      <div className={`w-full h-full flex items-center justify-center transition-colors ${isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                      <div
+                        className={`w-full h-full flex items-center justify-center transition-colors ${
+                          isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
                         <SquaresFour size={22} weight="duotone" />
                       </div>
                     ) : (
@@ -1030,6 +1276,18 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
 
           {/* Quick Filters Pill Bar */}
           <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar py-1">
+            {/* City Location Button (Directly switch City from Explore bar) */}
+            <button
+              type="button"
+              onClick={() => openModal('locality-selector')}
+              className="px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400 shadow-2xs"
+              title="Change City"
+            >
+              <MapPin size={13} weight="fill" className="text-emerald-600 shrink-0" />
+              <span>{activeCity}</span>
+              <CaretDown size={11} className="text-emerald-700" />
+            </button>
+
             {/* Premier Profiles Toggle */}
             <button
               onClick={() => setOnlyTopInArea(!onlyTopInArea)}
@@ -1066,7 +1324,10 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
             ].map((age) => (
               <button
                 key={age.id}
-                onClick={() => setSelectedAge(age.id)}
+                onClick={() => {
+                  setSelectedAge(age.id);
+                  updateUrl({ age: age.id === 'all' ? null : age.id });
+                }}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
                   selectedAge === age.id
                     ? 'bg-slate-900 text-white shadow-xs'
@@ -1082,7 +1343,11 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
               <div className="relative shrink-0">
                 <select
                   value={selectedLocality}
-                  onChange={(e) => setSelectedLocality(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedLocality(val);
+                    updateUrl({ locality: val === 'all' ? null : val });
+                  }}
                   className="px-3 py-1.5 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer appearance-none pr-7"
                 >
                   <option value="all">📍 All Localities</option>
@@ -1168,7 +1433,6 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
             </div>
           )}
         </main>
-
       </div>
     </div>
   );

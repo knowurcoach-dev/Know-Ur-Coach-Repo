@@ -3,6 +3,8 @@ import type { Metadata } from 'next';
 import { prisma } from '@/lib/prisma';
 import { AcademyJsonLd } from '@/components/seo/JsonLd';
 
+import { extractCleanLocalityName } from '@/lib/categories';
+
 export async function generateMetadata({
   params,
 }: {
@@ -16,6 +18,7 @@ export async function generateMetadata({
         name: true,
         tagline: true,
         locality: true,
+        address: true,
         category: true,
         rating: true,
         monthlyTuitionFee: true,
@@ -29,8 +32,11 @@ export async function generateMetadata({
       };
     }
 
-    const title = `${centre.name} - Kids Coaching in ${centre.locality}`;
-    const description = `${centre.name} in ${centre.locality}: ${centre.tagline}. Verified rating: ${Number(centre.rating).toFixed(1)}/5. Monthly fee: ₹${centre.monthlyTuitionFee}. Book a free trial now on KnowUrCoach.`;
+    const cleanLoc = extractCleanLocalityName(centre.locality, null, 'Agra');
+    const city = (centre as any).city || 'Agra';
+    const cleanTag = centre.tagline ? centre.tagline.replace(/kamla nagarkamla nagar/gi, 'Kamla Nagar') : '';
+    const title = `${centre.name} - Kids Coaching in ${cleanLoc}, ${city}`;
+    const description = `${centre.name} in ${cleanLoc}, ${city}: ${cleanTag}. Verified rating: ${Number(centre.rating).toFixed(1)}/5. Monthly fee: ₹${centre.monthlyTuitionFee}. Book a free trial now on KnowUrCoach.`;
 
     return {
       title,
@@ -99,7 +105,7 @@ export default async function ActivityDetailLayout({
           name={centre.name}
           tagline={centre.tagline}
           category={centre.category}
-          locality={centre.locality}
+          locality={extractCleanLocalityName(centre.locality, centre.address, 'Agra')}
           address={centre.address}
           phone={centre.phone}
           rating={Number(centre.rating)}

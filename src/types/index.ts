@@ -42,10 +42,15 @@ export interface Academy {
   image: string;
   coachName: string;
   coachTitle: string;
+  coachBio?: string;
   coachesCount: number;
   ratio: string;
   facilities: string[];
   safety: string;
+  nisCertified?: boolean;
+  policeVerifiedStaff?: boolean;
+  cctvMonitored?: boolean;
+  firstAidAvailable?: boolean;
   isTopInArea?: boolean;
   planTier?: string;
   isVerifiedBatch?: boolean;
@@ -53,6 +58,9 @@ export interface Academy {
   kycStatus?: string;
   safetyGrade?: string;
   batches: AcademyBatch[];
+  hasCustomImage?: boolean;
+  venuePhotos?: string[];
+  primaryPillar?: 'sports' | 'brain-booster' | 'arts' | 'education' | string;
 }
 
 export interface Competition {

@@ -192,7 +192,7 @@ export function AcademyCard({
             title={`View ${academy.name} details`}
           >
             <img
-              src={academy.image || resolveCategoryCoverImage(academy.category || (academy.activities && academy.activities[0]) || 'sports', '')}
+              src={(academy.hasCustomImage && academy.image) ? academy.image : resolveCategoryCoverImage(academy.category || (academy.activities && academy.activities[0]) || 'sports', '')}
               alt={academy.name}
               className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
               loading="lazy"

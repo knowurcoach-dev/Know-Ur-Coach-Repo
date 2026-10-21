@@ -4,6 +4,7 @@ import { KycStatus, SubscriptionPlan } from '@prisma/client';
 import { readHeroCarouselTheme } from '@/lib/hero-theme-server';
 import { formatBatchItem } from '@/lib/batch-helpers';
 import { DEFAULT_HERO_CAROUSEL_THEME } from '@/lib/hero-theme';
+import { registerDynamicTaxonomy } from '@/lib/categories';
 
 function toPlainObject<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
@@ -114,6 +115,8 @@ const fetchDiscoveryData = async () => {
       isActive: d.isActive,
     })),
   }));
+
+  registerDynamicTaxonomy(mappedActivities);
 
   const allCategories = mappedActivities.flatMap((act) => act.categories);
 

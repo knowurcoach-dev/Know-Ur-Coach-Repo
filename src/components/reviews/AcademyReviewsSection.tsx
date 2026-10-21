@@ -320,7 +320,7 @@ export function AcademyReviewsSection({
             No parent reviews yet for {academyName}
           </h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
-            Are you an enrolled parent? Be the first to share your child’s coaching journey and court feedback.
+            Are you an enrolled parent? Be the first to share your child’s learning journey and experience.
           </p>
           {eligibility?.isEligible && (
             <button

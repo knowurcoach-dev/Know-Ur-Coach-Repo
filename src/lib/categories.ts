@@ -10,7 +10,7 @@ export interface PlatformCategory {
 
 
 
-export const CATEGORY_PILLAR_MAP: Record<string, 'sports' | 'brain-booster' | 'arts'> = {
+export const CATEGORY_PILLAR_MAP: Record<string, 'sports' | 'brain-booster' | 'arts' | 'education'> = {
   // Sports & Athletics
   sports: 'sports',
   tennis: 'sports',
@@ -44,6 +44,24 @@ export const CATEGORY_PILLAR_MAP: Record<string, 'sports' | 'brain-booster' | 'a
   coding: 'brain-booster',
   'science-labs': 'brain-booster',
   science: 'brain-booster',
+  "rubik's-cube": 'brain-booster',
+  'rubiks-cube': 'brain-booster',
+  // Academic Education & Tutors
+  education: 'education',
+  'coaching-centres': 'education',
+  'coaching-center': 'education',
+  'coaching-centers': 'education',
+  'home-tutor': 'education',
+  'home-tutors': 'education',
+  'online-tutors': 'education',
+  'online-tutors-(one-to-one-sessions)': 'education',
+  'academic-coaching': 'education',
+  tuition: 'education',
+  tuitions: 'education',
+  tutor: 'education',
+  tutors: 'education',
+  olympiad: 'education',
+  olympiads: 'education',
   // Cultural & Fine Arts
   arts: 'arts',
   'drawing-painting': 'arts',
@@ -104,6 +122,17 @@ export const CATEGORY_EMOJI_MAP: Record<string, string> = {
   robotics: '🤖',
   coding: '💻',
   'science-labs': '🔬',
+  "rubik's-cube": '🧊',
+  'rubiks-cube': '🧊',
+  // Education
+  education: '📚',
+  'coaching-centres': '🏫',
+  'coaching-center': '🏫',
+  'coaching-centers': '🏫',
+  'home-tutor': '👨‍🏫',
+  'home-tutors': '👨‍🏫',
+  'online-tutors': '💻',
+  'online-tutors-(one-to-one-sessions)': '💻',
   // Cultural & Fine Arts
   arts: '🎨',
   'drawing-painting': '🎨',
@@ -161,6 +190,16 @@ export const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
   robotics: 'Robotics & Automation Lab',
   coding: 'Coding & AI for Juniors',
   'science-labs': 'Science & Experiential Labs',
+  "rubik's-cube": "Rubik's Cube & Mental Agility",
+  // Education
+  education: 'Academic Education & Tuitions',
+  'coaching-centres': 'Academic Coaching & Olympiads',
+  'coaching-center': 'Academic Coaching & Olympiads',
+  'coaching-centers': 'Academic Coaching & Olympiads',
+  'home-tutor': 'Home Tutor',
+  'home-tutors': 'Home Tutors',
+  'online-tutors': 'Online Tutors (1-on-1)',
+  'online-tutors-(one-to-one-sessions)': 'Online Tutors (1-on-1)',
   // Cultural & Fine Arts
   arts: 'Cultural & Fine Arts',
   'drawing-painting': 'Drawing & Painting',
@@ -214,6 +253,12 @@ export const CATEGORY_SHORT_NAMES: Record<string, string> = {
   robotics: 'Robotics',
   coding: 'Coding & AI',
   'science-labs': 'Science Labs',
+  "rubik's-cube": "Rubik's Cube",
+  education: 'Education',
+  'coaching-centres': 'Coaching Centres',
+  'home-tutor': 'Home Tutor',
+  'online-tutors': 'Online Tutors',
+  'online-tutors-(one-to-one-sessions)': 'Online Tutors',
   'drawing-painting': 'Drawing & Painting',
   'drawing-and-painting': 'Drawing & Painting',
   drawing: 'Drawing',
@@ -274,25 +319,101 @@ export function getCategoriesDisplayNames(categoryString?: string): string[] {
   return slugs.map(getCategoryDisplayName);
 }
 
-/**
- * Returns the parent pillar ('sports' | 'brain-booster' | 'arts') for any category slug or name.
- */
-export function getCategoryPillar(slugOrName?: string): 'sports' | 'brain-booster' | 'arts' {
+// ─── Live Database Dynamic Taxonomy Registry ─────────────────────────────────
+// Automatically populated from PostgreSQL MajorActivity & Discipline records.
+// When an administrator or client adds a new activity or category in the database,
+// it is dynamically registered here without requiring code edits.
+const DYNAMIC_CATEGORY_PILLAR_MAP: Record<string, string> = {};
+const DYNAMIC_CATEGORY_NAME_MAP: Record<string, string> = {};
+const DYNAMIC_CATEGORY_EMOJI_MAP: Record<string, string> = {};
+
+// Helper to verify if a string is a genuine unicode emoji rather than a component name like "Trophy"
+function isRealEmoji(str?: string | null): boolean {
+  if (!str) return false;
+  const s = str.trim();
+  if (s.length === 0 || s.length > 5) return false;
+  // If it contains ASCII alphanumeric letters/words like "Trophy", "Sparkle", it is NOT an emoji
+  if (/^[a-zA-Z0-9_\-\s]+$/.test(s)) return false;
+  return true;
+}
+
+export function registerDynamicTaxonomy(activities: any[]): void {
+  if (!Array.isArray(activities)) return;
+  activities.forEach((act) => {
+    if (act?.slug) {
+      const pillarSlug = act.slug.toLowerCase().trim();
+      const items = act.categories || act.disciplines;
+      if (Array.isArray(items)) {
+        items.forEach((cat: any) => {
+          if (cat?.slug) {
+            const catSlug = cat.slug.toLowerCase().trim();
+            DYNAMIC_CATEGORY_PILLAR_MAP[catSlug] = pillarSlug;
+            if (cat.name) DYNAMIC_CATEGORY_NAME_MAP[catSlug] = cat.name;
+            // Only store in emoji registry if it is genuinely a unicode emoji character
+            if (isRealEmoji(cat.icon)) {
+              DYNAMIC_CATEGORY_EMOJI_MAP[catSlug] = cat.icon.trim();
+            }
+          }
+        });
+      }
+    }
+  });
+}
+
+export function getCategoryPillar(slugOrName?: string): string {
   if (!slugOrName) return 'sports';
   const clean = slugOrName.toLowerCase().trim().replace(/\s+/g, '-');
-  return CATEGORY_PILLAR_MAP[clean] || 'sports';
+
+  // 1. Live Dynamic Database Registry
+  if (DYNAMIC_CATEGORY_PILLAR_MAP[clean]) {
+    return DYNAMIC_CATEGORY_PILLAR_MAP[clean];
+  }
+
+  // 2. Static Fallback Map
+  if (CATEGORY_PILLAR_MAP[clean]) return CATEGORY_PILLAR_MAP[clean];
+
+  // 3. Smart Keyword Fallbacks for standard pillars
+  if (clean.includes('coaching') || clean.includes('tutor') || clean.includes('tuition') || clean.includes('academic') || clean.includes('olympiad') || clean.includes('education')) {
+    return 'education';
+  }
+  if (clean.includes('brain') || clean.includes('abacus') || clean.includes('phonics') || clean.includes('handwriting') || clean.includes('stem') || clean.includes('robot') || clean.includes('coding') || clean.includes('rubik') || clean.includes('matra')) {
+    return 'brain-booster';
+  }
+  if (clean.includes('art') || clean.includes('paint') || clean.includes('dance') || clean.includes('music') || clean.includes('guitar') || clean.includes('piano') || clean.includes('sing') || clean.includes('tabla') || clean.includes('flute') || clean.includes('mehendi') || clean.includes('craft')) {
+    return 'arts';
+  }
+  return 'sports';
 }
 
 /**
  * Returns the emoji icon for any category slug or name.
+ * Always guarantees a genuine unicode emoji character (🏏, 🎾, 🏊, 📚, 🎨, 🧠, 🏆).
+ * Never returns text strings or component names like "Trophy".
  */
 export function getCategoryEmoji(slugOrName?: string): string {
   if (!slugOrName) return '🏆';
   const clean = slugOrName.toLowerCase().trim().replace(/\s+/g, '-');
+
+  // 1. Direct Static Emoji Mapping (highest fidelity for standard activities: cricket -> 🏏, tennis -> 🎾)
   if (CATEGORY_EMOJI_MAP[clean]) return CATEGORY_EMOJI_MAP[clean];
-  for (const [key, emoji] of Object.entries(CATEGORY_EMOJI_MAP)) {
-    if (clean.includes(key)) return emoji;
+
+  // 2. Live Dynamic Database Registry (only if a real unicode emoji was saved)
+  if (DYNAMIC_CATEGORY_EMOJI_MAP[clean] && isRealEmoji(DYNAMIC_CATEGORY_EMOJI_MAP[clean])) {
+    return DYNAMIC_CATEGORY_EMOJI_MAP[clean];
   }
+
+  // 3. Substring matching in CATEGORY_EMOJI_MAP
+  for (const [key, emoji] of Object.entries(CATEGORY_EMOJI_MAP)) {
+    if (clean.includes(key) && key.length > 2) return emoji;
+  }
+
+  // 4. Pillar-based smart emoji fallback
+  const pillar = getCategoryPillar(clean);
+  if (pillar === 'education') return '📚';
+  if (pillar === 'brain-booster') return '🧠';
+  if (pillar === 'arts') return '🎨';
+  if (pillar === 'sports') return '🏆';
+
   return '🌟';
 }
 
@@ -302,10 +423,19 @@ export function getCategoryEmoji(slugOrName?: string): string {
 export function getCategoryDisplayName(slugOrName?: string): string {
   if (!slugOrName) return 'Sports & Athletics';
   const clean = slugOrName.toLowerCase().trim().replace(/\s+/g, '-');
+
+  // 1. Live Dynamic Database Registry
+  if (DYNAMIC_CATEGORY_NAME_MAP[clean]) {
+    return DYNAMIC_CATEGORY_NAME_MAP[clean];
+  }
+
+  // 2. Static Fallback Map
   if (CATEGORY_DISPLAY_NAMES[clean]) return CATEGORY_DISPLAY_NAMES[clean];
-  // If already formatted with spaces and capitals, return it
+
+  // 3. If already formatted with spaces and capitals, return it
   if (slugOrName.includes(' ') && /[A-Z]/.test(slugOrName)) return slugOrName;
-  // Fallback: title case
+
+  // 4. Clean Dynamic Fallback: auto Title Case for any arbitrary slug
   return slugOrName
     .replace(/[-_]/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -428,6 +558,20 @@ export function resolveCategoryCoverImage(slugOrName?: string, existingUrl?: str
   if (s.includes('science') || s.includes('lab') || s.includes('experiment')) {
     return 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?q=80&w=800&auto=format&fit=crop';
   }
+  if (s.includes('rubik')) {
+    return 'https://images.unsplash.com/photo-1568869846214-6847185f49e8?q=80&w=800&auto=format&fit=crop';
+  }
+
+  // Academic Education & Tutors
+  if (s.includes('coaching') || s.includes('tuition') || s.includes('olympiad') || s.includes('academic')) {
+    return 'https://images.unsplash.com/photo-1577896851231-70ef18881754?q=80&w=800&auto=format&fit=crop';
+  }
+  if (s.includes('home-tutor') || s.includes('tutor') || s.includes('teacher')) {
+    return 'https://images.unsplash.com/photo-1544717305-2782549b5136?q=80&w=800&auto=format&fit=crop';
+  }
+  if (s.includes('online') || s.includes('one-to-one')) {
+    return 'https://images.unsplash.com/photo-1588196749597-9ff075ee6b5b?q=80&w=800&auto=format&fit=crop';
+  }
 
   return 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?q=80&w=800&auto=format&fit=crop';
 }
@@ -502,6 +646,23 @@ export function resolveCategoryFromSearch(q: string): { category: string; pillar
   if (clean.includes('robot') || clean.includes('stem') || clean.includes('coding') || clean.includes('arduino') || clean.includes('python')) {
     return { category: 'robotics', pillar: 'brain-booster' };
   }
+  if (clean.includes('rubik')) {
+    return { category: "rubik's-cube", pillar: 'brain-booster' };
+  }
+
+  // Education
+  if (clean.includes('coaching') || clean.includes('tuition') || clean.includes('olympiad') || clean.includes('academic')) {
+    return { category: 'coaching-centres', pillar: 'education' };
+  }
+  if (clean.includes('home tutor') || clean.includes('home-tutor') || clean.includes('private tutor')) {
+    return { category: 'home-tutor', pillar: 'education' };
+  }
+  if (clean.includes('online tutor') || clean.includes('online-tutor') || clean.includes('one to one') || clean.includes('one-to-one')) {
+    return { category: 'online-tutors-(one-to-one-sessions)', pillar: 'education' };
+  }
+  if (clean.includes('tutor') || clean.includes('education')) {
+    return { category: 'coaching-centres', pillar: 'education' };
+  }
 
   // Cultural & Fine Arts
   if (clean.includes('dance') || clean.includes('kathak') || clean.includes('ballet') || clean.includes('hip hop') || clean.includes('hiphop')) {
@@ -539,5 +700,74 @@ export function resolveCategoryFromSearch(q: string): { category: string; pillar
   }
 
   return null;
+}
+
+export const KNOWN_LOCALITIES: Array<{ pattern: RegExp; slug: string; name: string }> = [
+  { pattern: /kamla\s*nagar/i, slug: 'kamla-nagar', name: 'Kamla Nagar' },
+  { pattern: /sanjay\s*place/i, slug: 'sanjay-place', name: 'Sanjay Place' },
+  { pattern: /dayalbagh/i, slug: 'dayalbagh', name: 'Dayalbagh' },
+  { pattern: /sadar(?:\s*bazar)?/i, slug: 'sadar', name: 'Sadar Bazar' },
+  { pattern: /fatehabad\s*road/i, slug: 'fatehabad-road', name: 'Fatehabad Road' },
+  { pattern: /shastri\s*puram/i, slug: 'shastri-puram', name: 'Shastri Puram' },
+  { pattern: /bodla/i, slug: 'bodla', name: 'Bodla' },
+  { pattern: /civil\s*lines/i, slug: 'civil-lines', name: 'Civil Lines' },
+  { pattern: /khandari/i, slug: 'khandari', name: 'Khandari' },
+  { pattern: /etmadpur/i, slug: 'etmadpur', name: 'Etmadpur' },
+  { pattern: /shahganj/i, slug: 'shahganj', name: 'Shahganj' },
+  { pattern: /sikandra/i, slug: 'sikandra', name: 'Sikandra' },
+  { pattern: /trans\s*yamuna/i, slug: 'trans-yamuna', name: 'Trans Yamuna' },
+  { pattern: /vasant\s*kunj/i, slug: 'vasant-kunj', name: 'Vasant Kunj' },
+  { pattern: /connaught\s*place/i, slug: 'connaught-place', name: 'Connaught Place' },
+  { pattern: /dwarka/i, slug: 'dwarka', name: 'Dwarka' },
+  { pattern: /rohini/i, slug: 'rohini', name: 'Rohini' },
+  { pattern: /saket/i, slug: 'saket', name: 'Saket' },
+  { pattern: /noida/i, slug: 'noida', name: 'Noida' },
+  { pattern: /gurugram|gurgaon/i, slug: 'gurugram', name: 'Gurugram' },
+  { pattern: /bandra/i, slug: 'bandra', name: 'Bandra' },
+  { pattern: /andheri/i, slug: 'andheri', name: 'Andheri' },
+  { pattern: /juhu/i, slug: 'juhu', name: 'Juhu' },
+  { pattern: /powai/i, slug: 'powai', name: 'Powai' },
+];
+
+export function extractCleanLocality(
+  rawLocality?: string | null,
+  rawAddress?: string | null
+): { slug: string; name: string } | null {
+  if (!rawLocality && !rawAddress) return null;
+  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase();
+
+  for (const known of KNOWN_LOCALITIES) {
+    if (known.pattern.test(combined)) {
+      return { slug: known.slug, name: known.name };
+    }
+  }
+
+  if (!rawLocality) return null;
+  const clean = rawLocality.trim().replace(/^[-_]+|[-_]+$/g, '');
+  if (!clean || clean.length < 2) return null;
+
+  const parts = clean.split(/[-_,/]/).map((p) => p.trim()).filter(Boolean);
+  const bestPart = parts[parts.length - 1] || clean;
+  const slug = bestPart.toLowerCase().replace(/\s+/g, '-');
+  const name = bestPart.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return { slug, name };
+}
+
+export function extractCleanLocalityName(
+  rawLocality?: string | null,
+  rawAddress?: string | null,
+  fallback = 'Kamla Nagar'
+): string {
+  const res = extractCleanLocality(rawLocality, rawAddress);
+  return res ? res.name : (rawLocality ? rawLocality.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : fallback);
+}
+
+export function extractCleanLocalitySlug(
+  rawLocality?: string | null,
+  rawAddress?: string | null,
+  fallback = 'kamla-nagar'
+): string {
+  const res = extractCleanLocality(rawLocality, rawAddress);
+  return res ? res.slug : (rawLocality ? rawLocality.toLowerCase().replace(/\s+/g, '-') : fallback);
 }
 
