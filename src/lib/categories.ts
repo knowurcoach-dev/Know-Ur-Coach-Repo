@@ -706,6 +706,7 @@ export const KNOWN_LOCALITIES: Array<{ pattern: RegExp; slug: string; name: stri
   { pattern: /kamla\s*nagar/i, slug: 'kamla-nagar', name: 'Kamla Nagar' },
   { pattern: /sanjay\s*place/i, slug: 'sanjay-place', name: 'Sanjay Place' },
   { pattern: /dayalbagh/i, slug: 'dayalbagh', name: 'Dayalbagh' },
+  { pattern: /madia\s*katra/i, slug: 'madia-katra', name: 'Madia Katra' },
   { pattern: /sadar(?:\s*bazar)?/i, slug: 'sadar', name: 'Sadar Bazar' },
   { pattern: /fatehabad\s*road/i, slug: 'fatehabad-road', name: 'Fatehabad Road' },
   { pattern: /shastri\s*puram/i, slug: 'shastri-puram', name: 'Shastri Puram' },
@@ -716,6 +717,7 @@ export const KNOWN_LOCALITIES: Array<{ pattern: RegExp; slug: string; name: stri
   { pattern: /shahganj/i, slug: 'shahganj', name: 'Shahganj' },
   { pattern: /sikandra/i, slug: 'sikandra', name: 'Sikandra' },
   { pattern: /trans\s*yamuna/i, slug: 'trans-yamuna', name: 'Trans Yamuna' },
+  { pattern: /karmyogi(?:\s*fountain)?/i, slug: 'karmyogi', name: 'Karmyogi' },
   { pattern: /vasant\s*kunj/i, slug: 'vasant-kunj', name: 'Vasant Kunj' },
   { pattern: /connaught\s*place/i, slug: 'connaught-place', name: 'Connaught Place' },
   { pattern: /dwarka/i, slug: 'dwarka', name: 'Dwarka' },
@@ -734,7 +736,8 @@ export function extractCleanLocality(
   rawAddress?: string | null
 ): { slug: string; name: string } | null {
   if (!rawLocality && !rawAddress) return null;
-  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase();
+  // Normalize hyphens and underscores to spaces so patterns like /kamla\s*nagar/ match "kamla-nagar"
+  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase().replace(/[-_]/g, ' ');
 
   for (const known of KNOWN_LOCALITIES) {
     if (known.pattern.test(combined)) {

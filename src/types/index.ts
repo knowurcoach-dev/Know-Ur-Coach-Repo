@@ -30,8 +30,8 @@ export interface Academy {
   lon?: number;
   address: string;
   phone: string;
-  distance: number;
-  distanceText: string;
+  distance?: number;
+  distanceText?: string;
   age: ('u5' | 'u8' | 'u12' | 'u16' | string)[];
   ageText: string;
   fee: number;

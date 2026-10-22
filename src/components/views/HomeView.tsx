@@ -23,6 +23,7 @@ import {
   getCategoryDisplayName,
   getCategoryEmoji,
   getCategoryPillar,
+  extractCleanLocality,
 } from '@/lib/categories';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
@@ -31,6 +32,9 @@ import {
   CityNeighbourhood,
   isStateLocation,
   ALL_INDIA_POPULAR_NEIGHBOURHOODS,
+  calculateDistance,
+  formatDistanceText,
+  resolveCentreCity,
 } from '@/lib/location';
 import { HowItWorksSection } from '@/components/home/HowItWorksSection';
 import { ParentTestimonialsSection } from '@/components/home/ParentTestimonialsSection';
@@ -69,29 +73,47 @@ interface SearchSuggestion {
 
 const SLIDE_DURATION_MS = 5000; // 5.0 seconds standard ideal carousel timer
 
-function mapCentresToAcademies(centres: any[], activeCity?: string): Academy[] {
+function mapCentresToAcademies(centres: any[], activeCity?: string, userCoords?: { lat: number; lon: number } | null): Academy[] {
   if (!Array.isArray(centres) || centres.length === 0) return [];
+  const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
+
   return centres.map((c: any) => {
     const categorySlugs = (c.category ? c.category.split(',') : ['tennis'])
       .map((s: string) => s.trim().toLowerCase())
       .filter(Boolean);
     const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
 
+    const resolvedCity = c.city || resolveCentreCity(c) || (isAllIndia ? 'Agra' : activeCity) || 'Agra';
+    const cleanLoc = extractCleanLocality(c.locality, c.address);
+    const locSlug = cleanLoc ? cleanLoc.slug : (c.locality ? c.locality.toLowerCase().replace(/\s+/g, '-') : 'central');
+    const locName = cleanLoc ? cleanLoc.name : (c.locality ? c.locality.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : resolvedCity);
+
+    let distance: number | undefined = undefined;
+    let distanceText: string | undefined = undefined;
+
+    if (!isAllIndia && userCoords && typeof c.latitude === 'number' && typeof c.longitude === 'number') {
+      const distKm = calculateDistance(userCoords.lat, userCoords.lon, c.latitude, c.longitude);
+      if (distKm <= 100) {
+        distance = distKm;
+        distanceText = formatDistanceText(distKm);
+      }
+    }
+
     return {
       id: c.id,
       name: c.name,
       tagline: c.tagline,
       category: (c.category as any) || 'tennis',
+      categorySlugs,
       activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(c.category)],
       activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(c.category),
-      locality: (c.locality as any) || 'central',
-      localityName: c.locality
-        ? c.locality.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-        : c.city || activeCity || 'City Center',
+      locality: locSlug,
+      localityName: locName,
+      city: resolvedCity,
       address: c.address,
       phone: c.phone,
-      distance: 2.5,
-      distanceText: '2.5 km away',
+      distance,
+      distanceText,
       age: ['u8', 'u12', 'u16'] as any,
       ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
       fee: Number(c.monthlyTuitionFee) || 1800,
@@ -133,7 +155,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
   const [selectedMainActivity, setSelectedMainActivity] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [featuredAcademies, setFeaturedAcademies] = useState<Academy[]>(() =>
-    initialData?.centres ? mapCentresToAcademies(initialData.centres, activeCity) : []
+    initialData?.centres ? mapCentresToAcademies(initialData.centres, activeCity, activeCoords) : []
   );
   const hasDiscoveryData = Boolean(
     (initialData?.activities && initialData.activities.length > 0) ||
@@ -195,7 +217,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
         setPlatformCategories([]);
       }
       if (data.centres && Array.isArray(data.centres) && data.centres.length > 0) {
-        setFeaturedAcademies(mapCentresToAcademies(data.centres, activeCity));
+        setFeaturedAcademies(mapCentresToAcademies(data.centres, activeCity, activeCoords));
       } else {
         setFeaturedAcademies([]);
       }
@@ -206,7 +228,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [activeCity]);
+  }, [activeCity, activeCoords]);
 
   useEffect(() => {
     if (initialLoadedRef.current) {
@@ -1149,7 +1171,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
             </h2>
           </div>
           <Link
-            href="/activities"
+            href="/activities/explore"
             className="text-xs sm:text-sm font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 hover:underline"
           >
             <span>View All Centers</span>

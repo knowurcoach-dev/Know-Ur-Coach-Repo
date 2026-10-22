@@ -227,9 +227,18 @@ export function AcademyCard({
             {/* Locality & Distance: Exactly 1 line (h-4) */}
             <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5 h-4 truncate">
               <MapPin size={12} weight="bold" className="text-red-500 shrink-0" />
-              <span className="truncate">{academy.localityName}</span>
-              <span className="text-slate-300">•</span>
-              <span className="font-bold text-slate-700 shrink-0">{academy.distanceText}</span>
+              <span className="truncate">
+                {academy.localityName}
+                {academy.city && academy.city.toLowerCase() !== (academy.localityName || '').toLowerCase()
+                  ? `, ${academy.city}`
+                  : ''}
+              </span>
+              {academy.distanceText && academy.distanceText.trim() ? (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-bold text-slate-700 shrink-0">{academy.distanceText}</span>
+                </>
+              ) : null}
             </p>
 
             {/* Activities & Age: Exactly 1 line (h-5) with truncate */}

@@ -9,7 +9,7 @@ import { ActivityCardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { usePersona } from '@/context/PersonaContext';
 import { useModalStore } from '@/hooks/useModalStore';
 import { getDiscoveryData } from '@/lib/actions';
-import { resolveCentreCity } from '@/lib/location';
+import { resolveCentreCity, calculateDistance, formatDistanceText } from '@/lib/location';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
   getCategoryPillar,
@@ -39,6 +39,7 @@ const KNOWN_LOCALITIES: Array<{ pattern: RegExp; slug: string; name: string }> =
   { pattern: /kamla\s*nagar/i, slug: 'kamla-nagar', name: 'Kamla Nagar' },
   { pattern: /sanjay\s*place/i, slug: 'sanjay-place', name: 'Sanjay Place' },
   { pattern: /dayalbagh/i, slug: 'dayalbagh', name: 'Dayalbagh' },
+  { pattern: /madia\s*katra/i, slug: 'madia-katra', name: 'Madia Katra' },
   { pattern: /sadar(?:\s*bazar)?/i, slug: 'sadar', name: 'Sadar Bazar' },
   { pattern: /fatehabad\s*road/i, slug: 'fatehabad-road', name: 'Fatehabad Road' },
   { pattern: /shastri\s*puram/i, slug: 'shastri-puram', name: 'Shastri Puram' },
@@ -49,6 +50,7 @@ const KNOWN_LOCALITIES: Array<{ pattern: RegExp; slug: string; name: string }> =
   { pattern: /shahganj/i, slug: 'shahganj', name: 'Shahganj' },
   { pattern: /sikandra/i, slug: 'sikandra', name: 'Sikandra' },
   { pattern: /trans\s*yamuna/i, slug: 'trans-yamuna', name: 'Trans Yamuna' },
+  { pattern: /karmyogi(?:\s*fountain)?/i, slug: 'karmyogi', name: 'Karmyogi' },
   { pattern: /vasant\s*kunj/i, slug: 'vasant-kunj', name: 'Vasant Kunj' },
   { pattern: /connaught\s*place/i, slug: 'connaught-place', name: 'Connaught Place' },
   { pattern: /dwarka/i, slug: 'dwarka', name: 'Dwarka' },
@@ -67,7 +69,8 @@ function extractCleanLocality(
   rawAddress?: string | null
 ): { slug: string; name: string } | null {
   if (!rawLocality && !rawAddress) return null;
-  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase();
+  // Normalize hyphens and underscores to spaces so patterns like /kamla\s*nagar/ match "kamla-nagar"
+  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase().replace(/[-_]/g, ' ');
 
   for (const known of KNOWN_LOCALITIES) {
     if (known.pattern.test(combined)) {
@@ -490,7 +493,7 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
   }
 }
 
-function mapCentreToAcademy(c: any, activeCity: string): Academy {
+function mapCentreToAcademy(c: any, activeCity: string, userCoords?: { lat: number; lon: number } | null): Academy {
   const categorySlugs = (c.category ? c.category.split(',') : ['sports'])
     .map((s: string) => s.trim().toLowerCase())
     .filter(Boolean);
@@ -507,6 +510,18 @@ function mapCentreToAcademy(c: any, activeCity: string): Academy {
   const batchFees = (c.batches || []).map((b: any) => Number(b.monthlyFee)).filter((f: any) => !isNaN(f) && f > 0);
   const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(c.monthlyTuitionFee || c.fee || 0);
 
+  const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
+  let distance: number | undefined = undefined;
+  let distanceText: string | undefined = undefined;
+
+  if (!isAllIndia && userCoords && typeof c.latitude === 'number' && typeof c.longitude === 'number') {
+    const distKm = calculateDistance(userCoords.lat, userCoords.lon, c.latitude, c.longitude);
+    if (distKm <= 100) {
+      distance = distKm;
+      distanceText = formatDistanceText(distKm);
+    }
+  }
+
   return {
     id: c.id,
     name: c.name,
@@ -522,8 +537,8 @@ function mapCentreToAcademy(c: any, activeCity: string): Academy {
     lon: c.longitude,
     address: c.address,
     phone: c.phone,
-    distance: 2.5,
-    distanceText: '2.5 km away',
+    distance,
+    distanceText,
     age: ['u8', 'u12', 'u16'] as any,
     ageText: c.eligibleAgeGroup || '5 - 16 Yrs',
     fee: startingFee,
@@ -578,7 +593,7 @@ function resolveActivityIcon(slug?: string, iconName?: string | null) {
 export function ActivitiesExploreView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { activeCity: personaCity, activeLocality, setLocation } = usePersona();
+  const { activeCity: personaCity, activeLocality, activeCoords, setLocation } = usePersona();
   const { openModal } = useModalStore();
 
   const cityParam = searchParams.get('city');
@@ -605,7 +620,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
   const [academiesList, setAcademiesList] = useState<Academy[]>(() => {
     const raw = initialData?.centres || initialData?.academies || [];
     if (raw.length > 0) {
-      return raw.map((c: any) => mapCentreToAcademy(c, activeCity));
+      return raw.map((c: any) => mapCentreToAcademy(c, activeCity, activeCoords));
     }
     return [];
   });
@@ -738,7 +753,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
       }
       const rawCentres = (res as any).centres || (res as any).academies || [];
       if (rawCentres.length > 0) {
-        const mapped: Academy[] = rawCentres.map((c: any) => mapCentreToAcademy(c, activeCity));
+        const mapped: Academy[] = rawCentres.map((c: any) => mapCentreToAcademy(c, activeCity, activeCoords));
         setAcademiesList(mapped);
       } else {
         setAcademiesList([]);
@@ -750,7 +765,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     } finally {
       setIsLoadingDb(false);
     }
-  }, [activeCity]);
+  }, [activeCity, activeCoords]);
 
   useEffect(() => {
     if (initialLoadedRef.current) {
@@ -1019,7 +1034,11 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     result.sort((a, b) => {
       if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
       if (sortBy === 'fee-low') return (a.fee || 0) - (b.fee || 0);
-      if (sortBy === 'distance') return (a.distance || 0) - (b.distance || 0);
+      if (sortBy === 'distance') {
+        const distA = typeof a.distance === 'number' ? a.distance : 999999;
+        const distB = typeof b.distance === 'number' ? b.distance : 999999;
+        return distA - distB;
+      }
       if (a.isTopInArea && !b.isTopInArea) return -1;
       if (!a.isTopInArea && b.isTopInArea) return 1;
       return (b.rating || 0) - (a.rating || 0);

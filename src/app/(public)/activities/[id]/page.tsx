@@ -9,6 +9,7 @@ import { getCategoryDisplayName, getCategoryEmoji, getCategoryPillar, extractCle
 import { parseDocsPayload } from '@/lib/coach-docs';
 import { useModalStore } from '@/hooks/useModalStore';
 import { usePersona } from '@/context/PersonaContext';
+import { calculateDistance, formatDistanceText, resolveCentreCity } from '@/lib/location';
 import { useAuth } from '@/hooks/useAuth';
 import { ActivityDetailSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
@@ -321,7 +322,7 @@ export default function AcademyDetailPage() {
   const router = useRouter();
   const id = params?.id as string;
   const { openModal } = useModalStore();
-  const { showToast, activeCity } = usePersona();
+  const { showToast, activeCity, activeCoords } = usePersona();
   const { isGuest, session, user } = useAuth();
   const userEmail = session?.user?.email || (user as any)?.email;
 
@@ -470,8 +471,22 @@ export default function AcademyDetailPage() {
             city: (foundInDb as any).city || activeCity || 'Agra',
             address: foundInDb.address || `${(foundInDb as any).city || activeCity || 'Agra'}, Uttar Pradesh`,
             phone: foundInDb.phone || '+91 98970 12345',
-            distance: 2.5,
-            distanceText: '2.5 km away',
+            distance: (() => {
+              const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
+              if (!isAllIndia && activeCoords && typeof foundInDb.latitude === 'number' && typeof foundInDb.longitude === 'number') {
+                const d = calculateDistance(activeCoords.lat, activeCoords.lon, foundInDb.latitude, foundInDb.longitude);
+                return d <= 100 ? d : undefined;
+              }
+              return undefined;
+            })(),
+            distanceText: (() => {
+              const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
+              if (!isAllIndia && activeCoords && typeof foundInDb.latitude === 'number' && typeof foundInDb.longitude === 'number') {
+                const d = calculateDistance(activeCoords.lat, activeCoords.lon, foundInDb.latitude, foundInDb.longitude);
+                return d <= 100 ? formatDistanceText(d) : undefined;
+              }
+              return undefined;
+            })(),
             age: ['u8', 'u12', 'u16'],
             ageText: foundInDb.eligibleAgeGroup || '4 - 17 Yrs',
             fee: startingFee,
@@ -567,8 +582,22 @@ export default function AcademyDetailPage() {
                 city: (coachCentre as any).city || activeCity || 'Agra',
                 address: coachCentre.address || `${(coachCentre as any).city || activeCity || 'Agra'}, Uttar Pradesh`,
                 phone: coachCentre.phone || '+91 98970 12345',
-                distance: 2.5,
-                distanceText: '2.5 km away',
+                distance: (() => {
+                  const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
+                  if (!isAllIndia && activeCoords && typeof coachCentre.latitude === 'number' && typeof coachCentre.longitude === 'number') {
+                    const d = calculateDistance(activeCoords.lat, activeCoords.lon, coachCentre.latitude, coachCentre.longitude);
+                    return d <= 100 ? d : undefined;
+                  }
+                  return undefined;
+                })(),
+                distanceText: (() => {
+                  const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
+                  if (!isAllIndia && activeCoords && typeof coachCentre.latitude === 'number' && typeof coachCentre.longitude === 'number') {
+                    const d = calculateDistance(activeCoords.lat, activeCoords.lon, coachCentre.latitude, coachCentre.longitude);
+                    return d <= 100 ? formatDistanceText(d) : undefined;
+                  }
+                  return undefined;
+                })(),
                 age: ['u8', 'u12', 'u16'],
                 ageText: coachCentre.eligibleAgeGroup || '4 - 17 Yrs',
                 fee: coachStartingFee,
@@ -1004,7 +1033,10 @@ export default function AcademyDetailPage() {
 
               <span className="flex items-center gap-1.5 font-semibold">
                 <MapPin size={15} weight="bold" className="text-red-500" />
-                {academy.localityName}, {academy.city || activeCity || 'India'} • <strong className="text-slate-900">{academy.distanceText}</strong>
+                {academy.localityName}, {academy.city || activeCity || 'India'}
+                {academy.distanceText && academy.distanceText.trim() ? (
+                  <> • <strong className="text-slate-900">{academy.distanceText}</strong></>
+                ) : null}
               </span>
 
               <span className="flex items-center gap-1.5 font-semibold text-slate-700">
@@ -1784,9 +1816,15 @@ export default function AcademyDetailPage() {
                     <MapPin size={15} weight="fill" className="text-red-500" />
                     <span>{academy.name}</span>
                   </div>
-                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 text-[9px] sm:text-[10px]">
-                    📍 {academy.distanceText.includes('away') ? academy.distanceText : `${academy.distanceText} away`}
-                  </span>
+                  {academy.distanceText && academy.distanceText.trim() ? (
+                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 text-[9px] sm:text-[10px]">
+                      📍 {academy.distanceText.includes('away') ? academy.distanceText : `${academy.distanceText} away`}
+                    </span>
+                  ) : (
+                    <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 text-[9px] sm:text-[10px]">
+                      📍 {academy.city || activeCity || 'India'}
+                    </span>
+                  )}
                 </div>
                 <p className="text-slate-600 leading-relaxed text-[11px]">{academy.address}</p>
                 <div className="pt-0.5">
