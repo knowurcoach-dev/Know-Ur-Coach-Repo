@@ -96,8 +96,8 @@ export default function RegisterCoachPage() {
 
   // Step 1: Academy Fields
   const [acadName, setAcadName] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['badminton']);
-  const category = selectedCategories[0] || 'badminton';
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const category = selectedCategories[0] || '';
   const [taxonomy, setTaxonomy] = useState<any[]>([]);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
   const [founder, setFounder] = useState('');
@@ -107,20 +107,6 @@ export default function RegisterCoachPage() {
   const [city, setCity] = useState('Agra');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
-
-  // Multi-Category selection toggle helper
-  const handleToggleCategory = (catSlug: string) => {
-    setSelectedCategories((prev) => {
-      if (prev.includes(catSlug)) {
-        if (prev.length <= 1) {
-          showToast('⚠️ Please keep at least one activity selected.');
-          return prev;
-        }
-        return prev.filter((c) => c !== catSlug);
-      }
-      return [...prev, catSlug];
-    });
-  };
 
   // Step 2: Contact & Credentials
   const [email, setEmail] = useState('');
@@ -169,6 +155,119 @@ export default function RegisterCoachPage() {
     }
     loadTaxonomy();
   }, []);
+
+  const DRAFT_STORAGE_KEY = 'kuc_coach_register_draft_v1';
+
+  // 1. Restore draft on initial load so form is never wiped on back navigation or refresh
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (d.acadName) setAcadName(d.acadName);
+        if (d.founder) setFounder(d.founder);
+        if (Array.isArray(d.selectedCategories)) setSelectedCategories(d.selectedCategories);
+        if (d.locality) setLocality(d.locality);
+        if (d.address) setAddress(d.address);
+        if (d.pincode) setPincode(d.pincode);
+        if (d.city) setCity(d.city);
+        if (typeof d.latitude === 'number') setLatitude(d.latitude);
+        if (typeof d.longitude === 'number') setLongitude(d.longitude);
+        if (d.email) setEmail(d.email);
+        if (d.phone) setPhone(d.phone);
+        if (d.docGovIdName) setDocGovIdName(d.docGovIdName);
+        if (d.docGovIdNumber) setDocGovIdNumber(d.docGovIdNumber);
+        if (d.docGovIdUrl) setDocGovIdUrl(d.docGovIdUrl);
+        if (d.docNisCertName) setDocNisCertName(d.docNisCertName);
+        if (d.docNisCertUrl) setDocNisCertUrl(d.docNisCertUrl);
+        if (Array.isArray(d.venuePhotos)) setVenuePhotos(d.venuePhotos);
+        if (d.safetyChecklist) setSafetyChecklist(d.safetyChecklist);
+      }
+    } catch (e) {
+      console.warn('Could not restore coach registration draft:', e);
+    }
+  }, []);
+
+  // 2. Synchronize wizard steps with browser history and handle popstate (browser back/forward)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlStep = parseInt(urlParams.get('step') || '1', 10);
+    if (urlStep >= 1 && urlStep <= 5) {
+      setCurrentStep(urlStep);
+      window.history.replaceState({ step: urlStep }, '', `?step=${urlStep}`);
+    } else {
+      window.history.replaceState({ step: 1 }, '', '?step=1');
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && typeof event.state.step === 'number') {
+        const poppedStep = Math.max(1, Math.min(event.state.step, 5));
+        setCurrentStep(poppedStep);
+        setFormError(null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setCurrentStep(1);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // 3. Auto-save form draft on every state change
+  useEffect(() => {
+    if (typeof window === 'undefined' || isSubmitted) return;
+    try {
+      const draft = {
+        acadName,
+        founder,
+        selectedCategories,
+        locality,
+        address,
+        pincode,
+        city,
+        latitude,
+        longitude,
+        email,
+        phone,
+        docGovIdName,
+        docGovIdNumber,
+        docGovIdUrl,
+        docNisCertName,
+        docNisCertUrl,
+        venuePhotos,
+        safetyChecklist,
+        currentStep,
+      };
+      sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch (e) {
+      // Ignore quota exceptions if large images attached
+    }
+  }, [
+    acadName,
+    founder,
+    selectedCategories,
+    locality,
+    address,
+    pincode,
+    city,
+    latitude,
+    longitude,
+    email,
+    phone,
+    docGovIdName,
+    docGovIdNumber,
+    docGovIdUrl,
+    docNisCertName,
+    docNisCertUrl,
+    venuePhotos,
+    safetyChecklist,
+    currentStep,
+    isSubmitted,
+  ]);
 
   const compressFileToDataUrl = (file: File, maxDim = 1200, quality = 0.75): Promise<string> => {
     return new Promise((resolve) => {
@@ -294,14 +393,16 @@ export default function RegisterCoachPage() {
     let stepErrors: Record<string, string> = {};
 
     if (step === 1) {
+      const catError = selectedCategories.length === 0 ? 'Please select at least one activity / category offered' : '';
       stepErrors = {
         acadName: validateField('acadName', acadName),
         founder: validateField('founder', founder),
+        categories: catError,
         locality: validateField('locality', locality),
         pincode: validateField('pincode', pincode),
         address: validateField('address', address),
       };
-      setTouched((prev) => ({ ...prev, acadName: true, founder: true, locality: true, pincode: true, address: true }));
+      setTouched((prev) => ({ ...prev, acadName: true, founder: true, categories: true, locality: true, pincode: true, address: true }));
     } else if (step === 2) {
       stepErrors = {
         email: validateField('email', email),
@@ -319,7 +420,9 @@ export default function RegisterCoachPage() {
       const firstKey = Object.keys(stepErrors).find((k) => Boolean(stepErrors[k]));
       if (firstKey) {
         setTimeout(() => {
-          const el = document.getElementById(firstKey);
+          const el = firstKey === 'categories'
+            ? document.getElementById('categories-container')
+            : document.getElementById(firstKey);
           if (el) {
             el.focus();
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -334,20 +437,30 @@ export default function RegisterCoachPage() {
     return true;
   };
 
+  const goToStep = (stepNumber: number, pushHistory = true) => {
+    const targetStep = Math.max(1, Math.min(stepNumber, 5));
+    if (pushHistory && typeof window !== 'undefined') {
+      window.history.pushState({ step: targetStep }, '', `?step=${targetStep}`);
+    }
+    setCurrentStep(targetStep);
+    setFormError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleNextStep = () => {
     if (currentStep === 4) {
       handleInitiateOtp();
       return;
     }
     if (validateStep(currentStep)) {
-      setCurrentStep((prev) => Math.min(prev + 1, 5));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      goToStep(currentStep + 1, true);
     }
   };
 
   const handlePrevStep = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (currentStep > 1) {
+      goToStep(currentStep - 1, true);
+    }
   };
 
   // Step 4 -> 5: Dispatch Email OTP
@@ -394,13 +507,12 @@ export default function RegisterCoachPage() {
       }
 
       // Transition to Step 5
-      setCurrentStep(5);
+      goToStep(5, true);
       setResendCooldown(30);
       setDevOtpHint(data.devOtp || null);
       setOtp(['', '', '', '', '', '']);
       setOtpError(null);
       showToast(`✉️ 6-digit verification code sent to ${cleanEmail}`);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
 
       // Focus first OTP input box after render
       setTimeout(() => {
@@ -593,6 +705,9 @@ export default function RegisterCoachPage() {
       }
 
       setIsSubmitted(true);
+      try {
+        sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch {}
       showToast('🎉 Email verified! Opening coach dashboard...');
 
       if (signInOk) {
@@ -616,7 +731,18 @@ export default function RegisterCoachPage() {
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col justify-between selection:bg-blue-100 selection:text-blue-900">
       {/* Top Mobile Bar */}
       <header className="lg:hidden w-full bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
-        <BrandLogo size="sm" />
+        {currentStep > 1 ? (
+          <button
+            type="button"
+            onClick={handlePrevStep}
+            className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+          >
+            <ArrowLeft size={14} weight="bold" />
+            <span>Previous Step</span>
+          </button>
+        ) : (
+          <BrandLogo size="sm" clickable={false} />
+        )}
         <Link
           href="/login?role=coach"
           className="text-xs font-bold text-slate-700 hover:text-[#0066ff] bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 transition-colors"
@@ -633,7 +759,7 @@ export default function RegisterCoachPage() {
              ══════════════════════════════════════════ */}
           <aside className="w-full lg:w-[380px] lg:shrink-0 space-y-6 lg:sticky lg:top-8">
             <div className="hidden lg:block">
-              <BrandLogo size="lg" />
+              <BrandLogo size="lg" clickable={false} />
             </div>
 
             {/* Hero Card */}
@@ -665,28 +791,42 @@ export default function RegisterCoachPage() {
                 {WIZARD_STEPS.map(({ step, title, icon: Icon }) => {
                   const isDone = currentStep > step;
                   const isCurrent = currentStep === step;
+                  if (isDone) {
+                    return (
+                      <button
+                        key={step}
+                        type="button"
+                        onClick={() => goToStep(step, true)}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-xl text-xs font-bold transition-all text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/90 border border-emerald-200/60 cursor-pointer text-left"
+                        title={`Jump back to edit Step ${step}: ${title}`}
+                      >
+                        <span className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 bg-emerald-600 text-white">
+                          <Check size={14} weight="bold" />
+                        </span>
+                        <span className="flex-1 truncate">{title}</span>
+                        <span className="text-[10px] text-emerald-600 font-extrabold hover:underline">Edit ↺</span>
+                      </button>
+                    );
+                  }
                   return (
                     <div
                       key={step}
-                      className={`flex items-center gap-3 p-2.5 rounded-xl text-xs font-bold transition-all ${isCurrent
-                        ? 'bg-blue-50 text-[#0066ff] border border-blue-200'
-                        : isDone
-                          ? 'text-emerald-700 bg-emerald-50/60'
+                      className={`flex items-center gap-3 p-2.5 rounded-xl text-xs font-bold transition-all ${
+                        isCurrent
+                          ? 'bg-blue-50 text-[#0066ff] border border-blue-200'
                           : 'text-slate-400'
-                        }`}
+                      }`}
                     >
                       <span
-                        className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${isDone
-                          ? 'bg-emerald-600 text-white'
-                          : isCurrent
+                        className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                          isCurrent
                             ? 'bg-[#0066ff] text-white shadow-xs'
                             : 'bg-slate-100 text-slate-500'
-                          }`}
+                        }`}
                       >
-                        {isDone ? <Check size={14} weight="bold" /> : step}
+                        {step}
                       </span>
                       <span className="flex-1">{title}</span>
-                      {isDone && <CheckCircle size={16} weight="fill" className="text-emerald-600" />}
                     </div>
                   );
                 })}
@@ -704,9 +844,22 @@ export default function RegisterCoachPage() {
                 <div className="bg-gradient-to-r from-slate-50 via-blue-50/30 to-slate-50 p-6 border-b border-slate-100">
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <div>
-                      <span className="text-[11px] font-black uppercase tracking-wider text-blue-600">
-                        Step {currentStep} of {WIZARD_STEPS.length}: {WIZARD_STEPS[currentStep - 1]?.title}
-                      </span>
+                      <div className="flex items-center gap-2 mb-1">
+                        {currentStep > 1 && (
+                          <button
+                            type="button"
+                            onClick={handlePrevStep}
+                            className="text-[11px] font-bold text-slate-600 hover:text-blue-600 bg-white hover:bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                            title="Go to previous step"
+                          >
+                            <ArrowLeft size={12} weight="bold" />
+                            <span>Previous</span>
+                          </button>
+                        )}
+                        <span className="text-[11px] font-black uppercase tracking-wider text-blue-600">
+                          Step {currentStep} of {WIZARD_STEPS.length}: {WIZARD_STEPS[currentStep - 1]?.title}
+                        </span>
+                      </div>
                       <h2 className="text-xl font-black text-slate-900 tracking-tight mt-0.5">
                         {currentStep === 1 && '1. Academy Profile & Location'}
                         {currentStep === 2 && '2. Contact & Account Security'}
@@ -722,24 +875,38 @@ export default function RegisterCoachPage() {
 
                   {/* Horizontal Stepper Dots */}
                   <div className="grid grid-cols-5 gap-2">
-                    {WIZARD_STEPS.map(({ step, shortTitle }) => (
-                      <div key={step} className="space-y-1">
-                        <div
-                          className={`h-2 rounded-full transition-all ${currentStep >= step ? 'bg-[#0066ff]' : 'bg-slate-200'
-                            }`}
-                        />
-                        <span
-                          className={`text-[10px] font-bold block truncate text-center ${currentStep === step
-                            ? 'text-[#0066ff] font-extrabold'
-                            : currentStep > step
-                              ? 'text-emerald-700'
-                              : 'text-slate-400'
-                            }`}
+                    {WIZARD_STEPS.map(({ step, shortTitle }) => {
+                      const isClickable = step < currentStep;
+                      return (
+                        <button
+                          key={step}
+                          type="button"
+                          disabled={!isClickable}
+                          onClick={() => isClickable && goToStep(step, true)}
+                          className={`space-y-1 text-left transition-all ${
+                            isClickable ? 'cursor-pointer hover:opacity-80' : 'cursor-default'
+                          }`}
+                          title={isClickable ? `Jump back to Step ${step}: ${shortTitle}` : undefined}
                         >
-                          {shortTitle}
-                        </span>
-                      </div>
-                    ))}
+                          <div
+                            className={`h-2 rounded-full transition-all ${
+                              currentStep >= step ? 'bg-[#0066ff]' : 'bg-slate-200'
+                            }`}
+                          />
+                          <span
+                            className={`text-[10px] font-bold block truncate text-center ${
+                              currentStep === step
+                                ? 'text-[#0066ff] font-extrabold'
+                                : currentStep > step
+                                ? 'text-emerald-700 underline decoration-dotted'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            {shortTitle}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -851,15 +1018,30 @@ export default function RegisterCoachPage() {
                       )}
 
                       {/* Multi-Activity / Category 2-Dropdown Cascading Selector */}
-                      <MultiCategorySelector
-                        selectedCategories={selectedCategories}
-                        onChange={setSelectedCategories}
-                        taxonomy={taxonomy}
-                        theme="blue"
-                        minRequired={1}
-                        label="Activities & Disciplines Offered"
-                        sublabel="Select coaching programs. Use Dropdown 1 to choose a main activity pillar, and Dropdown 2 to add or remove linked categories."
-                      />
+                      <div id="categories-container" className="space-y-1">
+                        <MultiCategorySelector
+                          selectedCategories={selectedCategories}
+                          onChange={(cats) => {
+                            setSelectedCategories(cats);
+                            if (touched.categories) {
+                              setErrors((prev) => ({
+                                ...prev,
+                                categories: cats.length === 0 ? 'Please select at least one activity / category offered' : '',
+                              }));
+                            }
+                          }}
+                          taxonomy={taxonomy}
+                          theme="blue"
+                          minRequired={0}
+                          label="Activities & Disciplines Offered"
+                          sublabel="Select coaching programs. Use Dropdown 1 to choose a main activity pillar, and Dropdown 2 to add or remove linked categories."
+                        />
+                        {errors.categories && touched.categories && (
+                          <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                            <WarningCircle size={13} weight="fill" /> {errors.categories}
+                          </p>
+                        )}
+                      </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="sm:col-span-2" id="locality">
@@ -1478,7 +1660,7 @@ export default function RegisterCoachPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setCurrentStep(2);
+                              goToStep(2, true);
                               setTimeout(() => {
                                 document.getElementById('email')?.focus();
                               }, 50);

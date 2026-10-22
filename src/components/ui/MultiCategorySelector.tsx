@@ -71,7 +71,7 @@ export function MultiCategorySelector({
   // Toggle single category
   const handleToggle = (catSlug: string) => {
     if (selectedCategories.includes(catSlug)) {
-      if (selectedCategories.length <= minRequired) {
+      if (minRequired > 0 && selectedCategories.length <= minRequired) {
         return;
       }
       onChange(selectedCategories.filter((c) => c !== catSlug));
@@ -82,7 +82,7 @@ export function MultiCategorySelector({
 
   // Remove single category directly from pill
   const handleRemove = (catSlug: string) => {
-    if (selectedCategories.length <= minRequired) {
+    if (minRequired > 0 && selectedCategories.length <= minRequired) {
       return;
     }
     onChange(selectedCategories.filter((c) => c !== catSlug));
@@ -102,10 +102,7 @@ export function MultiCategorySelector({
   const handleClearInGroup = () => {
     const slugsInGroup = new Set(activeGroupCategories.map((c) => c.slug));
     const remaining = selectedCategories.filter((slug) => !slugsInGroup.has(slug));
-    if (remaining.length >= minRequired) {
-      onChange(remaining);
-    } else if (remaining.length === 0 && activeGroupCategories.length > 0) {
-      // Keep at least the first one if minRequired applies
+    if (minRequired > 0 && remaining.length < minRequired && activeGroupCategories.length > 0) {
       onChange([activeGroupCategories[0].slug]);
     } else {
       onChange(remaining);
@@ -154,7 +151,7 @@ export function MultiCategorySelector({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
           <span>Active Academy Offerings ({selectedCategories.length})</span>
-          {selectedCategories.length <= minRequired && (
+          {minRequired > 0 && selectedCategories.length <= minRequired && (
             <span className="text-amber-600 font-bold normal-case">
               (Minimum {minRequired} activity required)
             </span>
@@ -164,7 +161,7 @@ export function MultiCategorySelector({
         {selectedCategories.length > 0 ? (
           <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
             {selectedCategories.map((slug) => {
-              const canRemove = selectedCategories.length > minRequired;
+              const canRemove = minRequired === 0 || selectedCategories.length > minRequired;
               return (
                 <span
                   key={slug}
@@ -195,8 +192,8 @@ export function MultiCategorySelector({
             })}
           </div>
         ) : (
-          <div className="p-3 bg-white rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-400">
-            No activities selected yet. Use the two dropdowns below to add coaching programs.
+          <div className="p-3 bg-white rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500 font-medium">
+            No activities selected yet. Use the two dropdowns below to select coaching programs offered by your academy.
           </div>
         )}
       </div>

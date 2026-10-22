@@ -2631,8 +2631,14 @@ export async function registerCoachAcademy(data: {
 
     const categoryList = (data.categories && data.categories.length > 0)
       ? data.categories.map((s) => s.trim().toLowerCase()).filter(Boolean)
-      : (data.category ? data.category.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : ['badminton']);
-    const categorySlug = categoryList.length > 0 ? categoryList.join(',') : 'badminton';
+      : (data.category ? data.category.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : []);
+    if (!categoryList || categoryList.length === 0) {
+      return {
+        success: false,
+        message: 'Please select at least one activity / category for your academy.',
+      };
+    }
+    const categorySlug = categoryList.join(',');
     const localitySlug = (data.locality || 'kamla-nagar').toLowerCase().replace(/\s+/g, '-');
     // Default coach plan is FREE upon registration
     const planTier =
