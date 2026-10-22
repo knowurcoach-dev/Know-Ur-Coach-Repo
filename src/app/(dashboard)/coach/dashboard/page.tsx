@@ -17,6 +17,7 @@ import { parseDocsPayload } from '@/lib/coach-docs';
 import { getCategoryEmoji, getCategoryDisplayName } from '@/lib/categories';
 import { CoachDashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { getCentreSubscriptionStatus } from '@/lib/subscription';
+import { BatchSchedulePicker } from '@/components/ui/BatchSchedulePicker';
 import {
   SealCheck,
   PencilSimple,
@@ -1916,25 +1917,22 @@ export default function CoachDashboardPage() {
                         </div>
                       </div>
 
-                      {/* Row 2: Schedule & Timings, Age Group */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Schedule &amp; Timings *
-                          </label>
-                          <input
-                            type="text"
-                            value={batch.schedule}
-                            placeholder="e.g. Mon, Wed, Fri • 4:00 PM - 5:15 PM"
-                            onChange={(e) =>
-                              setBatches(
-                                batches.map((b, idx) => (idx === index ? { ...b, schedule: e.target.value } : b))
-                              )
-                            }
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-500"
-                          />
-                        </div>
+                      {/* Dynamic Schedule & Timings Picker */}
+                      <div className="pt-1">
+                        <BatchSchedulePicker
+                          value={batch.schedule}
+                          onChange={(newSchedule) =>
+                            setBatches(
+                              batches.map((b, idx) => (idx === index ? { ...b, schedule: newSchedule } : b))
+                            )
+                          }
+                          theme="blue"
+                          compact={true}
+                        />
+                      </div>
 
+                      {/* Row 2: Age Group, Total Capacity, Monthly Tuition Fee */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                         <div>
                           <label className="block text-[11px] font-bold text-slate-700 mb-1">
                             Age Group *
@@ -1951,10 +1949,7 @@ export default function CoachDashboardPage() {
                             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-500"
                           />
                         </div>
-                      </div>
 
-                      {/* Row 3: Total Capacity, Monthly Tuition Fee */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                         <div>
                           <label className="block text-[11px] font-bold text-slate-700 mb-1">
                             Total Capacity / Seats *

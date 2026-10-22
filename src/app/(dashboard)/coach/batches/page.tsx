@@ -8,6 +8,7 @@ import { getCoachBatchesData, saveCoachBatch, deleteCoachBatch } from '@/lib/act
 import { getCategoryDisplayName, getCategoryEmoji } from '@/lib/categories';
 import { GeneralCoachPageSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
+import { BatchSchedulePicker } from '@/components/ui/BatchSchedulePicker';
 import {
   CalendarCheck,
   Plus,
@@ -72,7 +73,7 @@ export default function CoachBatchesPage() {
 
   const handleOpenCreateModal = () => {
     const defaultCat = (centreData?.categories && centreData.categories[0]) ||
-      (centreData?.category ? centreData.category.split(',')[0].trim().toLowerCase() : 'badminton');
+      (centreData?.category ? centreData.category.split(',')[0].trim().toLowerCase() : '');
     setEditingBatchId(null);
     setName('');
     setCategory(defaultCat);
@@ -87,7 +88,7 @@ export default function CoachBatchesPage() {
   const handleOpenEditModal = (batch: any) => {
     setEditingBatchId(batch.id);
     setName(batch.name);
-    setCategory(batch.category || (centreData?.category ? centreData.category.split(',')[0].trim().toLowerCase() : 'badminton'));
+    setCategory(batch.category || (centreData?.category ? centreData.category.split(',')[0].trim().toLowerCase() : ''));
     setCoachName(batch.coachName || '');
     setSchedule(batch.pureSchedule || batch.schedule);
     setAgeGroup(batch.ageGroup);
@@ -406,16 +407,10 @@ export default function CoachBatchesPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                  Schedule &amp; Timings *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Mon, Wed, Fri • 4:00 PM - 5:15 PM"
+                <BatchSchedulePicker
                   value={schedule}
-                  onChange={(e) => setSchedule(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900"
+                  onChange={setSchedule}
+                  theme="emerald"
                 />
               </div>
 
