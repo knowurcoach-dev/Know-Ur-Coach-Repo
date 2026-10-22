@@ -113,7 +113,7 @@ export default function CoachBatchesPage() {
           schedule: schedule.trim(),
           ageGroup: ageGroup.trim(),
           totalSeats: parseInt(totalSeats, 10) || 15,
-          monthlyFee: parseFloat(monthlyFee) || 1500,
+          monthlyFee: parseFloat(monthlyFee) || 0,
         });
 
         if (res.success && res.batch) {

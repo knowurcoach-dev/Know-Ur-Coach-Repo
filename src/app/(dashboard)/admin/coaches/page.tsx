@@ -444,6 +444,8 @@ export default function AdminCoachRegistryPage() {
     const isApproved = coach.kycStatus === 'APPROVED' && !coach.isSuspended;
     const isPremier = coach.planTier === 'PREMIUM';
     const isStandard = coach.planTier === 'STANDARD';
+    const batchFees = (coach.batches || []).map((b: any) => Number(b.monthlyFee)).filter((f: any) => !isNaN(f) && f > 0);
+    const startingTuition = batchFees.length > 0 ? Math.min(...batchFees) : (Number(coach.monthlyTuitionFee) || 0);
 
     setEditModal({
       isOpen: true,
@@ -453,7 +455,7 @@ export default function AdminCoachRegistryPage() {
       phone: coach.phone || '',
       locality: coach.locality || '',
       address: coach.address || '',
-      monthlyTuitionFee: Number(coach.monthlyTuitionFee) || 0,
+      monthlyTuitionFee: startingTuition,
       trialFee: Number(coach.trialFee) || 0,
       planTier: coach.planTier || 'FREE',
       coachType: coach.coachType || 'INDIVIDUAL',
@@ -1013,7 +1015,15 @@ export default function AdminCoachRegistryPage() {
                             </div>
                             <div className="flex items-center gap-1 text-[11px] font-bold text-slate-600 whitespace-nowrap">
                               <CurrencyInr size={12} weight="bold" />
-                              <span>₹{coach.monthlyTuitionFee || 1500}/mo</span>
+                              {(() => {
+                                const batchFees = (coach.batches || []).map((b: any) => Number(b.monthlyFee)).filter((f: any) => !isNaN(f) && f > 0);
+                                const tuition = batchFees.length > 0 ? Math.min(...batchFees) : (Number(coach.monthlyTuitionFee) || 0);
+                                return tuition > 0 ? (
+                                  <span>₹{tuition.toLocaleString('en-IN')}/mo</span>
+                                ) : (
+                                  <span className="text-slate-400 font-normal">No batches</span>
+                                );
+                              })()}
                             </div>
                           </div>
                         </td>
@@ -1459,9 +1469,15 @@ export default function AdminCoachRegistryPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="bg-white p-3 rounded-xl border border-slate-200">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Monthly Tuition</span>
-                    <span className="text-base font-black text-slate-900">
-                      ₹{detailsModal.coach.monthlyTuitionFee || 1500}
-                    </span>
+                    {(() => {
+                      const detailsBatchFees = (detailsModal.coach?.batches || []).map((b: any) => Number(b.monthlyFee)).filter((f: any) => !isNaN(f) && f > 0);
+                      const detailsTuition = detailsBatchFees.length > 0 ? Math.min(...detailsBatchFees) : (Number(detailsModal.coach?.monthlyTuitionFee) || 0);
+                      return (
+                        <span className="text-base font-black text-slate-900">
+                          {detailsTuition > 0 ? `₹${detailsTuition.toLocaleString('en-IN')}` : 'No batches'}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   <div className="bg-white p-3 rounded-xl border border-slate-200">

@@ -2403,10 +2403,21 @@ export async function getAdminDashboardData() {
       isActive: d.isActive,
     }));
 
-    const mappedCoaches = (coaches || []).map((c: any) => ({
-      ...c,
-      batches: (c.batches || []).map((b: any) => formatBatchItem(b, c.category)),
-    }));
+    const mappedCoaches = (coaches || []).map((c: any) => {
+      const formattedBatches = (c.batches || []).map((b: any) => formatBatchItem(b, c.category));
+      const validBatchFees = formattedBatches
+        .map((b: any) => Number(b.monthlyFee))
+        .filter((f: number) => !isNaN(f) && f > 0);
+      const computedMonthlyTuition = validBatchFees.length > 0
+        ? Math.min(...validBatchFees)
+        : (Number(c.monthlyTuitionFee) || 0);
+
+      return {
+        ...c,
+        monthlyTuitionFee: computedMonthlyTuition,
+        batches: formattedBatches,
+      };
+    });
 
     const result = {
       coaches: mappedCoaches,
@@ -2660,16 +2671,15 @@ export async function registerCoachAcademy(data: {
     const venuePhotosList = (data.docs?.venuePhotoNames || []).filter(Boolean);
 
     let statusNotesWithPayload: string | undefined = undefined;
-    let initialKycStatus: KycStatus = KycStatus.PENDING;
+    const initialKycStatus: KycStatus = KycStatus.PENDING;
 
     if (hasGovId || hasNisCert || venuePhotosList.length > 0) {
-      initialKycStatus = KycStatus.DOCS_REVIEW;
       const docParts = [];
       if (hasGovId) docParts.push(`Govt ID (${data.docs?.govIdDocName || 'Attached'})`);
       if (hasNisCert) docParts.push(`NIS Cert (${data.docs?.nisCertDocName || 'Attached'})`);
       if (venuePhotosList.length > 0) docParts.push(`Photos (${venuePhotosList.length} files)`);
       const docSummary = docParts.length > 0 ? `Uploaded docs: ${docParts.join(', ')}.` : '';
-      const statusNotesText = `In-app digital KYC submitted on ${new Date().toLocaleDateString('en-IN')}. ${docSummary}`;
+      const statusNotesText = `Onboarding registration completed on ${new Date().toLocaleDateString('en-IN')}. ${docSummary} Mandatory batches must be created before submitting for verification review.`;
 
       statusNotesWithPayload = buildStatusNotesWithDocs(statusNotesText, {
         govId: hasGovId ? {
@@ -2745,8 +2755,7 @@ export async function registerCoachAcademy(data: {
           planExpiresAt,
           planBillingCycle,
           isTrialActive,
-          ...(initialKycStatus === KycStatus.DOCS_REVIEW && {
-            kycStatus: KycStatus.DOCS_REVIEW,
+          ...(statusNotesWithPayload && {
             statusNotes: statusNotesWithPayload,
             cctvMonitored: Boolean(data.safetyChecklist?.cctvMonitored),
             nisCertified: Boolean(data.safetyChecklist?.nisCertified),
@@ -2768,7 +2777,7 @@ export async function registerCoachAcademy(data: {
           phone: cleanPhone,
           rating: 5.0,
           reviewsCount: 0,
-          monthlyTuitionFee: 1500.00,
+          monthlyTuitionFee: 0.00,
           trialFee: 0.00,
           eligibleAgeGroup: '4 - 17 Yrs',
           headCoachName: data.founder,
@@ -2808,25 +2817,14 @@ export async function registerCoachAcademy(data: {
     }
 
     if (user?.id) {
-      if (initialKycStatus === KycStatus.DOCS_REVIEW) {
-        await prisma.notification.create({
-          data: {
-            userId: user.id,
-            title: 'Application Submitted for Review 📋',
-            message: `Your academy registration and verification documents for ${data.acadName} have been submitted. Review takes 24–48 hours. Your listing will go live upon approval!`,
-            type: 'kyc',
-          },
-        }).catch(() => null);
-      } else {
-        await prisma.notification.create({
-          data: {
-            userId: user.id,
-            title: 'Action Needed: Complete Facility Verification 📋',
-            message: `Welcome to KnowUrCoach! Your academy profile ${data.acadName} has been created. Please complete your safety checklist and upload verification documents in your dashboard to launch your public listing.`,
-            type: 'kyc',
-          },
-        }).catch(() => null);
-      }
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          title: 'Welcome to KnowUrCoach! Configure Your Batches 📋',
+          message: `Welcome to KnowUrCoach! Your academy profile ${data.acadName} has been created. Please configure your coaching batches and submit for verification review in your dashboard to launch your public listing.`,
+          type: 'kyc',
+        },
+      }).catch(() => null);
     }
 
     // Send welcome email to coach (non-blocking)
@@ -3080,7 +3078,7 @@ export async function getCoachDashboardData(userEmailOrId?: string) {
               phone: user.phone || '9876543210',
               rating: 5.0,
               reviewsCount: 0,
-              monthlyTuitionFee: 1500.0,
+              monthlyTuitionFee: 0.0,
               trialFee: 0.0,
               eligibleAgeGroup: '4 - 17 Yrs',
               headCoachName: 'Head Coach',
@@ -3275,21 +3273,18 @@ export async function submitCoachKycProfile(data: {
       venuePhotosStatus: venuePhotosList.length > 0 ? 'PENDING' : undefined,
     });
 
-    // Update centre
-    const updatedCentre = await prisma.coachingCentre.update({
-      where: { id: targetCentreId },
-      data: {
-        kycStatus: KycStatus.DOCS_REVIEW,
-        isVerifiedBatch: false,
-        cctvMonitored: Boolean(data.safetyChecklist.cctvMonitored),
-        nisCertified: Boolean(data.safetyChecklist.nisCertified),
-        policeVerifiedStaff: Boolean(data.safetyChecklist.policeVerifiedStaff),
-        firstAidAvailable: Boolean(data.safetyChecklist.firstAidAvailable),
-        statusNotes: statusNotesWithPayload,
-        referredBackRemarks: null,
-      },
-      include: { batches: true, facilities: true },
+    // Enforce mandatory batches before submitting for verification review
+    const submittedBatches = (data.batches || []).filter((b) => b.name?.trim());
+    const existingBatchesCount = await prisma.batch.count({
+      where: { coachingCentreId: targetCentreId },
     });
+
+    if (submittedBatches.length === 0 && existingBatchesCount === 0) {
+      return {
+        success: false,
+        message: 'At least one coaching batch with category, schedule, and monthly tuition fee is required before submitting for verification review.',
+      };
+    }
 
     // Add facilities if provided in batch
     if (data.safetyChecklist.facilities && data.safetyChecklist.facilities.length > 0) {
@@ -3320,6 +3315,7 @@ export async function submitCoachKycProfile(data: {
             category: b.category,
             coachName: b.coachName,
           });
+          const fee = Number(b.monthlyFee) || 0;
           const existing = await prisma.batch.findFirst({
             where: { coachingCentreId: targetCentreId, name: b.name.trim() },
           });
@@ -3329,8 +3325,8 @@ export async function submitCoachKycProfile(data: {
               data: {
                 schedule: finalSchedule,
                 ageGroup: b.ageGroup,
-                totalSeats: b.totalSeats,
-                monthlyFee: b.monthlyFee,
+                totalSeats: Number(b.totalSeats) || 15,
+                monthlyFee: fee,
               },
             });
           } else {
@@ -3340,14 +3336,41 @@ export async function submitCoachKycProfile(data: {
                 name: b.name.trim(),
                 schedule: finalSchedule,
                 ageGroup: b.ageGroup,
-                totalSeats: b.totalSeats,
-                monthlyFee: b.monthlyFee,
+                totalSeats: Number(b.totalSeats) || 15,
+                monthlyFee: fee,
               },
             });
           }
         }
       }
     }
+
+    // Synchronize centre starting tuition fee with all active batches
+    const allCentreBatches = await prisma.batch.findMany({
+      where: { coachingCentreId: targetCentreId },
+      select: { monthlyFee: true },
+    });
+    const validBatchFees = allCentreBatches
+      .map((b) => Number(b.monthlyFee))
+      .filter((f) => !isNaN(f) && f > 0);
+    const computedMonthlyTuition = validBatchFees.length > 0 ? Math.min(...validBatchFees) : 0;
+
+    // Update centre
+    const updatedCentre = await prisma.coachingCentre.update({
+      where: { id: targetCentreId },
+      data: {
+        kycStatus: KycStatus.DOCS_REVIEW,
+        monthlyTuitionFee: computedMonthlyTuition,
+        isVerifiedBatch: false,
+        cctvMonitored: Boolean(data.safetyChecklist.cctvMonitored),
+        nisCertified: Boolean(data.safetyChecklist.nisCertified),
+        policeVerifiedStaff: Boolean(data.safetyChecklist.policeVerifiedStaff),
+        firstAidAvailable: Boolean(data.safetyChecklist.firstAidAvailable),
+        statusNotes: statusNotesWithPayload,
+        referredBackRemarks: null,
+      },
+      include: { batches: true, facilities: true },
+    });
 
     if (updatedCentre?.ownerUserId) {
       await prisma.notification.create({
@@ -4145,42 +4168,58 @@ export async function saveCoachBatch(
       category: batchData.category,
       coachName: batchData.coachName,
     });
+    const fee = Number(batchData.monthlyFee) || 0;
+    let savedBatch: any;
     if (batchData.id) {
       const existingBatch = await prisma.batch.findUnique({ where: { id: batchData.id } });
       if (!existingBatch || existingBatch.coachingCentreId !== centreId) {
         return { success: false, message: 'Batch not found at this academy.' };
       }
 
-      const updated = await prisma.batch.update({
+      savedBatch = await prisma.batch.update({
         where: { id: batchData.id },
         data: {
           name: batchData.name.trim(),
           schedule: finalSchedule,
           ageGroup: batchData.ageGroup.trim(),
           totalSeats: Number(batchData.totalSeats) || 15,
-          monthlyFee: Number(batchData.monthlyFee) || 1500,
+          monthlyFee: fee,
         },
       });
-      revalidatePath('/coach/batches');
-      revalidatePath('/coach/dashboard');
-      revalidatePath('/activities');
-      return { success: true, batch: formatBatchItem(toPlainObject(updated)) };
     } else {
-      const created = await prisma.batch.create({
+      savedBatch = await prisma.batch.create({
         data: {
           coachingCentreId: centreId,
           name: batchData.name.trim(),
           schedule: finalSchedule,
           ageGroup: batchData.ageGroup.trim(),
           totalSeats: Number(batchData.totalSeats) || 15,
-          monthlyFee: Number(batchData.monthlyFee) || 1500,
+          monthlyFee: fee,
         },
       });
-      revalidatePath('/coach/batches');
-      revalidatePath('/coach/dashboard');
-      revalidatePath('/activities');
-      return { success: true, batch: formatBatchItem(toPlainObject(created)) };
     }
+
+    // Synchronize centre monthlyTuitionFee with starting batch fee
+    const allBatches = await prisma.batch.findMany({
+      where: { coachingCentreId: centreId },
+      select: { monthlyFee: true },
+    });
+    const validFees = allBatches.map((b) => Number(b.monthlyFee)).filter((f) => !isNaN(f) && f > 0);
+    const minFee = validFees.length > 0 ? Math.min(...validFees) : 0;
+    await prisma.coachingCentre.update({
+      where: { id: centreId },
+      data: { monthlyTuitionFee: minFee },
+    });
+
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${centreId}`);
+    revalidatePath('/coach/batches');
+    revalidatePath('/coach/dashboard');
+    revalidatePath('/admin/verify-coaches');
+    revalidatePath('/admin/coaches');
+    revalidatePath('/activities');
+    return { success: true, batch: formatBatchItem(toPlainObject(savedBatch)) };
   } catch (err) {
     console.warn("DB saveCoachBatch error:", err);
     return { success: false, message: 'Could not save batch.' };
@@ -4217,8 +4256,27 @@ export async function deleteCoachBatch(batchId: string) {
     await prisma.batch.delete({
       where: { id: batchId },
     });
+
+    // Synchronize centre monthlyTuitionFee with remaining batches
+    const remainingBatches = await prisma.batch.findMany({
+      where: { coachingCentreId: batch.centre.id },
+      select: { monthlyFee: true },
+    });
+    const validFees = remainingBatches.map((b) => Number(b.monthlyFee)).filter((f) => !isNaN(f) && f > 0);
+    const minFee = validFees.length > 0 ? Math.min(...validFees) : 0;
+    await prisma.coachingCentre.update({
+      where: { id: batch.centre.id },
+      data: { monthlyTuitionFee: minFee },
+    });
+
+    invalidateTag('discovery');
+    invalidateTag('academies');
+    invalidateTag(`academy-${batch.centre.id}`);
     revalidatePath('/coach/batches');
     revalidatePath('/coach/dashboard');
+    revalidatePath('/admin/verify-coaches');
+    revalidatePath('/admin/coaches');
+    revalidatePath('/activities');
     return { success: true };
   } catch (err) {
     console.warn("DB deleteCoachBatch error:", err);

@@ -453,9 +453,9 @@ export default function CoachDashboardPage() {
       return;
     }
 
-    // 2. Mandatory Batches validation (minimum 1 batch)
+    // 2. Mandatory Batches validation (minimum 1 batch required before submitting for review)
     if (batches.length === 0) {
-      showToast('⚠️ Please configure at least one coaching batch with timings, category, and fee.');
+      showToast('⚠️ At least one coaching batch with category, schedule, and tuition fee is mandatory before submitting for verification review.');
       setActiveHubTab('batches');
       const hub = document.getElementById('onboarding-hub');
       if (hub) hub.scrollIntoView({ behavior: 'smooth' });
@@ -490,8 +490,8 @@ export default function CoachDashboardPage() {
         setActiveHubTab('batches');
         return;
       }
-      if (b.monthlyFee === undefined || b.monthlyFee === null || b.monthlyFee < 0) {
-        showToast(`⚠️ Please enter Monthly Tuition Fee for Batch #${i + 1}`);
+      if (b.monthlyFee === undefined || b.monthlyFee === null || Number(b.monthlyFee) <= 0) {
+        showToast(`⚠️ Please enter a valid Monthly Tuition Fee (greater than ₹0) for Batch #${i + 1}`);
         setActiveHubTab('batches');
         return;
       }
@@ -559,7 +559,7 @@ export default function CoachDashboardPage() {
 
   const handleAddBatch = () => {
     const defaultCat = (centreData?.categories && centreData.categories[0]) ||
-      (centreData?.category ? centreData.category.split(',')[0].trim().toLowerCase() : 'badminton');
+      (centreData?.category ? centreData.category.split(',')[0].trim().toLowerCase() : '');
     setBatches([
       ...batches,
       {
@@ -1794,6 +1794,14 @@ export default function CoachDashboardPage() {
                   </button>
                 </div>
 
+                <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-3.5 flex items-start gap-3">
+                  <WarningCircle size={18} weight="fill" className="text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-900 leading-relaxed">
+                    <strong className="font-extrabold text-amber-950 block mb-0.5">Mandatory for Verification Review</strong>
+                    Creating at least one coaching batch with category, schedule, and monthly tuition fee is required before submitting your academy for review. Academy tuition fees displayed across KnowUrCoach are calculated directly from your batches.
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   {batches.length === 0 ? (
                     <div className="border border-dashed border-slate-300 rounded-2xl p-8 bg-slate-50/50 text-center space-y-3">
@@ -1802,7 +1810,7 @@ export default function CoachDashboardPage() {
                       </div>
                       <div className="text-sm font-extrabold text-slate-800">No Batches Added Yet</div>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                        At least one batch is required for verification. Configure schedules, category, age groups, capacity, and monthly tuition fee so parents can enroll.
+                        At least one batch is mandatory for verification review. Configure schedules, category, age groups, capacity, and monthly tuition fee so parents can enroll.
                       </p>
                       <button
                         type="button"
@@ -1816,7 +1824,7 @@ export default function CoachDashboardPage() {
                     batches.map((batch, index) => {
                       const offeredCategories = centreData?.category
                         ? centreData.category.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean)
-                        : ['badminton'];
+                        : (centreData?.categories || []);
 
                       return (
                       <div
@@ -1856,7 +1864,7 @@ export default function CoachDashboardPage() {
                             Activity / Category *
                           </label>
                           <select
-                            value={batch.category || offeredCategories[0] || 'badminton'}
+                            value={batch.category || offeredCategories[0] || ''}
                             onChange={(e) =>
                               setBatches(
                                 batches.map((b, idx) => (idx === index ? { ...b, category: e.target.value } : b))
@@ -1864,6 +1872,7 @@ export default function CoachDashboardPage() {
                             }
                             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
                           >
+                            <option value="">Select Category</option>
                             {offeredCategories.map((cat: string) => (
                               <option key={cat} value={cat}>
                                 {getCategoryEmoji(cat)} {getCategoryDisplayName(cat)}

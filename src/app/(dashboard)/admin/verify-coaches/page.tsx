@@ -205,13 +205,16 @@ export default function AdminVerifyCoachesPage() {
   // Enter Edit Mode
   const handleStartEdit = (coach: CoachItem) => {
     setEditingCoachId(coach.id);
+    const batchFees = (coach.batches || []).map((b) => Number(b.monthlyFee)).filter((f) => !isNaN(f) && f > 0);
+    const startingTuition = batchFees.length > 0 ? Math.min(...batchFees) : (Number(coach.monthlyTuitionFee) || 0);
+
     setEditForm({
       name: coach.name || '',
       headCoachName: coach.headCoachName || '',
       phone: coach.phone || '',
       locality: coach.locality || '',
       address: coach.address || '',
-      monthlyTuitionFee: Number(coach.monthlyTuitionFee) || 0,
+      monthlyTuitionFee: startingTuition,
       safetyGrade: coach.safetyGrade || 'PENDING_AUDIT',
       statusNotes: coach.statusNotes || '',
     });
@@ -650,7 +653,15 @@ export default function AdminVerifyCoachesPage() {
                           </span>
                           <span className="flex items-center gap-1 text-slate-600">
                             <CurrencyInr size={13} weight="bold" />
-                            Tuition: ₹{coach.monthlyTuitionFee || 1500}/mo
+                            {(() => {
+                              const batchFees = (coach.batches || []).map((b) => Number(b.monthlyFee)).filter((f) => !isNaN(f) && f > 0);
+                              const startingTuition = batchFees.length > 0 ? Math.min(...batchFees) : (Number(coach.monthlyTuitionFee) || 0);
+                              return startingTuition > 0 ? (
+                                <span>Tuition: ₹{startingTuition.toLocaleString('en-IN')}/mo</span>
+                              ) : (
+                                <span className="text-amber-600 font-semibold">Tuition: No Batches Listed</span>
+                              );
+                            })()}
                           </span>
                         </p>
                       </div>
@@ -1024,7 +1035,15 @@ export default function AdminVerifyCoachesPage() {
                         </div>
                         <div>
                           <span className="text-slate-400 font-bold block text-[10px] uppercase">Monthly Tuition Fee</span>
-                          <span className="text-slate-900 font-bold">₹{activeReviewCoach.monthlyTuitionFee || 1500}/month</span>
+                          {(() => {
+                            const reviewBatchFees = (activeReviewCoach.batches || []).map((b) => Number(b.monthlyFee)).filter((f) => !isNaN(f) && f > 0);
+                            const reviewTuition = reviewBatchFees.length > 0 ? Math.min(...reviewBatchFees) : (Number(activeReviewCoach.monthlyTuitionFee) || 0);
+                            return reviewTuition > 0 ? (
+                              <span className="text-slate-900 font-bold">₹{reviewTuition.toLocaleString('en-IN')}/month</span>
+                            ) : (
+                              <span className="text-amber-600 font-bold text-xs">No batches added yet</span>
+                            );
+                          })()}
                         </div>
                         <div>
                           <span className="text-slate-400 font-bold block text-[10px] uppercase">Partner Plan Tier</span>
@@ -1096,8 +1115,9 @@ export default function AdminVerifyCoachesPage() {
                           })}
                         </div>
                       ) : (
-                        <div className="text-[11px] text-slate-500 italic p-3 bg-slate-50 rounded-xl border border-slate-200">
-                          Standard batch configured (Mon, Wed, Fri • 4:00 PM - 5:15 PM).
+                        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2 font-medium">
+                          <Warning size={16} weight="bold" className="shrink-0 text-amber-600" />
+                          <span>No coaching batches listed yet. Batches must be configured by the coach before this academy can be approved.</span>
                         </div>
                       )}
                     </div>
