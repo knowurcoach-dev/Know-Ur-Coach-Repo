@@ -315,6 +315,7 @@ import {
   User as UserIcon,
   ChatCircleDots,
   PaperPlaneTilt,
+  Scales,
 } from '@phosphor-icons/react';
 
 export default function AcademyDetailPage() {
@@ -1088,13 +1089,17 @@ export default function AcademyDetailPage() {
               </div>
 
               <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
-                <span className="flex items-center gap-1 text-emerald-700 font-semibold text-[10px]">
-                  <Sparkle size={11} weight="fill" className="text-emerald-600" />
-                  100% Free 1-Day Trial
-                </span>
+                <button
+                  type="button"
+                  onClick={() => openModal('compare-academies', { centreIds: [academy.id] })}
+                  className="flex items-center gap-1 text-blue-600 font-bold hover:underline cursor-pointer"
+                >
+                  <Scales size={12} weight="bold" />
+                  <span>Compare Academy</span>
+                </button>
                 <a
                   href="#inquire-section"
-                  className="text-blue-600 font-bold hover:underline text-[10px]"
+                  className="text-slate-600 font-bold hover:underline text-[10px]"
                 >
                   Ask Coach Question →
                 </a>
@@ -1118,13 +1123,24 @@ export default function AcademyDetailPage() {
                 </div>
               )}
             </div>
-            <button
-              onClick={() => handleBookTrial()}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-3 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center gap-2"
-            >
-              <Ticket size={16} weight="bold" />
-              Book Free Trial Session
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openModal('compare-academies', { centreIds: [academy.id] })}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs px-3.5 py-3 rounded-xl transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 border border-slate-200"
+                title="Compare this academy with others"
+              >
+                <Scales size={16} weight="bold" />
+                <span>Compare</span>
+              </button>
+              <button
+                onClick={() => handleBookTrial()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-3 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center gap-2"
+              >
+                <Ticket size={16} weight="bold" />
+                Book Free Trial Session
+              </button>
+            </div>
           </div>
         </div>
 

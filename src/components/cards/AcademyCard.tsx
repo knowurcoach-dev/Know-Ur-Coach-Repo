@@ -21,6 +21,7 @@ import {
   CheckCircle,
   ShieldCheck,
   Sparkle,
+  Scales,
 } from '@phosphor-icons/react';
 
 import { useBookmarks } from '@/hooks/useBookmarks';
@@ -173,6 +174,14 @@ export function AcademyCard({
                 Self-Listed
               </span>
             )}
+            <button
+              onClick={() => openModal('compare-academies', { centreIds: [academy.id] })}
+              className="p-1 rounded-full text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer shrink-0"
+              title="Compare with other academies"
+              aria-label="Compare academy"
+            >
+              <Scales size={18} weight="bold" />
+            </button>
             <button
               onClick={handleBookmarkToggle}
               className={`p-1 rounded-full transition-colors cursor-pointer shrink-0 ${
