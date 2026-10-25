@@ -5,6 +5,7 @@ import Razorpay from 'razorpay';
 import { revalidatePath } from 'next/cache';
 import { logAdminAction } from '@/lib/audit';
 import { calculateCyclePrice, BillingCycle } from '@/lib/subscription';
+import { sendCoachPlanInvoiceEmail } from '@/lib/mail';
 
 export interface MaskedPaymentSettings {
   id: string;
@@ -546,6 +547,22 @@ export async function verifyAndActivateSubscription(params: {
           type: 'subscription',
         },
       }).catch(() => null);
+    }
+
+    // Automatically send Payment Receipt & Subscription confirmation email to the coach
+    const coachEmail = updatedCentre.owner?.email;
+    if (coachEmail) {
+      sendCoachPlanInvoiceEmail({
+        to: coachEmail,
+        coachName: updatedCentre.headCoachName || updatedCentre.name,
+        centreName: updatedCentre.name,
+        planName: tierName,
+        planTier,
+        billingCycle,
+        amount: cyclePricing.total,
+        paymentId: razorpayPaymentId,
+        expiresAt,
+      }).catch((mailErr) => console.warn('[MAIL_WARNING] Failed to send coach plan invoice email:', mailErr));
     }
 
     // Log admin audit action

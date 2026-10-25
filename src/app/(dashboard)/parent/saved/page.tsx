@@ -239,6 +239,8 @@ export default function ParentSavedPage() {
                             acadName: centre.name,
                             locality: centre.locality,
                             category: centre.category,
+                            academy: centre,
+                            batches: (centre as any).batches || [],
                           })
                         }
                         className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-2.5 px-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"

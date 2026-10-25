@@ -60,12 +60,12 @@ export default function AdminOverviewDashboard() {
   const config = data?.config;
 
   const pendingCoaches = coaches.filter(
-    (c: any) => c.kycStatus === 'PENDING' || c.kycStatus === 'DOCS_REVIEW'
+    (c: any) => (c.kycStatus === 'PENDING' || c.kycStatus === 'DOCS_REVIEW' || c.kycStatus === 'REFERRED_BACK') && !c.isSuspended && c.kycStatus !== 'SUSPENDED'
   );
   const approvedCoaches = coaches.filter(
-    (c: any) => c.kycStatus === 'APPROVED' && !c.isSuspended
+    (c: any) => c.kycStatus === 'APPROVED' && !c.isSuspended && c.kycStatus !== 'SUSPENDED'
   );
-  const suspendedCount = coaches.filter((c: any) => c.isSuspended).length;
+  const suspendedCount = coaches.filter((c: any) => c.isSuspended || c.kycStatus === 'SUSPENDED').length;
 
   const standardPlanPrice = Number(config?.standardPlanPrice) || 1499;
   const premiumPlanPrice = Number(config?.premiumPlanPrice) || 3999;

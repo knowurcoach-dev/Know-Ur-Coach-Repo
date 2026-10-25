@@ -252,8 +252,10 @@ export default function CoachAttendancePage() {
           <div className="space-y-6">
             {/* List all batches matching visibleBatches */}
             {visibleBatches.map((batch) => {
-              const enrolled = batch.bookings || [];
-              const seatsFilledCount = enrolled.length;
+              const allBookings = batch.bookings || [];
+              const enrolledStudents = allBookings.filter((b: any) => b.passType === 'MONTHLY_BATCH');
+              const trialStudents = allBookings.filter((b: any) => b.passType === 'FREE_TRIAL');
+              const seatsFilledCount = enrolledStudents.length || batch.seatsFilled || 0;
               const totalSeats = batch.totalSeats || 15;
 
               return (
@@ -277,9 +279,19 @@ export default function CoachAttendancePage() {
                         )}
                       </div>
                       <h2 className="text-lg font-black">{batch.name}</h2>
-                      <p className="text-xs text-slate-300">
-                        Age Group: {batch.ageGroup || 'All Ages'} • Fee: ₹{Number(batch.monthlyFee) || 1800}/mo • Capacity:{' '}
-                        <strong className="text-emerald-400">{seatsFilledCount}</strong> / {totalSeats} Students Enrolled
+                      <p className="text-xs text-slate-300 flex items-center gap-2 flex-wrap">
+                        <span>Age Group: {batch.ageGroup || 'All Ages'}</span>
+                        <span>•</span>
+                        <span>Fee: ₹{Number(batch.monthlyFee) || 1800}/mo</span>
+                        <span>•</span>
+                        <span>
+                          Capacity: <strong className="text-emerald-400">{seatsFilledCount}</strong> / {totalSeats} Enrolled
+                        </span>
+                        {trialStudents.length > 0 && (
+                          <span className="inline-flex items-center gap-1 bg-amber-400/20 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded text-[11px] font-bold">
+                            ⚡ {trialStudents.length} Free Trial Attendee{trialStudents.length > 1 ? 's' : ''}
+                          </span>
+                        )}
                       </p>
                     </div>
 
@@ -287,7 +299,7 @@ export default function CoachAttendancePage() {
                       <div className="text-center px-2">
                         <div className="text-xl font-black text-emerald-400">
                           {
-                            enrolled.filter(
+                            allBookings.filter(
                               (b: any) => attendanceState[`${batch.id}_${b.child?.id || b.id}`] === 'PRESENT'
                             ).length
                           }
@@ -298,7 +310,7 @@ export default function CoachAttendancePage() {
                       <div className="text-center px-2">
                         <div className="text-xl font-black text-rose-400">
                           {
-                            enrolled.filter(
+                            allBookings.filter(
                               (b: any) => attendanceState[`${batch.id}_${b.child?.id || b.id}`] === 'ABSENT'
                             ).length
                           }
@@ -309,7 +321,7 @@ export default function CoachAttendancePage() {
                       <div className="text-center px-2">
                         <div className="text-xl font-black text-slate-300">
                           {
-                            enrolled.filter(
+                            allBookings.filter(
                               (b: any) =>
                                 !attendanceState[`${batch.id}_${b.child?.id || b.id}`] ||
                                 attendanceState[`${batch.id}_${b.child?.id || b.id}`] === 'UNMARKED'
@@ -324,20 +336,28 @@ export default function CoachAttendancePage() {
                   {/* Batch Students Roster */}
                   <div className="p-5 sm:p-6 space-y-4">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <h3 className="text-sm font-black text-slate-900">
-                        Enrolled Students ({enrolled.length})
-                      </h3>
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900">
+                          Class Attendance Roster ({allBookings.length})
+                        </h3>
+                        <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2 mt-0.5">
+                          <span className="text-emerald-700 font-bold">{enrolledStudents.length} Enrolled</span>
+                          <span>•</span>
+                          <span className="text-amber-700 font-bold">{trialStudents.length} Free Trial Pass{trialStudents.length !== 1 ? 'es' : ''}</span>
+                        </div>
+                      </div>
                       <span className="text-xs text-slate-500 font-medium">
                         Roll call updates sync in real-time
                       </span>
                     </div>
 
-                    {enrolled.length > 0 ? (
+                    {allBookings.length > 0 ? (
                       <div className="divide-y divide-slate-100">
-                        {enrolled.map((bk: any) => {
+                        {allBookings.map((bk: any) => {
                           const child = bk.child;
                           const childId = child?.id || bk.id;
                           const childName = child?.fullName || 'Student';
+                          const isTrial = bk.passType === 'FREE_TRIAL';
                           const key = `${batch.id}_${childId}`;
                           const currentStatus = attendanceState[key] || 'UNMARKED';
                           const isPresent = currentStatus === 'PRESENT';
@@ -349,23 +369,35 @@ export default function CoachAttendancePage() {
                               className="py-3.5 flex flex-col sm:flex-row justify-between sm:items-center gap-3"
                             >
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-700 font-black text-sm flex items-center justify-center shrink-0">
+                                <div className={`w-10 h-10 rounded-2xl ${isTrial ? 'bg-amber-100 text-amber-800' : 'bg-blue-50 text-blue-700'} font-black text-sm flex items-center justify-center shrink-0`}>
                                   {childName[0]?.toUpperCase() || 'S'}
                                 </div>
                                 <div>
-                                  <div className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                                  <div className="font-extrabold text-sm text-slate-900 flex items-center gap-2 flex-wrap">
                                     <span>{childName}</span>
                                     {child?.age && (
                                       <span className="text-[11px] font-normal text-slate-400">
                                         ({child.age} yrs)
                                       </span>
                                     )}
+                                    {isTrial ? (
+                                      <span className="text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                        Free Trial Pass
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                        Enrolled Student
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-slate-500 font-medium">
                                     Parent: {bk.parent?.fullName || 'Parent'} • Pass ID:{' '}
                                     <strong className="text-slate-700 font-mono">
-                                      {bk.passId || 'KUC-' + bk.id.slice(-6)}
+                                      {bk.passId || (isTrial ? 'TRL-' : 'KUC-') + bk.id.slice(-6)}
                                     </strong>
+                                    <span className="text-slate-400 ml-1">
+                                      {isTrial ? '• 1-Day Trial Session' : '• Monthly Batch'}
+                                    </span>
                                   </div>
                                 </div>
                               </div>

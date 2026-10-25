@@ -40,7 +40,7 @@ const navItems = [
     group: 'Students & Leads',
     items: [
       { label: 'Student Leads (CRM)', href: '/coach/leads', icon: Users, isGated: true },
-      { label: 'Enrolled Students', href: '/coach/students', icon: ClipboardText, isGated: true },
+      { label: 'Students & Trials', href: '/coach/students', icon: ClipboardText, isGated: true },
     ],
   },
   {

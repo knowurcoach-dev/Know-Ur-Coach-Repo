@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { EscrowStatus, PassType } from '@prisma/client';
 import { getPaymentSettings, getActiveRazorpayCredentials } from '@/lib/payments';
 import { logAdminAction } from '@/lib/audit';
+import { sendCoachPlanInvoiceEmail } from '@/lib/mail';
 
 export interface RazorpayPaymentEntity {
   id: string;
@@ -245,6 +246,21 @@ export async function POST(req: NextRequest) {
                 type: 'subscription',
               },
             }).catch(() => null);
+          }
+
+          // Send automated Payment Receipt email to coach
+          if (updatedCentre.owner?.email) {
+            sendCoachPlanInvoiceEmail({
+              to: updatedCentre.owner.email,
+              coachName: updatedCentre.headCoachName || updatedCentre.name,
+              centreName: updatedCentre.name,
+              planName: planTier === 'PREMIUM' ? 'Verified Pro Partner' : 'Standard Partner',
+              planTier,
+              billingCycle,
+              amount: netPaidInRupees,
+              paymentId: payment.id,
+              expiresAt,
+            }).catch((mailErr) => console.warn('[MAIL_WARNING] Failed to send webhook coach plan invoice email:', mailErr));
           }
 
           // Create admin audit log

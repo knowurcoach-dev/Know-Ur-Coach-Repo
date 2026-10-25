@@ -213,7 +213,12 @@ export default function CoachBatchesPage() {
         ) : batches.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {batches.map((batch) => {
-              const enrolled = batch.bookings?.length || batch.seatsFilled || 0;
+              const enrolled = Array.isArray(batch.bookings)
+                ? batch.bookings.filter((b: any) => b.passType === 'MONTHLY_BATCH').length
+                : (batch.seatsFilled || 0);
+              const trialCount = Array.isArray(batch.bookings)
+                ? batch.bookings.filter((b: any) => b.passType === 'FREE_TRIAL').length
+                : (batch.trialCount || 0);
               const seats = batch.totalSeats || 15;
               const pct = Math.min(100, Math.round((enrolled / seats) * 100));
 
@@ -276,17 +281,32 @@ export default function CoachBatchesPage() {
 
                     {/* Capacity Progress */}
                     <div className="space-y-1.5 pt-2">
-                      <div className="flex justify-between text-[11px] font-bold">
-                        <span className="text-slate-600">Seats Occupied</span>
-                        <span className="text-slate-900">
-                          {enrolled} / {seats} ({pct}%)
-                        </span>
+                      <div className="flex justify-between items-center text-[11px] font-bold">
+                        <span className="text-slate-600">Enrolled Seats</span>
+                        <div className="flex items-center gap-2">
+                          {trialCount > 0 && (
+                            <span className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                              ⚡ {trialCount} Free Trial{trialCount > 1 ? 's' : ''}
+                            </span>
+                          )}
+                          <span className="text-slate-900 font-extrabold">
+                            {enrolled} / {seats} ({pct}%)
+                          </span>
+                        </div>
                       </div>
                       <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
                         <div
                           className="h-full bg-emerald-500 rounded-full transition-all"
                           style={{ width: `${pct}%` }}
                         />
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400">
+                        <span>{Math.max(0, seats - enrolled)} regular seats available</span>
+                        {trialCount > 0 && (
+                          <span className="text-amber-600 font-medium">
+                            Free trials do not occupy regular seats
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

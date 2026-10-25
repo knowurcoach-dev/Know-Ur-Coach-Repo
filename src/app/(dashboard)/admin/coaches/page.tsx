@@ -69,7 +69,7 @@ export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean =
 
   const sub = getCentreSubscriptionStatus(coach);
 
-  if (coach.isSuspended || sub.publicListingStatus === 'SUSPENDED') {
+  if (coach.isSuspended || coach.kycStatus === 'SUSPENDED' || sub.publicListingStatus === 'SUSPENDED') {
     return {
       code: 'SUSPENDED',
       label: 'SUSPENDED',
@@ -83,16 +83,17 @@ export function getCoachVisibilityStatus(coach: any, allowFreeListing: boolean =
   }
 
   if (sub.publicListingStatus === 'LIVE') {
-    const isFree = sub.tier === 'FREE';
     return {
-      code: isFree ? 'FREE_LIVE' : 'LIVE',
-      label: isFree ? 'APPROVED • FREE LIVE' : 'APPROVED & LIVE',
-      badgeClass: isFree
-        ? 'bg-teal-50 text-teal-800 border-teal-200 font-extrabold'
-        : 'bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold',
-      dotClass: isFree ? 'bg-teal-500' : 'bg-emerald-500 animate-pulse',
-      visibilityText: isFree ? 'Free Listing Live' : 'Public Profile Live',
-      visibilitySub: coach.planTier === 'PREMIUM' ? 'Premier Sponsored Live' : 'Standard Verified Live',
+      code: 'LIVE',
+      label: 'APPROVED & LIVE',
+      badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold',
+      dotClass: 'bg-emerald-500 animate-pulse',
+      visibilityText: 'Public Profile Live',
+      visibilitySub: coach.planTier === 'PREMIUM'
+        ? 'Premier Sponsored Live'
+        : coach.planTier === 'STANDARD'
+        ? 'Standard Verified Live'
+        : 'Active Directory Listing',
       isLive: true,
       isPaymentPending: false,
     };
@@ -639,7 +640,7 @@ export default function AdminCoachRegistryPage() {
     if (statusFilter === 'PAYMENT_PENDING' && !vis.isPaymentPending) return false;
     if (statusFilter === 'APPROVED' && (!vis.isLive && !vis.isPaymentPending)) return false;
     if (statusFilter === 'PENDING' && c.kycStatus !== 'PENDING' && c.kycStatus !== 'DOCS_REVIEW' && c.kycStatus !== 'REFERRED_BACK') return false;
-    if (statusFilter === 'SUSPENDED' && !c.isSuspended) return false;
+    if (statusFilter === 'SUSPENDED' && !c.isSuspended && c.kycStatus !== 'SUSPENDED') return false;
 
     if (tierFilter !== 'ALL' && c.planTier !== tierFilter) return false;
     if (coachTypeFilter !== 'ALL' && c.coachType !== coachTypeFilter) return false;
@@ -647,13 +648,13 @@ export default function AdminCoachRegistryPage() {
     return true;
   });
 
-  const totalPremier = data.filter((c) => c.planTier === 'PREMIUM').length;
-  const totalStandard = data.filter((c) => c.planTier === 'STANDARD').length;
+  const totalPremier = data.filter((c) => c.planTier === 'PREMIUM' && !c.isSuspended && c.kycStatus !== 'SUSPENDED').length;
+  const totalStandard = data.filter((c) => c.planTier === 'STANDARD' && !c.isSuspended && c.kycStatus !== 'SUSPENDED').length;
   const totalLive = data.filter((c) => getCoachVisibilityStatus(c, allowFreeListing).isLive).length;
   const totalPaymentPending = data.filter((c) => getCoachVisibilityStatus(c, allowFreeListing).isPaymentPending).length;
-  const totalApproved = data.filter((c) => c.kycStatus === 'APPROVED' && !c.isSuspended).length;
-  const totalPending = data.filter((c) => c.kycStatus === 'PENDING' || c.kycStatus === 'DOCS_REVIEW' || c.kycStatus === 'REFERRED_BACK').length;
-  const totalSuspended = data.filter((c) => c.isSuspended).length;
+  const totalApproved = data.filter((c) => c.kycStatus === 'APPROVED' && !c.isSuspended && c.kycStatus !== 'SUSPENDED').length;
+  const totalPending = data.filter((c) => (c.kycStatus === 'PENDING' || c.kycStatus === 'DOCS_REVIEW' || c.kycStatus === 'REFERRED_BACK') && !c.isSuspended && c.kycStatus !== 'SUSPENDED').length;
+  const totalSuspended = data.filter((c) => c.isSuspended || c.kycStatus === 'SUSPENDED').length;
   const totalAcademies = data.filter((c) => c.coachType === 'INSTITUTE').length;
   const totalSoloCoaches = data.filter((c) => c.coachType === 'INDIVIDUAL').length;
 
@@ -710,32 +711,33 @@ export default function AdminCoachRegistryPage() {
             2. STATS & TIER METRICS CARDS
            ======================================================== */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Accounts</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{data.length}</div>
-            <span className="text-[11px] text-slate-500 font-medium">All registered</span>
+          {/* Card 1: Total Accounts */}
+          <div
+            onClick={() => {
+              setStatusFilter('ALL');
+              setCoachTypeFilter('ALL');
+              setTierFilter('ALL');
+              setSearch('');
+            }}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-xs ${
+              statusFilter === 'ALL' && coachTypeFilter === 'ALL' && tierFilter === 'ALL'
+                ? 'bg-slate-900 text-white border-slate-950 ring-2 ring-slate-700/30'
+                : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-900'
+            }`}
+            title="Show All Registered Accounts"
+          >
+            <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${statusFilter === 'ALL' && coachTypeFilter === 'ALL' && tierFilter === 'ALL' ? 'text-slate-300' : 'text-slate-400'}`}>Total Accounts</span>
+            <div className={`text-2xl font-black mt-1 ${statusFilter === 'ALL' && coachTypeFilter === 'ALL' && tierFilter === 'ALL' ? 'text-white' : 'text-slate-900'}`}>{data.length}</div>
+            <span className={`text-[11px] font-medium ${statusFilter === 'ALL' && coachTypeFilter === 'ALL' && tierFilter === 'ALL' ? 'text-slate-300' : 'text-slate-500'}`}>All registered</span>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-amber-300 bg-amber-50/20 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider block">Premier</span>
-              <Crown size={14} weight="fill" className="text-amber-500" />
-            </div>
-            <div className="text-2xl font-black text-amber-900 mt-1">{totalPremier}</div>
-            <span className="text-[11px] text-amber-700 font-medium">Top sponsored</span>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-purple-200 bg-purple-50/20 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold text-purple-700 uppercase tracking-wider block">Standard</span>
-              <Sparkle size={14} weight="fill" className="text-purple-600" />
-            </div>
-            <div className="text-2xl font-black text-purple-900 mt-1">{totalStandard}</div>
-            <span className="text-[11px] text-purple-700 font-medium">Verified listing</span>
-          </div>
-
+          {/* Card 2: Live Public */}
           <div 
-            onClick={() => setStatusFilter(statusFilter === 'LIVE' ? 'ALL' : 'LIVE')}
+            onClick={() => {
+              setStatusFilter(statusFilter === 'LIVE' ? 'ALL' : 'LIVE');
+              setCoachTypeFilter('ALL');
+              setTierFilter('ALL');
+            }}
             className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-xs ${
               statusFilter === 'LIVE'
                 ? 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-500/30'
@@ -751,32 +753,92 @@ export default function AdminCoachRegistryPage() {
             <span className={`text-[11px] font-medium ${statusFilter === 'LIVE' ? 'text-emerald-100' : 'text-emerald-700'}`}>Discoverable</span>
           </div>
 
-          <div 
-            onClick={() => setStatusFilter(statusFilter === 'PAYMENT_PENDING' ? 'ALL' : 'PAYMENT_PENDING')}
+          {/* Card 3: In Review / Verification */}
+          <div
+            onClick={() => {
+              setStatusFilter(statusFilter === 'PENDING' ? 'ALL' : 'PENDING');
+              setCoachTypeFilter('ALL');
+              setTierFilter('ALL');
+            }}
             className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-xs ${
-              statusFilter === 'PAYMENT_PENDING'
-                ? 'bg-amber-500 text-white border-amber-600 ring-2 ring-amber-500/30'
-                : 'bg-white border-amber-300 bg-amber-50/30 hover:bg-amber-100/40'
+              statusFilter === 'PENDING'
+                ? 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-500/30'
+                : 'bg-white border-blue-200 bg-blue-50/20 hover:bg-blue-50/50'
             }`}
-            title="Filter by Approved but Payment Pending"
+            title="Filter by In Review / Pending Verification"
           >
             <div className="flex items-center justify-between">
-              <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${statusFilter === 'PAYMENT_PENDING' ? 'text-amber-100' : 'text-amber-800'}`}>Payment Pending</span>
-              <CreditCard size={14} weight="bold" className={statusFilter === 'PAYMENT_PENDING' ? 'text-white' : 'text-amber-600'} />
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${statusFilter === 'PENDING' ? 'text-blue-100' : 'text-blue-700'}`}>In Review</span>
+              <Clock size={14} weight="bold" className={statusFilter === 'PENDING' ? 'text-white' : 'text-blue-500'} />
             </div>
-            <div className={`text-2xl font-black mt-1 ${statusFilter === 'PAYMENT_PENDING' ? 'text-white' : 'text-amber-900'}`}>{totalPaymentPending}</div>
-            <span className={`text-[11px] font-medium ${statusFilter === 'PAYMENT_PENDING' ? 'text-amber-100' : 'text-amber-800'}`}>Approved • Unpaid</span>
+            <div className={`text-2xl font-black mt-1 ${statusFilter === 'PENDING' ? 'text-white' : 'text-blue-900'}`}>{totalPending}</div>
+            <span className={`text-[11px] font-medium ${statusFilter === 'PENDING' ? 'text-blue-100' : 'text-blue-700'}`}>Needs verification</span>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/20 shadow-xs">
+          {/* Card 4: Suspended Accounts */}
+          <div
+            onClick={() => {
+              setStatusFilter(statusFilter === 'SUSPENDED' ? 'ALL' : 'SUSPENDED');
+              setCoachTypeFilter('ALL');
+              setTierFilter('ALL');
+            }}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-xs ${
+              statusFilter === 'SUSPENDED'
+                ? 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-500/30'
+                : 'bg-white border-rose-200 bg-rose-50/20 hover:bg-rose-50/50'
+            }`}
+            title="Filter by Suspended Accounts"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold text-rose-700 uppercase tracking-wider block">In Review / Susp.</span>
-              <Prohibit size={14} weight="bold" className="text-rose-500" />
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${statusFilter === 'SUSPENDED' ? 'text-rose-100' : 'text-rose-700'}`}>Suspended</span>
+              <Prohibit size={14} weight="bold" className={statusFilter === 'SUSPENDED' ? 'text-white' : 'text-rose-500'} />
             </div>
-            <div className="text-2xl font-black text-rose-900 mt-1">
-              {totalPending} <span className="text-xs font-semibold text-slate-400">({totalSuspended} susp.)</span>
+            <div className={`text-2xl font-black mt-1 ${statusFilter === 'SUSPENDED' ? 'text-white' : 'text-rose-900'}`}>{totalSuspended}</div>
+            <span className={`text-[11px] font-medium ${statusFilter === 'SUSPENDED' ? 'text-rose-100' : 'text-rose-700'}`}>Hidden from public</span>
+          </div>
+
+          {/* Card 5: Premier Sponsored */}
+          <div
+            onClick={() => {
+              setTierFilter(tierFilter === 'PREMIUM' ? 'ALL' : 'PREMIUM');
+              setStatusFilter('ALL');
+              setCoachTypeFilter('ALL');
+            }}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-xs ${
+              tierFilter === 'PREMIUM'
+                ? 'bg-amber-500 text-white border-amber-600 ring-2 ring-amber-500/30'
+                : 'bg-white border-amber-300 bg-amber-50/20 hover:bg-amber-100/40'
+            }`}
+            title="Filter by Premier Sponsored Tier"
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${tierFilter === 'PREMIUM' ? 'text-amber-100' : 'text-amber-700'}`}>Premier</span>
+              <Crown size={14} weight="fill" className={tierFilter === 'PREMIUM' ? 'text-white' : 'text-amber-500'} />
             </div>
-            <span className="text-[11px] text-rose-700 font-medium">Pending verification</span>
+            <div className={`text-2xl font-black mt-1 ${tierFilter === 'PREMIUM' ? 'text-white' : 'text-amber-900'}`}>{totalPremier}</div>
+            <span className={`text-[11px] font-medium ${tierFilter === 'PREMIUM' ? 'text-amber-100' : 'text-amber-700'}`}>Top sponsored</span>
+          </div>
+
+          {/* Card 6: Standard Verified */}
+          <div
+            onClick={() => {
+              setTierFilter(tierFilter === 'STANDARD' ? 'ALL' : 'STANDARD');
+              setStatusFilter('ALL');
+              setCoachTypeFilter('ALL');
+            }}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-xs ${
+              tierFilter === 'STANDARD'
+                ? 'bg-purple-700 text-white border-purple-800 ring-2 ring-purple-600/30'
+                : 'bg-white border-purple-200 bg-purple-50/20 hover:bg-purple-100/40'
+            }`}
+            title="Filter by Standard Verified Tier"
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${tierFilter === 'STANDARD' ? 'text-purple-100' : 'text-purple-700'}`}>Standard</span>
+              <Sparkle size={14} weight="fill" className={tierFilter === 'STANDARD' ? 'text-white' : 'text-purple-600'} />
+            </div>
+            <div className={`text-2xl font-black mt-1 ${tierFilter === 'STANDARD' ? 'text-white' : 'text-purple-900'}`}>{totalStandard}</div>
+            <span className={`text-[11px] font-medium ${tierFilter === 'STANDARD' ? 'text-purple-100' : 'text-purple-700'}`}>Verified listing</span>
           </div>
         </div>
 
@@ -830,19 +892,17 @@ export default function AdminCoachRegistryPage() {
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
               {[
                 { id: 'ALL', label: 'All Status' },
-                { id: 'LIVE', label: `Live (${totalLive})` },
-                { id: 'PAYMENT_PENDING', label: `Payment Pending (${totalPaymentPending})` },
-                { id: 'PENDING', label: `In Review (${totalPending})` },
-                { id: 'SUSPENDED', label: `Suspended (${totalSuspended})` },
+                { id: 'LIVE', label: `Live (${totalLive})`, activeClass: 'bg-emerald-600 text-white shadow-2xs font-extrabold' },
+                ...(totalPaymentPending > 0 ? [{ id: 'PAYMENT_PENDING', label: `Payment Pending (${totalPaymentPending})`, activeClass: 'bg-amber-500 text-white shadow-2xs font-extrabold' }] : []),
+                { id: 'PENDING', label: `In Review (${totalPending})`, activeClass: 'bg-blue-600 text-white shadow-2xs font-extrabold' },
+                { id: 'SUSPENDED', label: `Suspended (${totalSuspended})`, activeClass: 'bg-rose-600 text-white shadow-2xs font-extrabold' },
               ].map((s) => (
                 <button
                   key={s.id}
                   onClick={() => setStatusFilter(s.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     statusFilter === s.id
-                      ? s.id === 'PAYMENT_PENDING'
-                        ? 'bg-amber-500 text-white shadow-2xs font-extrabold'
-                        : 'bg-white text-purple-900 shadow-2xs font-extrabold'
+                      ? (s as any).activeClass || 'bg-white text-purple-900 shadow-2xs font-extrabold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1070,7 +1130,12 @@ export default function AdminCoachRegistryPage() {
                         {/* COLUMN 4: Status & Profile Visibility */}
                         <td className="py-4 px-5 overflow-hidden">
                           <div className="space-y-1.5">
-                            {vis.code === 'PAYMENT_PENDING' ? (
+                            {vis.code === 'SUSPENDED' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap">
+                                <Prohibit size={12} weight="bold" />
+                                SUSPENDED
+                              </span>
+                            ) : vis.code === 'PAYMENT_PENDING' ? (
                               <span
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-950 border border-amber-300 ring-1 ring-amber-300/60 shadow-2xs whitespace-nowrap"
                                 title="Admin approved KYC, but coach has not paid for Standard/Premier plan yet. Profile is hidden from public discovery."
@@ -1078,20 +1143,10 @@ export default function AdminCoachRegistryPage() {
                                 <CreditCard size={12} weight="bold" className="text-amber-700" />
                                 APPROVED • PAYMENT PENDING
                               </span>
-                            ) : vis.code === 'LIVE' ? (
+                            ) : vis.isLive ? (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
                                 <SealCheck size={12} weight="fill" className="text-emerald-600" />
                                 APPROVED &amp; LIVE
-                              </span>
-                            ) : vis.code === 'FREE_LIVE' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-teal-50 text-teal-800 border border-teal-300 whitespace-nowrap">
-                                <SealCheck size={12} weight="fill" className="text-teal-600" />
-                                APPROVED • FREE LIVE
-                              </span>
-                            ) : vis.code === 'SUSPENDED' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap">
-                                <Prohibit size={12} weight="bold" />
-                                SUSPENDED
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-900 border border-blue-200 whitespace-nowrap">

@@ -133,9 +133,14 @@ function mapCentresToAcademies(centres: any[], activeCity?: string, userCoords?:
       isVerifiedBatch: c.isVerifiedBatch,
       coachType: c.coachType,
       batches: (c.batches || []).map((b: any) => ({
+        id: b.id,
         name: b.name,
         time: b.schedule,
-        seats: `${b.seatsFilled}/${b.totalSeats} Enrolled`,
+        schedule: b.schedule,
+        pureSchedule: b.schedule,
+        ageGroup: b.ageGroup,
+        seats: `${b.seatsFilled || 0}/${b.totalSeats || 20} Enrolled`,
+        monthlyFee: Number(b.monthlyFee || c.monthlyTuitionFee || 1800),
       })),
     };
   });

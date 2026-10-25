@@ -79,6 +79,7 @@ export function AcademyCard({
         locality: academy.localityName,
         category: academy.category,
         academy,
+        batches: academy.batches,
       });
     }
   };
@@ -99,6 +100,7 @@ export function AcademyCard({
         locality: academy.localityName,
         category: academy.category,
         academy,
+        batches: academy.batches,
       });
     }
   };

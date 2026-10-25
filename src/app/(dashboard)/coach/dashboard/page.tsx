@@ -217,10 +217,12 @@ export default function CoachDashboardPage() {
                   batchId: bk.batchId || bk.batch?.id,
                   name: bk.child?.fullName || bk.parent?.fullName || 'Student',
                   type: bk.passType === 'FREE_TRIAL' ? 'Trial Class' : 'Enrolled',
-                  passInfo: `Pass: ${bk.passId || 'KUC-' + bk.id.slice(-6)} • Regular Student`,
+                  passInfo: bk.passType === 'FREE_TRIAL'
+                    ? `Pass: ${bk.passId || 'TRL-' + bk.id.slice(-6)} • Free Trial Pass`
+                    : `Pass: ${bk.passId || 'KUC-' + bk.id.slice(-6)} • Enrolled Student`,
                   initials: (bk.child?.fullName || 'ST').slice(0, 2).toUpperCase(),
-                  colorBg: 'bg-blue-100',
-                  colorText: 'text-blue-700',
+                  colorBg: bk.passType === 'FREE_TRIAL' ? 'bg-amber-100' : 'bg-blue-100',
+                  colorText: bk.passType === 'FREE_TRIAL' ? 'text-amber-800' : 'text-blue-700',
                   status: isPresentToday ? 'present' : 'absent',
                 };
               })

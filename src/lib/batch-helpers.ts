@@ -116,10 +116,16 @@ export function formatBatchItem(batch: any, defaultCategory?: string): BatchItem
   const coachName = typeof batch.coachName === 'string' ? batch.coachName : (typeof parsed.coachName === 'string' ? parsed.coachName : undefined);
   const pureSchedule = parsed.pureSchedule || batch.schedule || '';
 
+  const enrolledBookingsCount = Array.isArray(batch.bookings)
+    ? batch.bookings.filter((b: any) => b.passType === 'MONTHLY_BATCH').length
+    : 0;
+  const trialBookingsCount = Array.isArray(batch.bookings)
+    ? batch.bookings.filter((b: any) => b.passType === 'FREE_TRIAL').length
+    : 0;
+
   const actualSeats = Math.max(
     Number(batch.seatsFilled) || 0,
-    Array.isArray(batch.bookings) ? batch.bookings.length : 0,
-    batch._count?.bookings || 0
+    enrolledBookingsCount
   );
 
   return {
@@ -139,5 +145,6 @@ export function formatBatchItem(batch: any, defaultCategory?: string): BatchItem
     monthlyFee: Number(batch.monthlyFee) || 1800,
     isAdmissionsOpen: batch.isAdmissionsOpen ?? true,
     bookings: batch.bookings || undefined,
+    trialCount: trialBookingsCount,
   };
 }

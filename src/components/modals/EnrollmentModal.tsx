@@ -7,7 +7,7 @@ import { DialogWrapper } from './DialogWrapper';
 import { useModalStore } from '@/hooks/useModalStore';
 import { usePersona } from '@/context/PersonaContext';
 import { useAuth } from '@/hooks/useAuth';
-import { enrollMonthlyBatch, getParentDashboardData, addChildProfile } from '@/lib/actions';
+import { enrollMonthlyBatch, getParentDashboardData, addChildProfile, getBatchesForCentre } from '@/lib/actions';
 import { getCategoryDisplayName, getCategoryEmoji } from '@/lib/categories';
 import { downloadBookingSlip } from '@/lib/downloadBookingSlip';
 import {
@@ -55,11 +55,13 @@ export function EnrollmentModal() {
   const acadCategory = modalData?.category || academy.category || 'Sports Coaching';
 
   // Batches from academy data or modalData
-  const batches = academy.batches && academy.batches.length > 0
+  const initialBatches = academy.batches && academy.batches.length > 0
     ? academy.batches
     : (modalData?.batches || []);
+  const [batchesList, setBatchesList] = useState<any[]>(initialBatches);
+  const [loadingBatches, setLoadingBatches] = useState(false);
 
-  const currentBatch = batches.find((b: any) => b.id === selectedBatchId) || batches[0];
+  const currentBatch = batchesList.find((b: any) => b.id === selectedBatchId) || batchesList[0];
   const dynamicMonthlyFee = currentBatch?.monthlyFee
     ? Number(currentBatch.monthlyFee)
     : (currentBatch?.fee
@@ -68,14 +70,47 @@ export function EnrollmentModal() {
 
   const userEmail = session?.user?.email || (user as any)?.email;
 
+  // Load batches dynamically if missing when modal opens
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    const directBatches = (modalData?.academy?.batches && modalData.academy.batches.length > 0)
+      ? modalData.academy.batches
+      : (modalData?.batches || []);
+
+    if (directBatches.length > 0) {
+      setBatchesList(directBatches);
+      const initBatchId = modalData?.selectedBatchId || modalData?.selectedBatch?.id || directBatches[0]?.id || '';
+      setSelectedBatchId(initBatchId);
+    } else {
+      const centreId = modalData?.acadId || modalData?.academy?.id;
+      if (centreId) {
+        setLoadingBatches(true);
+        getBatchesForCentre(centreId)
+          .then((fetched) => {
+            setBatchesList(fetched || []);
+            if (fetched && fetched.length > 0) {
+              const initBatchId = modalData?.selectedBatchId || fetched[0].id;
+              setSelectedBatchId(initBatchId);
+            }
+          })
+          .finally(() => {
+            setLoadingBatches(false);
+          });
+      } else {
+        setBatchesList([]);
+      }
+    }
+  }, [isModalOpen, modalData]);
+
   // Load children profiles when modal opens
   useEffect(() => {
     if (!isModalOpen || isGuest || !userEmail) return;
 
     if (modalData?.selectedBatchId) {
       setSelectedBatchId(modalData.selectedBatchId);
-    } else if (batches.length > 0 && !selectedBatchId) {
-      setSelectedBatchId(batches[0].id);
+    } else if (batchesList.length > 0 && !selectedBatchId) {
+      setSelectedBatchId(batchesList[0].id);
     }
 
     async function fetchChildren() {
@@ -97,7 +132,7 @@ export function EnrollmentModal() {
     }
 
     fetchChildren();
-  }, [isModalOpen, userEmail, isGuest, batches, selectedBatchId]);
+  }, [isModalOpen, userEmail, isGuest, batchesList, selectedBatchId]);
 
   const handleClose = () => {
     closeModal();
@@ -169,19 +204,19 @@ export function EnrollmentModal() {
       return;
     }
 
-    const currentBatch = batches.find((b: any) => b.id === selectedBatchId) || batches[0];
+    const selectedBatch = batchesList.find((b: any) => b.id === selectedBatchId) || batchesList[0];
 
     setSubmitting(true);
     try {
       const res = await enrollMonthlyBatch({
         centreId: modalData?.acadId || academy.id || 'acad-default',
         centreName: acadName,
-        batchId: currentBatch?.id,
-        batchName: currentBatch?.name,
+        batchId: selectedBatch?.id,
+        batchName: selectedBatch?.name,
         childNames: selectedChildNames,
-        childName: selectedChildNames.join(', '),
-        parentEmail: userEmail || undefined,
-        parentName: session?.user?.name || undefined,
+        parentEmail: userEmail || session?.user?.email || undefined,
+        parentName: session?.user?.name || (user as any)?.name || undefined,
+        parentPhone: (session?.user as any)?.phone || (user as any)?.phone || undefined,
       });
 
       if (!res.success) {
@@ -252,18 +287,24 @@ export function EnrollmentModal() {
             </button>
           </div>
         </div>
-      ) : batches.length === 0 ? (
+      ) : loadingBatches ? (
+        <div className="p-8 text-center space-y-3">
+          <CircleNotch size={32} className="animate-spin mx-auto text-indigo-600" />
+          <p className="text-xs text-slate-500 font-medium">Checking available coaching batches...</p>
+        </div>
+      ) : batchesList.length === 0 ? (
         <div className="p-8 text-center space-y-3">
           <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
             <Clock size={28} weight="bold" />
           </div>
-          <h3 className="text-sm font-extrabold text-slate-900">No Open Batches Currently Available</h3>
+          <h3 className="text-sm font-extrabold text-slate-900">Batches Not Configured Yet</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-            This academy does not have open public batch schedules for online enrollment right now. You can book a Free Trial or contact the coach directly.
+            This academy does not have open public coaching batches available for enrollment right now. You can book a Free Trial or contact the coach directly.
           </p>
           <button
+            type="button"
             onClick={handleClose}
-            className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 cursor-pointer"
+            className="px-5 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 cursor-pointer"
           >
             Close
           </button>
@@ -301,7 +342,7 @@ export function EnrollmentModal() {
                 onChange={(e) => setSelectedBatchId(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
               >
-                {batches.map((batch: any) => (
+                {batchesList.map((batch: any) => (
                   <option key={batch.id} value={batch.id}>
                     {batch.name} {batch.category ? `• ${getCategoryEmoji(batch.category)} ${getCategoryDisplayName(batch.category)}` : ''} {batch.pureSchedule || batch.schedule ? `(${batch.pureSchedule || batch.schedule})` : ''}
                   </option>
@@ -532,7 +573,7 @@ export function EnrollmentModal() {
               <button
                 type="button"
                 onClick={() => {
-                  const refNo = bookingId.startsWith('REF-') ? bookingId : bookingId.replace('KUC-PASS-', 'REF-');
+                  const refNo = bookingId;
                   navigator.clipboard.writeText(refNo);
                   showToast(`📋 Copied reference ${refNo}!`);
                 }}
@@ -548,7 +589,7 @@ export function EnrollmentModal() {
             <button
               type="button"
               onClick={() => {
-                const refNo = bookingId.startsWith('REF-') ? bookingId : bookingId.replace('KUC-PASS-', 'REF-');
+                const refNo = bookingId;
                 downloadBookingSlip({
                   bookingId: refNo,
                   referenceNo: refNo,
@@ -557,9 +598,9 @@ export function EnrollmentModal() {
                   studentName: selectedChildNames.join(', '),
                   parentName: session?.user?.name || 'Parent',
                   parentPhone: session?.user?.email || '',
-                  schedule: currentBatch?.schedule || 'Regular Weekly Timings',
-                  courtOrVenue: currentBatch?.name || 'Academy Facility',
-                  feeInfo: `₹${Number(dynamicMonthlyFee).toLocaleString('en-IN')}/month (Payable directly to Academy)`,
+                  schedule: currentBatch?.pureSchedule || currentBatch?.schedule || currentBatch?.time || 'Regular Weekly Timings',
+                  courtOrVenue: currentBatch?.name || 'Monthly Coaching Batch',
+                  feeInfo: `₹${Number(dynamicMonthlyFee).toLocaleString('en-IN')}/month`,
                   paymentStatus: 'Direct Academy Settlement',
                   dateBooked: new Date().toLocaleDateString('en-IN'),
                 });

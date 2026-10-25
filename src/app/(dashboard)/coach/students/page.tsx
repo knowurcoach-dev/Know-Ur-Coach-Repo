@@ -25,6 +25,7 @@ export default function CoachStudentsPage() {
   const [centreData, setCentreData] = useState<any>(null);
   const [batches, setBatches] = useState<any[]>([]);
   const [batchFilter, setBatchFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'enrolled' | 'trials'>('all');
 
   const userEmail = session?.user?.email || (user as any)?.email;
 
@@ -69,16 +70,21 @@ export default function CoachStudentsPage() {
     }
   }
 
+  const enrolledCount = allStudents.filter((st) => st.passType === 'MONTHLY_BATCH').length;
+  const trialCount = allStudents.filter((st) => st.passType === 'FREE_TRIAL').length;
+
   const filteredStudents = allStudents.filter((st) => {
-    if (batchFilter === 'all') return true;
-    return st.batchId === batchFilter;
+    if (batchFilter !== 'all' && st.batchId !== batchFilter) return false;
+    if (typeFilter === 'enrolled' && st.passType !== 'MONTHLY_BATCH') return false;
+    if (typeFilter === 'trials' && st.passType !== 'FREE_TRIAL') return false;
+    return true;
   });
 
   const academyName =
     centreData?.name || (session?.user?.name ? `${session.user.name}'s Academy` : 'Your Academy');
 
   if (loading) {
-    return <GeneralCoachPageSkeleton title="Enrolled Students Directory" />;
+    return <GeneralCoachPageSkeleton title="Student & Trial Directory" />;
   }
 
   return (
@@ -95,7 +101,7 @@ export default function CoachStudentsPage() {
             </Link>
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
-                Enrolled Students Directory
+                Student &amp; Trial Directory
               </h1>
               <p className="text-xs text-slate-500 font-medium">
                 Active Student Roster &amp; Parent Emergency Contacts • {academyName}
@@ -103,39 +109,83 @@ export default function CoachStudentsPage() {
             </div>
           </div>
 
-          <div className="bg-blue-50 text-blue-800 text-xs font-black px-4 py-2 rounded-2xl shrink-0">
-            {allStudents.length} Registered Students
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black px-3 py-1.5 rounded-2xl">
+              {enrolledCount} Enrolled
+            </span>
+            <span className="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-black px-3 py-1.5 rounded-2xl">
+              ⚡ {trialCount} Free Trials
+            </span>
           </div>
         </div>
 
-        {/* Filter Pills */}
-        {batches.length > 0 && (
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <button
-              onClick={() => setBatchFilter('all')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
-                batchFilter === 'all'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              All Batches ({allStudents.length})
-            </button>
-            {batches.map((b) => (
+        {/* Filter Toolbar: Type Filter + Batch Filter */}
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+            {/* Type Filter Pills */}
+            <div className="flex items-center gap-1.5 bg-slate-200/80 p-1 rounded-2xl">
               <button
-                key={b.id}
-                onClick={() => setBatchFilter(b.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
-                  batchFilter === b.id
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                onClick={() => setTypeFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  typeFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {b.name} ({b.bookings?.length || 0})
+                All Students ({allStudents.length})
               </button>
-            ))}
+              <button
+                onClick={() => setTypeFilter('enrolled')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  typeFilter === 'enrolled'
+                    ? 'bg-white text-emerald-800 shadow-xs'
+                    : 'text-slate-600 hover:text-emerald-800'
+                }`}
+              >
+                Enrolled ({enrolledCount})
+              </button>
+              <button
+                onClick={() => setTypeFilter('trials')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  typeFilter === 'trials'
+                    ? 'bg-white text-amber-900 shadow-xs'
+                    : 'text-slate-600 hover:text-amber-900'
+                }`}
+              >
+                Free Trials ({trialCount})
+              </button>
+            </div>
+
+            {/* Batch Filter Pills */}
+            {batches.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
+                <button
+                  onClick={() => setBatchFilter('all')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    batchFilter === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  All Batches
+                </button>
+                {batches.map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => setBatchFilter(b.id)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      batchFilter === b.id
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {b.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Students List or Clean Empty State */}
         {loading ? (
@@ -150,6 +200,7 @@ export default function CoachStudentsPage() {
               const parentName = st.parent?.fullName || 'Parent';
               const parentPhone = (st.parent as any)?.phone || '9837000000';
               const cleanPhone = parentPhone.replace(/\D/g, '');
+              const isTrial = st.passType === 'FREE_TRIAL';
 
               return (
                 <div
@@ -158,7 +209,7 @@ export default function CoachStudentsPage() {
                 >
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-black text-lg flex items-center justify-center shadow-xs">
+                      <div className={`w-12 h-12 rounded-2xl ${isTrial ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'} text-white font-black text-lg flex items-center justify-center shadow-xs`}>
                         {childName[0]?.toUpperCase() || 'S'}
                       </div>
                       <div className="min-w-0">
@@ -173,13 +224,23 @@ export default function CoachStudentsPage() {
                       <div className="text-slate-500 text-[11px] font-medium">Parent / Guardian:</div>
                       <div className="font-extrabold text-slate-800">{parentName}</div>
                       <div className="text-slate-500 font-medium">{parentPhone}</div>
+                      <div className="text-[11px] text-slate-600 pt-1.5 border-t border-slate-200/60 font-mono">
+                        Pass ID: <strong className="text-slate-800">{st.passId || (isTrial ? 'TRL-' : 'KUC-') + st.id.slice(-6)}</strong>
+                        {isTrial && <span className="text-amber-700 font-sans ml-1 font-semibold">(1-Day Trial)</span>}
+                      </div>
                     </div>
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                      ACTIVE ENROLLMENT
-                    </span>
+                    {isTrial ? (
+                      <span className="text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                        FREE TRIAL PASS
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                        ACTIVE ENROLLMENT
+                      </span>
+                    )}
 
                     <div className="flex items-center gap-1.5">
                       <a
@@ -187,7 +248,7 @@ export default function CoachStudentsPage() {
                           parentName
                         )},%20this%20is%20${encodeURIComponent(
                           academyName
-                        )}%20updating%20you%20on%20${encodeURIComponent(childName)}'s%20batch.`}
+                        )}%20${isTrial ? 'following up on your Free Trial Pass for' : 'updating you on'}${encodeURIComponent(' ' + childName)}.`}
                         target="_blank"
                         rel="noreferrer"
                         className="p-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"

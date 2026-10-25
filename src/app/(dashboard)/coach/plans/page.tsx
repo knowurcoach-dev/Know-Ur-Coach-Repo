@@ -21,6 +21,7 @@ import {
   calculateCyclePrice,
   getCentreSubscriptionStatus,
 } from '@/lib/subscription';
+import { downloadCoachInvoice } from '@/lib/downloadCoachInvoice';
 import {
   CreditCard,
   Crown,
@@ -897,7 +898,7 @@ export default function CoachPlansPage() {
             </div>
           </div>
           <div className="text-xs text-slate-400 font-bold flex items-center gap-4">
-            <span>Official GST Invoice</span>
+            <span>Official Payment Receipt</span>
             <span>•</span>
             <span>Instant Razorpay Webhook</span>
             <span>•</span>
@@ -979,12 +980,25 @@ export default function CoachPlansPage() {
               <button
                 type="button"
                 onClick={() => {
-                  showToast('📄 Downloaded Razorpay Tax Invoice');
+                  downloadCoachInvoice({
+                    paymentId: receiptData.paymentId,
+                    coachName: centreData?.headCoachName || (user as any)?.name || centreData?.name || 'Coach',
+                    centreName: centreData?.name || 'Academy',
+                    coachEmail: userEmail || undefined,
+                    coachPhone: centreData?.phone || undefined,
+                    locality: centreData?.locality || undefined,
+                    planName: receiptData.tierName,
+                    planTier: receiptData.tierId,
+                    billingCycle: receiptData.billingCycle,
+                    amount: receiptData.amount,
+                    expiresAt: receiptData.expiresAt,
+                  });
+                  showToast('📄 Opening official Subscription Receipt (PDF)...');
                 }}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-4 py-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <DownloadSimple size={15} weight="bold" />
-                <span>Invoice</span>
+                <span>Receipt (PDF)</span>
               </button>
             </div>
           </div>

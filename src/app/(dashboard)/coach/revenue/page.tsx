@@ -211,7 +211,7 @@ export default function CoachRevenuePage() {
                         ₹{b.monthlyFee.toLocaleString('en-IN')}/mo
                       </td>
                       <td className="py-3.5 px-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-slate-900">
                             {b.enrolledCount} / {b.capacity}
                           </span>
@@ -224,6 +224,11 @@ export default function CoachRevenuePage() {
                           >
                             {b.utilizationPct}%
                           </span>
+                          {b.trialCount > 0 && (
+                            <span className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              +{b.trialCount} Trial{b.trialCount > 1 ? 's' : ''}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3.5 px-3 font-mono font-black text-emerald-700 text-sm">
@@ -288,11 +293,11 @@ export default function CoachRevenuePage() {
                           <span
                             className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
                               isTrial
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-emerald-100 text-emerald-800'
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                             }`}
                           >
-                            {isTrial ? 'Free Trial' : 'Enrolled'}
+                            {isTrial ? 'Free Trial Pass' : 'Enrolled Student'}
                           </span>
                         </div>
                         <div className="text-xs text-slate-500 font-medium mt-0.5">

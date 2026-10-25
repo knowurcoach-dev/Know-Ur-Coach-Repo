@@ -1,6 +1,6 @@
 /**
- * Utility to generate and trigger a printable / downloadable booking confirmation slip.
- * Clean, branded layout formatted for thermal or A4 printing and saving as PDF.
+ * Utility to generate and trigger a printable / downloadable booking confirmation slip & voucher.
+ * Formatted cleanly for A4 printing and saving as PDF.
  */
 
 export interface BookingSlipDetails {
@@ -19,7 +19,7 @@ export interface BookingSlipDetails {
   parentName?: string;
   parentPhone?: string;
   schedule?: string;
-  courtOrVenue?: string;
+  courtOrVenue?: string; // Batch name or Venue arena
   feeInfo?: string;
   bookingDate?: string;
   dateBooked?: string;
@@ -29,43 +29,52 @@ export interface BookingSlipDetails {
 export function downloadBookingSlip(data: BookingSlipDetails) {
   if (typeof window === 'undefined') return;
 
-  const refNo = data.referenceNo || data.bookingId || `REF-${Date.now().toString().slice(-6)}`;
-  const cleanRef = refNo.startsWith('#') ? refNo : `#${refNo}`;
-  const bookingDate = data.bookingDate || new Date().toLocaleDateString('en-IN', {
+  const rawRef = data.referenceNo || data.bookingId || `REF-${Date.now().toString().slice(-6)}`;
+  const cleanRef = '#' + rawRef.replace(/^#+/, '');
+  const bookingDate = data.bookingDate || data.dateBooked || new Date().toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
-  const typeLabel =
-    data.type === 'trial'
-      ? 'FREE TRIAL ADMISSION'
-      : data.type === 'tournament'
-      ? 'TOURNAMENT PARTICIPATION ENTRY'
-      : 'MONTHLY BATCH ADMISSION';
 
-  const isFreeTrial = data.type === 'trial' || (data.feeInfo && data.feeInfo.toLowerCase().includes('free'));
-  const feeLabel = isFreeTrial ? '₹0 (Free Trial Session)' : (data.feeInfo || 'Direct Academy Settlement');
+  const isFreeTrial = data.type === 'trial' || !data.type || (data.feeInfo && data.feeInfo.toLowerCase().includes('free'));
+  const isTournament = data.type === 'tournament';
+
+  const typeBadge = isFreeTrial
+    ? 'Free Trial Pass'
+    : isTournament
+    ? 'Official Tournament Entry Pass'
+    : 'Monthly Batch Admission';
+
+  const voucherTitle = isFreeTrial
+    ? 'FREE TRIAL PASS'
+    : isTournament
+    ? 'TOURNAMENT PARTICIPATION ENTRY PASS'
+    : 'MONTHLY BATCH ADMISSION SLIP';
+
+  const batchOrProgram = data.courtOrVenue || (isFreeTrial ? 'Free Trial Coaching Batch' : 'Standard Regular Batch');
 
   const slipHtml = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Booking Slip - ${cleanRef} - KnowUrCoach</title>
+  <title>${voucherTitle} - ${cleanRef} - Knowurcoach</title>
   <style>
-    @page { size: A4; margin: 15mm; }
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       color: #0f172a;
       background: #ffffff;
       margin: 0;
       padding: 24px;
-      line-height: 1.45;
+      line-height: 1.5;
     }
     .slip-container {
-      max-width: 680px;
+      max-width: 720px;
       margin: 0 auto;
-      border: 2px solid #0066ff;
+      border: 2px solid ${isFreeTrial ? '#059669' : '#0066ff'};
       border-radius: 20px;
       padding: 32px;
       background: #ffffff;
@@ -79,8 +88,18 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
       padding-bottom: 20px;
       margin-bottom: 24px;
     }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo-img {
+      height: 38px;
+      width: auto;
+      object-fit: contain;
+    }
     .brand {
-      font-size: 22px;
+      font-size: 24px;
       font-weight: 900;
       color: #0066ff;
       letter-spacing: -0.5px;
@@ -88,14 +107,15 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
     .brand span { color: #0a1128; }
     .badge {
       display: inline-block;
-      background: #ecfdf5;
-      color: #065f46;
-      border: 1px solid #a7f3d0;
+      background: ${isFreeTrial ? '#ecfdf5' : '#eff6ff'};
+      color: ${isFreeTrial ? '#065f46' : '#1e40af'};
+      border: 1px solid ${isFreeTrial ? '#a7f3d0' : '#bfdbfe'};
       font-size: 11px;
       font-weight: 800;
-      padding: 4px 10px;
+      padding: 4px 12px;
       border-radius: 999px;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
       margin-top: 6px;
     }
     .ref-box {
@@ -106,23 +126,25 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
       font-weight: 700;
       color: #64748b;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
     .ref-number {
-      font-family: monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 18px;
       font-weight: 900;
       color: #0f172a;
       background: #f1f5f9;
-      padding: 6px 12px;
+      padding: 6px 14px;
       border-radius: 8px;
       display: inline-block;
       margin-top: 4px;
+      border: 1px solid #e2e8f0;
     }
     .title-banner {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 16px;
+      background: ${isFreeTrial ? '#f0fdf4' : '#f8fafc'};
+      border: 1px solid ${isFreeTrial ? '#bbf7d0' : '#e2e8f0'};
+      border-radius: 14px;
+      padding: 16px 20px;
       margin-bottom: 24px;
       display: flex;
       justify-content: space-between;
@@ -130,12 +152,12 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
     }
     .title-banner h2 {
       margin: 0;
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 800;
       color: #0a1128;
     }
     .title-banner .sub {
-      margin-top: 2px;
+      margin-top: 3px;
       font-size: 12px;
       color: #64748b;
     }
@@ -148,11 +170,11 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
     .card {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 16px;
+      border-radius: 14px;
+      padding: 18px;
     }
     .card h4 {
-      margin: 0 0 10px 0;
+      margin: 0 0 12px 0;
       font-size: 12px;
       text-transform: uppercase;
       color: #0066ff;
@@ -163,31 +185,54 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
       display: flex;
       justify-content: space-between;
       font-size: 12px;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
       color: #334155;
+    }
+    .row:last-child {
+      margin-bottom: 0;
     }
     .row strong {
       color: #0f172a;
       font-weight: 700;
       text-align: right;
     }
-    .payment-notice {
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
-      border-radius: 12px;
-      padding: 14px 18px;
-      font-size: 12px;
-      color: #166534;
+    .status-highlight-card {
+      background: ${isFreeTrial ? '#ecfdf5' : '#eff6ff'};
+      border: 1.5px solid ${isFreeTrial ? '#a7f3d0' : '#bfdbfe'};
+      border-radius: 14px;
+      padding: 16px 20px;
       margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
-    .payment-notice strong {
-      display: block;
-      font-size: 13px;
-      margin-bottom: 3px;
+    .status-tag {
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: ${isFreeTrial ? '#065f46' : '#1e40af'};
+    }
+    .status-desc {
+      font-size: 12px;
+      color: #475569;
+      margin-top: 2px;
+    }
+    .admission-terms-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      font-size: 12px;
+      color: #334155;
+    }
+    .admission-terms-box strong {
+      color: #0f172a;
     }
     .guidelines {
       border-top: 1px solid #e2e8f0;
-      padding-top: 16px;
+      padding-top: 18px;
       font-size: 11px;
       color: #64748b;
       line-height: 1.6;
@@ -203,9 +248,9 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
       padding-top: 16px;
     }
     @media print {
-      body { padding: 0; }
-      .slip-container { border: 1px solid #000; box-shadow: none; }
-      .no-print { display: none; }
+      body { padding: 0; background: #fff; }
+      .slip-container { border: 1px solid #94a3b8; box-shadow: none; border-radius: 0; }
+      .no-print { display: none !important; }
     }
   </style>
 </head>
@@ -213,38 +258,41 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
   <div class="slip-container">
     <div class="header">
       <div>
-        <div class="brand">KnowUr<span>Coach</span></div>
-        <div class="badge">Official Verified Admission Slip</div>
+        <div class="brand-wrap">
+          <img src="/images/brand/logo-full.png" alt="Knowurcoach" class="brand-logo-img" onerror="this.style.display='none'" />
+          <div class="brand">Knowur<span>coach</span></div>
+        </div>
+        <div class="badge">${typeBadge}</div>
       </div>
       <div class="ref-box">
         <div class="ref-label">Reference Number</div>
         <div class="ref-number">${cleanRef}</div>
-        <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Booked on ${bookingDate}</div>
+        <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Booked On: ${bookingDate}</div>
       </div>
     </div>
 
     <div class="title-banner">
       <div>
         <h2>${data.academyName}</h2>
-        <div class="sub">${data.category || 'Sports & Skills'} • ${data.locality || 'Agra'}${data.city ? `, ${data.city}` : ''}</div>
+        <div class="sub">${data.category || 'Sports & Youth Activities'} • ${data.locality || 'Agra'}${data.city ? `, ${data.city}` : ''}</div>
       </div>
       <div style="text-align: right;">
-        <span style="background: #0066ff; color: #fff; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 6px;">
-          ${typeLabel}
+        <span style="background: ${isFreeTrial ? '#059669' : '#0066ff'}; color: #fff; font-size: 11px; font-weight: 800; padding: 6px 14px; border-radius: 8px;">
+          ${voucherTitle}
         </span>
       </div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <h4>Student Details</h4>
+        <h4>Student &amp; Parent Info</h4>
         <div class="row">
-          <span>Student:</span>
+          <span>Student Name:</span>
           <strong>${data.studentName}</strong>
         </div>
         ${data.studentAge ? `
         <div class="row">
-          <span>Age:</span>
+          <span>Student Age:</span>
           <strong>${data.studentAge} Years</strong>
         </div>` : ''}
         ${data.parentName ? `
@@ -254,65 +302,79 @@ export function downloadBookingSlip(data: BookingSlipDetails) {
         </div>` : ''}
         ${data.parentPhone ? `
         <div class="row">
-          <span>Emergency Contact:</span>
+          <span>Contact Number:</span>
           <strong>${data.parentPhone}</strong>
         </div>` : ''}
       </div>
 
       <div class="card">
-        <h4>Session Schedule</h4>
+        <h4>Batch &amp; Session Details</h4>
         <div class="row">
-          <span>Schedule / Timings:</span>
+          <span>Batch / Program:</span>
+          <strong>${batchOrProgram}</strong>
+        </div>
+        <div class="row">
+          <span>Schedule &amp; Timings:</span>
           <strong>${data.schedule || 'Scheduled Session'}</strong>
         </div>
         <div class="row">
-          <span>Court / Ground:</span>
-          <strong>${data.courtOrVenue || 'Main Arena'}</strong>
+          <span>Head Coach:</span>
+          <strong>${data.coachName || 'Certified Academy Coach'}</strong>
         </div>
         <div class="row">
-          <span>Assigned Coach:</span>
-          <strong>${data.coachName || 'Certified Head Coach'}</strong>
-        </div>
-        <div class="row">
-          <span>Academy Contact:</span>
-          <strong>${data.contactPhone || '+91 98970 12345'}</strong>
+          <span>Academy Helpline:</span>
+          <strong>${data.contactPhone || '+91 97625 77714'}</strong>
         </div>
       </div>
     </div>
 
-    <div class="payment-notice">
-      <strong>Tuition Terms: ${feeLabel}</strong>
-      <span>
-        ${isFreeTrial 
-          ? 'This is a complimentary 100% Free Trial session. No fees are payable to the academy or platform for this session.'
-          : 'KnowUrCoach charges ₹0 platform fee. Tuition fee is settled directly with the academy management or head coach at the reception desk.'}
-      </span>
+    ${isFreeTrial ? `
+    <div class="status-highlight-card">
+      <div>
+        <div class="status-tag">✓ Confirmed Free Trial Pass</div>
+        <div class="status-desc">
+          Meet the coach, explore the facilities, and experience the training session.
+        </div>
+      </div>
+      <div style="text-align: right; font-size: 11px; font-weight: 800; color: #059669; background: #ffffff; padding: 6px 14px; border-radius: 8px; border: 1px solid #a7f3d0;">
+        Pass Confirmed
+      </div>
     </div>
+    ` : `
+    <div class="admission-terms-box">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <strong>Monthly Batch Tuition Fee:</strong>
+        <span style="font-weight: 700; color: #0f172a;">${data.feeInfo || 'Direct Academy Settlement'}</span>
+      </div>
+      <div style="font-size: 11px; color: #64748b;">
+        Tuition fees are settled directly with the academy management at the reception desk upon joining.
+      </div>
+    </div>
+    `}
 
     <div class="guidelines">
       <strong>Important Reporting Guidelines for Parents:</strong>
       <ol style="margin: 6px 0 0 18px; padding: 0;">
-        <li>Please arrive 10 minutes prior to the scheduled start time.</li>
-        <li>Present this Reference Slip (or quote <strong>${cleanRef}</strong>) at the reception counter or coach desk.</li>
-        <li>Ensure your child wears standard athletic footwear and carries a refillable water bottle.</li>
-        <li>Parents are welcome to observe the training session from designated visitor seating.</li>
+        <li>Please arrive 10-15 minutes prior to the scheduled batch timing.</li>
+        <li>Present this pass or quote Reference No. <strong>${cleanRef}</strong> at the academy reception.</li>
+        <li>Ensure your child wears comfortable athletic wear / sports shoes and carries a water bottle.</li>
+        <li>Parents are welcome to observe the training session from designated visitor areas.</li>
       </ol>
     </div>
 
     <div class="footer">
-      <span>KnowUrCoach India • Verified Sports & Youth Activities Directory</span>
-      <span>Helpline: support@knowurcoach.in</span>
+      <span>Knowurcoach • Connecting Parents with Top Coaches &amp; Academies</span>
+      <span>Support: support@knowurcoach.in</span>
     </div>
   </div>
 
-  <div class="no-print" style="text-align: center; margin-top: 20px;">
-    <button onclick="window.print()" style="background: #0066ff; color: #fff; font-weight: 800; font-size: 14px; padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer;">
-      🖨️ Print / Save as PDF
+  <div class="no-print" style="text-align: center; margin-top: 24px;">
+    <button onclick="window.print()" style="background: #0066ff; color: #fff; font-weight: 800; font-size: 14px; padding: 12px 28px; border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,102,255,0.25);">
+      🖨️ Print / Save Pass (PDF)
     </button>
   </div>
 
   <script>
-    // Automatically trigger print dialog on window open
     window.addEventListener('load', () => {
       setTimeout(() => {
         window.print();

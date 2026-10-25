@@ -643,3 +643,173 @@ export async function sendSubscriptionExpiryWarningEmail(options: SubscriptionEx
   }
 }
 
+export interface CoachPlanInvoiceEmailOptions {
+  to: string;
+  coachName: string;
+  centreName: string;
+  planName: string;
+  planTier?: string;
+  billingCycle: string;
+  amount: number;
+  paymentId: string;
+  invoiceNumber?: string;
+  expiresAt: Date | string;
+}
+
+/**
+ * Sends an automated Payment Receipt & Subscription Confirmation email when a coach buys or activates a plan.
+ */
+export async function sendCoachPlanInvoiceEmail(options: CoachPlanInvoiceEmailOptions): Promise<SendEmailResult> {
+  const transporter = createTransporter();
+  const { from } = getSenderInfo();
+  const {
+    to,
+    coachName,
+    centreName,
+    planName,
+    billingCycle,
+    amount,
+    paymentId,
+    invoiceNumber,
+    expiresAt,
+  } = options;
+
+  const invoiceNo = invoiceNumber || `REC-KUC-${new Date().getFullYear()}-${paymentId.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()}`;
+  const totalAmount = Number(amount) || 0;
+
+  const expiryFormatted = typeof expiresAt === 'string'
+    ? expiresAt
+    : expiresAt.toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+  const dashboardUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/coach/dashboard`;
+  const plansUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/coach/plans`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>Subscription Receipt - Knowurcoach</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; color: #1e293b; }
+        .wrapper { max-width: 600px; margin: 30px auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e2e8f0; }
+        .header { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #4338ca 100%); padding: 36px 28px; text-align: center; color: #ffffff; }
+        .badge { display: inline-block; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+        .content { padding: 32px 28px; }
+        .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; margin: 20px 0; }
+        .table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+        .table th { background: #f1f5f9; text-align: left; padding: 10px 12px; color: #475569; font-weight: 700; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; }
+        .table td { padding: 12px; border-bottom: 1px solid #e2e8f0; }
+        .btn { display: inline-block; background: #0066ff; color: #ffffff; text-decoration: none; font-weight: 800; font-size: 14px; padding: 12px 28px; border-radius: 10px; margin-top: 16px; }
+        .footer { background: #f8fafc; padding: 24px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; line-height: 1.5; }
+      </style>
+    </head>
+    <body>
+      <div class="wrapper">
+        <div class="header">
+          <span class="badge">Payment Confirmed • Subscription Receipt</span>
+          <div style="font-size: 24px; font-weight: 900; letter-spacing: -0.5px;">Subscription Activated! 🚀</div>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.9;">${centreName} • ${planName}</p>
+        </div>
+        <div class="content">
+          <p style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 0;">Hello ${coachName},</p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Thank you for partnering with Knowurcoach! Your subscription to the <strong>${planName}</strong> (${billingCycle}) is officially activated.
+          </p>
+
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
+              <span style="color: #64748b;">Receipt Number:</span>
+              <strong style="color: #0f172a;">${invoiceNo}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
+              <span style="color: #64748b;">Razorpay Payment ID:</span>
+              <strong style="font-family: monospace; color: #4338ca;">${paymentId}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
+              <span style="color: #64748b;">Billing Cycle:</span>
+              <strong style="text-transform: capitalize; color: #0f172a;">${billingCycle}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px;">
+              <span style="color: #64748b;">Next Renewal Date:</span>
+              <strong style="color: #059669;">${expiryFormatted}</strong>
+            </div>
+          </div>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Cycle</th>
+                <th style="text-align: right;">Amount (INR)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <strong>${planName}</strong><br />
+                  <span style="font-size: 11px; color: #64748b;">Platform Priority Placement, Attendance Tools & Verified Badge</span>
+                </td>
+                <td style="text-transform: capitalize;">${billingCycle}</td>
+                <td style="text-align: right; font-weight: 700;">₹${totalAmount.toLocaleString('en-IN')}</td>
+              </tr>
+              <tr style="background: #f8fafc; font-weight: 900; font-size: 14px;">
+                <td colspan="2" style="text-align: right; color: #0f172a;">Total Paid:</td>
+                <td style="text-align: right; color: #0066ff;">₹${totalAmount.toLocaleString('en-IN')}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 14px 16px; font-size: 12px; color: #166534; line-height: 1.5; margin: 20px 0;">
+            <strong>✨ Active Partner Benefits:</strong>
+            <ul style="margin: 6px 0 0 16px; padding: 0;">
+              <li>Verified Partner Badge and safety credibility stamp.</li>
+              <li>Priority search placement for students in your locality.</li>
+              <li>Full batch attendance tracking & WhatsApp parent lead notifications.</li>
+            </ul>
+          </div>
+
+          <div style="text-align: center; margin: 28px 0 16px;">
+            <a href="${dashboardUrl}" class="btn" style="color: #ffffff;">Access Coach Dashboard →</a>
+            <div style="margin-top: 10px;">
+              <a href="${plansUrl}" style="color: #64748b; font-size: 12px; text-decoration: underline;">View Subscriptions in Coach Billing</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <strong>Knowurcoach</strong><br />
+          Official Coach &amp; Academy Partner Platform<br />
+          Need assistance? Contact <a href="mailto:support@knowurcoach.in" style="color: #0066ff;">support@knowurcoach.in</a>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  if (!transporter) {
+    console.log(`[KnowUrCoach Mail Service (DEV MODE)] ✉️ Simulated Coach Plan Invoice Email to: ${to} (Plan: ${planName}, Ref: ${paymentId})`);
+    return { success: true, simulated: true };
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject: `Payment Receipt & Subscription Confirmed: ${planName} for ${centreName} (${invoiceNo})`,
+      html: htmlContent,
+      text: `Hello ${coachName},\n\nYour subscription to ${planName} for ${centreName} is confirmed!\nReceipt No: ${invoiceNo}\nPayment Ref: ${paymentId}\nAmount Paid: ₹${totalAmount}\nValid Until: ${expiryFormatted}\n\nAccess your dashboard: ${dashboardUrl}`,
+    });
+    console.log(`[KnowUrCoach Mail Service] ✅ Coach plan receipt email delivered to ${to}. Message ID: ${info.messageId}`);
+    return { success: true, simulated: false, messageId: info.messageId };
+  } catch (error: any) {
+    console.error(`[KnowUrCoach Mail Service] ❌ Failed to send coach plan receipt email:`, error?.message || error);
+    return { success: false, error: error?.message || 'Failed to deliver coach plan receipt email' };
+  }
+}
+
+

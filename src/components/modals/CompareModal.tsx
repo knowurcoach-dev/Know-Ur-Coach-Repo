@@ -45,9 +45,17 @@ export function CompareModal() {
   }, [isModalOpen, modalData]);
 
   const handleBook = (acadId: string, acadName: string) => {
+    const matched = centres.find((c: any) => c.id === acadId);
     closeModal();
     setTimeout(() => {
-      openModal('trial-booking', { acadId, acadName });
+      openModal('trial-booking', {
+        acadId,
+        acadName,
+        academy: matched,
+        batches: matched?.batches || [],
+        locality: matched?.localityName || matched?.locality,
+        category: matched?.category,
+      });
     }, 150);
   };
 

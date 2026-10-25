@@ -7,7 +7,7 @@ import { DialogWrapper } from './DialogWrapper';
 import { useModalStore } from '@/hooks/useModalStore';
 import { usePersona } from '@/context/PersonaContext';
 import { useAuth } from '@/hooks/useAuth';
-import { bookTrialSession, getParentDashboardData, addChildProfile } from '@/lib/actions';
+import { bookTrialSession, getParentDashboardData, addChildProfile, getBatchesForCentre } from '@/lib/actions';
 import { downloadBookingSlip } from '@/lib/downloadBookingSlip';
 import {
   Ticket,
@@ -25,13 +25,34 @@ import {
   LockKey,
 } from '@phosphor-icons/react';
 
+function getUpcomingTrialDates(): Array<{ label: string; value: string }> {
+  const dates: Array<{ label: string; value: string }> = [];
+  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const dayName = daysOfWeek[d.getDay()];
+    const dateNum = d.getDate();
+    const monthName = months[d.getMonth()];
+    const prefix = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayName;
+    const label = `${prefix}, ${dateNum} ${monthName} (${dayName})`;
+    const value = `${prefix}, ${dateNum} ${monthName} (${dayName})`;
+    dates.push({ label, value });
+  }
+  return dates;
+}
+
 export function TrialBookingModal() {
   const { isOpen, activeModal, modalData, closeModal } = useModalStore();
   const { showToast } = usePersona();
   const { session, user, isGuest } = useAuth();
   const router = useRouter();
 
-  const batches = modalData?.batches || modalData?.academy?.batches || [];
+  const passedBatches = modalData?.batches || modalData?.academy?.batches || [];
+  const [batchesList, setBatchesList] = useState<any[]>(passedBatches);
+  const [loadingBatches, setLoadingBatches] = useState(false);
   const [selectedBatchId, setSelectedBatchId] = useState<string>('');
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [childrenList, setChildrenList] = useState<any[]>([]);
@@ -57,18 +78,48 @@ export function TrialBookingModal() {
   const acadCategory = modalData?.category || modalData?.academy?.category || 'Sports & Extracurricular';
 
   const userEmail = session?.user?.email || (user as any)?.email;
+  const upcomingDates = getUpcomingTrialDates();
 
-  // Initialize selected batch when modal opens
+  // Initialize selected batch & load batches dynamically if missing
   useEffect(() => {
-    if (isModalOpen) {
-      const initBatchId = modalData?.selectedBatchId || modalData?.selectedBatch?.id || (batches[0]?.id || '');
+    if (!isModalOpen) return;
+
+    const directBatches = modalData?.batches || modalData?.academy?.batches || [];
+    if (directBatches.length > 0) {
+      setBatchesList(directBatches);
+      const initBatchId = modalData?.selectedBatchId || modalData?.selectedBatch?.id || directBatches[0]?.id || '';
       setSelectedBatchId(initBatchId);
-      const matched = batches.find((b: any) => b.id === initBatchId);
-      if (matched?.pureSchedule || matched?.schedule || matched?.time) {
-        setSelectedSlot(matched.pureSchedule || matched.schedule || matched.time);
+      const matched = directBatches.find((b: any) => b.id === initBatchId) || directBatches[0];
+      setSelectedSlot(matched?.pureSchedule || matched?.schedule || matched?.time || '');
+    } else {
+      const centreId = modalData?.acadId || modalData?.academy?.id;
+      if (centreId) {
+        setLoadingBatches(true);
+        getBatchesForCentre(centreId)
+          .then((fetched) => {
+            setBatchesList(fetched || []);
+            if (fetched && fetched.length > 0) {
+              const initBatchId = modalData?.selectedBatchId || fetched[0].id;
+              setSelectedBatchId(initBatchId);
+              const matched = fetched.find((b: any) => b.id === initBatchId) || fetched[0];
+              setSelectedSlot(matched?.pureSchedule || matched?.schedule || matched?.time || '');
+            }
+          })
+          .finally(() => {
+            setLoadingBatches(false);
+          });
+      } else {
+        setBatchesList([]);
       }
     }
-  }, [isModalOpen, modalData, batches]);
+  }, [isModalOpen, modalData]);
+
+  // Preselect tomorrow as default trial date
+  useEffect(() => {
+    if (isModalOpen && !selectedDate && upcomingDates.length > 0) {
+      setSelectedDate(upcomingDates[1]?.value || upcomingDates[0]?.value || '');
+    }
+  }, [isModalOpen, selectedDate, upcomingDates]);
 
   // Load children profiles when modal opens
   useEffect(() => {
@@ -179,7 +230,7 @@ export function TrialBookingModal() {
 
     setSubmitting(true);
     try {
-      const selectedBatch = batches.find((b: any) => b.id === selectedBatchId) || batches[0];
+      const selectedBatch = batchesList.find((b: any) => b.id === selectedBatchId) || batchesList[0];
       const res = await bookTrialSession({
         centreId: modalData?.acadId || modalData?.academy?.id || 'acad-default',
         centreName: acadName,
@@ -188,9 +239,10 @@ export function TrialBookingModal() {
         childNames: selectedChildNames,
         childName: selectedChildNames.join(', '),
         date: selectedDate,
-        timeSlot: selectedSlot || selectedBatch?.pureSchedule || selectedBatch?.schedule || 'Evening Slot',
-        parentEmail: userEmail || undefined,
-        parentName: session?.user?.name || undefined,
+        timeSlot: selectedSlot || selectedBatch?.pureSchedule || selectedBatch?.schedule || selectedBatch?.time || 'Scheduled Timing',
+        parentEmail: userEmail || session?.user?.email || undefined,
+        parentName: session?.user?.name || (user as any)?.name || undefined,
+        parentPhone: (session?.user as any)?.phone || (user as any)?.phone || undefined,
       });
 
       if (!res.success) {
@@ -261,6 +313,28 @@ export function TrialBookingModal() {
             </button>
           </div>
         </div>
+      ) : loadingBatches ? (
+        <div className="p-8 text-center space-y-3">
+          <CircleNotch size={32} className="animate-spin mx-auto text-blue-600" />
+          <p className="text-xs text-slate-500 font-medium">Checking available coaching batches...</p>
+        </div>
+      ) : batchesList.length === 0 ? (
+        <div className="p-8 text-center space-y-3">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+            <Clock size={28} weight="bold" />
+          </div>
+          <h3 className="text-sm font-extrabold text-slate-900">Batches Not Configured Yet</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+            This academy has not configured open coaching batches yet. Please contact the coach directly or check back soon.
+          </p>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="px-5 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
       ) : step === 'form' ? (
         /* Step 1: Trial Booking Form */
         <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
@@ -278,30 +352,29 @@ export function TrialBookingModal() {
           </div>
 
           {/* Coaching Batch Selection */}
-          {batches.length > 0 && (
-            <div className="space-y-1">
-              <label className="block text-[11px] font-extrabold text-gray-700 uppercase tracking-wide">
-                Select Coaching Batch &amp; Timing *
-              </label>
-              <select
-                value={selectedBatchId}
-                onChange={(e) => {
-                  setSelectedBatchId(e.target.value);
-                  const matched = batches.find((b: any) => b.id === e.target.value);
-                  if (matched?.pureSchedule || matched?.schedule || matched?.time) {
-                    setSelectedSlot(matched.pureSchedule || matched.schedule || matched.time);
-                  }
-                }}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:border-blue-500 cursor-pointer"
-              >
-                {batches.map((b: any) => (
-                  <option key={b.id || b.name} value={b.id}>
-                    {b.name} ({b.pureSchedule || b.schedule || b.time}) {b.ageGroup ? `• Age ${b.ageGroup}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="space-y-1">
+            <label className="block text-[11px] font-extrabold text-gray-700 uppercase tracking-wide">
+              Select Coaching Batch &amp; Timing *
+            </label>
+            <select
+              value={selectedBatchId}
+              onChange={(e) => {
+                const bId = e.target.value;
+                setSelectedBatchId(bId);
+                const matched = batchesList.find((b: any) => b.id === bId);
+                if (matched?.pureSchedule || matched?.schedule || matched?.time) {
+                  setSelectedSlot(matched.pureSchedule || matched.schedule || matched.time);
+                }
+              }}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:border-blue-500 cursor-pointer"
+            >
+              {batchesList.map((b: any) => (
+                <option key={b.id || b.name} value={b.id}>
+                  {b.name} ({b.pureSchedule || b.schedule || b.time}) {b.ageGroup ? `• Age ${b.ageGroup}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Child Details: Selection Dropdown & Multi-Select with Quick Add */}
           <div className="space-y-2">
@@ -430,7 +503,7 @@ export function TrialBookingModal() {
           </div>
 
           {/* Date & Slot Selection */}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
               <label className="block text-[11px] font-extrabold text-gray-700 uppercase tracking-wide mb-1">
                 Preferred Date *
@@ -444,41 +517,27 @@ export function TrialBookingModal() {
                   required
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className={`w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-xs font-bold focus:outline-none focus:border-blue-500 cursor-pointer ${
-                    !selectedDate ? 'text-gray-400 font-normal' : 'text-gray-800'
-                  }`}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-xs font-bold focus:outline-none focus:border-blue-500 cursor-pointer text-gray-800"
                 >
                   <option value="" disabled>Select date</option>
-                  <option value="Tomorrow (Saturday)">Tomorrow (Saturday)</option>
-                  <option value="Sunday">Sunday</option>
-                  <option value="Monday">Monday</option>
-                  <option value="Wednesday">Wednesday</option>
+                  {upcomingDates.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
             <div>
               <label className="block text-[11px] font-extrabold text-gray-700 uppercase tracking-wide mb-1">
-                Available Slot *
+                Batch Timing &amp; Slot
               </label>
-              <div className="relative">
-                <Clock
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                />
-                <select
-                  required
-                  value={selectedSlot}
-                  onChange={(e) => setSelectedSlot(e.target.value)}
-                  className={`w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-xs font-bold focus:outline-none focus:border-blue-500 cursor-pointer ${
-                    !selectedSlot ? 'text-gray-400 font-normal' : 'text-gray-800'
-                  }`}
-                >
-                  <option value="" disabled>Select slot</option>
-                  <option value="Evening 4:00 - 5:00 PM">Evening 4:00 - 5:00 PM</option>
-                  <option value="Evening 5:30 - 6:30 PM">Evening 5:30 - 6:30 PM</option>
-                  <option value="Morning 7:00 - 8:00 AM">Morning 7:00 - 8:00 AM</option>
-                </select>
+              <div className="w-full bg-blue-50/70 border border-blue-200 rounded-xl px-3 py-2.5 text-xs font-bold text-blue-900 flex items-center gap-2">
+                <Clock size={15} className="text-blue-600 shrink-0" />
+                <span className="truncate">
+                  {selectedSlot || batchesList.find((b: any) => b.id === selectedBatchId)?.schedule || batchesList[0]?.schedule || 'Scheduled Batch Timing'}
+                </span>
               </div>
             </div>
           </div>
@@ -560,7 +619,7 @@ export function TrialBookingModal() {
               <div>
                 <div className="text-white/70 font-medium">Batch &amp; Schedule</div>
                 <div className="font-bold text-white text-[11px] truncate">
-                  {batches.find((b: any) => b.id === selectedBatchId)?.name || 'Batch'} • {selectedDate || 'Upcoming'}
+                  {batchesList.find((b: any) => b.id === selectedBatchId)?.name || 'Coaching Batch'} • {selectedDate || 'Upcoming'}
                 </div>
               </div>
               <div>
@@ -583,7 +642,7 @@ export function TrialBookingModal() {
               <button
                 type="button"
                 onClick={() => {
-                  const refNo = bookingId.startsWith('REF-') ? bookingId : bookingId.replace('KUC-PASS-', 'REF-');
+                  const refNo = bookingId;
                   navigator.clipboard.writeText(refNo);
                   showToast(`📋 Copied reference ${refNo}!`);
                 }}
@@ -599,8 +658,8 @@ export function TrialBookingModal() {
             <button
               type="button"
               onClick={() => {
-                const refNo = bookingId.startsWith('REF-') ? bookingId : bookingId.replace('KUC-PASS-', 'REF-');
-                const selectedBatch = batches.find((b: any) => b.id === selectedBatchId) || batches[0];
+                const refNo = bookingId;
+                const selectedBatch = batchesList.find((b: any) => b.id === selectedBatchId) || batchesList[0];
                 downloadBookingSlip({
                   bookingId: refNo,
                   referenceNo: refNo,
@@ -609,18 +668,17 @@ export function TrialBookingModal() {
                   studentName: selectedChildNames.join(', '),
                   parentName: session?.user?.name || 'Parent',
                   parentPhone: session?.user?.email || '',
-                  schedule: `${selectedDate || 'Upcoming'} • ${selectedSlot || selectedBatch?.schedule || 'Evening Slot'}`,
-                  courtOrVenue: selectedBatch?.name || 'Academy Ground',
-                  feeInfo: '₹0 (Free Trial Session)',
-                  paymentStatus: 'Direct Academy Settlement',
+                  schedule: `${selectedDate || 'Upcoming'} • ${selectedSlot || selectedBatch?.pureSchedule || selectedBatch?.schedule || selectedBatch?.time || 'Scheduled Timing'}`,
+                  courtOrVenue: selectedBatch?.name || 'Complimentary Trial Batch',
+                  paymentStatus: 'CONFIRMED FREE TRIAL',
                   dateBooked: new Date().toLocaleDateString('en-IN'),
                 });
-                showToast('📄 Opening printable booking slip...');
+                showToast('📄 Opening official Free Trial Pass (PDF)...');
               }}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 rounded-xl transition-all text-center text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
             >
               <DownloadSimple size={15} weight="bold" />
-              <span>Download Trial Confirmation Slip (PDF)</span>
+              <span>Download Free Trial Pass (PDF)</span>
             </button>
 
             <div className="flex gap-2">

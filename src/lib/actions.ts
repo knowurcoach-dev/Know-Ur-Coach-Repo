@@ -22,7 +22,7 @@ import { PlatformCategory, getCategoryDisplayName } from "@/lib/categories";
 import { DEFAULT_HERO_SLIDES, HeroSlideData } from "@/lib/hero-slides";
 import { DEFAULT_HERO_CAROUSEL_THEME, HeroCarouselTheme } from "@/lib/hero-theme";
 import { readHeroCarouselTheme, writeHeroCarouselTheme } from "@/lib/hero-theme-server";
-import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail, sendCoachTrialWelcomeEmail } from "@/lib/mail";
+import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail, sendCoachTrialWelcomeEmail, sendCoachPlanInvoiceEmail } from "@/lib/mail";
 import { calculateCyclePrice, BillingCycle, BILLING_CYCLES, getCentreSubscriptionStatus } from "@/lib/subscription";
 import { buildStatusNotesWithDocs, parseDocsPayload, updateDocStatusInStatusNotes } from "@/lib/coach-docs";
 import { formatBatchItem, serializeBatchSchedule } from "@/lib/batch-helpers";
@@ -322,34 +322,59 @@ export interface TrialBookingResult {
 }
 
 // Helper to resolve parent profile
-async function resolveParentProfile(parentEmail?: string, parentName?: string, parentPhone?: string) {
-  const cleanEmail = parentEmail?.trim().toLowerCase();
+async function resolveParentProfile(
+  parentEmail?: string,
+  parentName?: string,
+  parentPhone?: string,
+  userId?: string
+) {
+  // 1. Check active server session if available
+  const session = await getServerSession(authOptions).catch(() => null);
+  const sessionUser = session?.user as any;
 
-  // Strictly return null if no email is provided (prevent unauthenticated guests from resolving default parents)
-  if (!cleanEmail) {
+  const cleanEmail = parentEmail?.trim().toLowerCase() || (sessionUser?.email ? sessionUser.email.trim().toLowerCase() : undefined);
+  const cleanPhone = parentPhone?.trim() || sessionUser?.phone?.trim();
+  const cleanUserId = userId?.trim() || sessionUser?.id || sessionUser?.userId;
+  const cleanName = parentName?.trim() || sessionUser?.name?.trim();
+
+  // If no identifier is provided at all, cannot resolve
+  if (!cleanEmail && !cleanPhone && !cleanUserId) {
     return null;
   }
 
+  // 2. Build multi-field search conditions to find existing user
+  const orConditions: any[] = [];
+  if (cleanUserId) {
+    orConditions.push({ id: cleanUserId });
+  }
+  if (cleanEmail) {
+    orConditions.push({ email: { equals: cleanEmail, mode: 'insensitive' } });
+    orConditions.push({ phone: cleanEmail });
+    orConditions.push({ id: cleanEmail });
+  }
+  if (cleanPhone) {
+    orConditions.push({ phone: cleanPhone });
+    orConditions.push({ email: cleanPhone });
+  }
+  if (sessionUser?.id && sessionUser.id !== cleanUserId) {
+    orConditions.push({ id: sessionUser.id });
+  }
+
   let user = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: { equals: cleanEmail, mode: 'insensitive' } },
-        { phone: cleanEmail },
-        { id: cleanEmail },
-      ],
-    },
+    where: { OR: orConditions },
     include: { parentProfile: { include: { children: true } } },
   });
 
+  // 3. If user exists:
   if (user) {
     if (user.parentProfile) {
       return user.parentProfile;
     }
-    // If user exists without parentProfile (e.g. Admin or Coach exploring parent features), create one for this user
+    // If user exists without parentProfile (e.g. coach/admin or user created without profile), provision one
     const newParent = await prisma.parentProfile.create({
       data: {
         userId: user.id,
-        fullName: (user as any).name || parentName || 'Verified Parent Member',
+        fullName: cleanName || (user as any).name || 'Verified Parent Member',
         locality: 'Kamla Nagar',
         city: 'Agra',
       },
@@ -358,17 +383,77 @@ async function resolveParentProfile(parentEmail?: string, parentName?: string, p
     return newParent;
   }
 
-  // If user does not exist but parentName is explicitly provided during a flow
-  if (parentName) {
+  // 4. If user does NOT exist, provision a new User + ParentProfile
+  // Check if cleanPhone is already registered to another user in DB
+  let assignedPhone = cleanPhone;
+  if (assignedPhone) {
+    const existingByPhone = await prisma.user.findUnique({
+      where: { phone: assignedPhone },
+      include: { parentProfile: { include: { children: true } } },
+    });
+    if (existingByPhone) {
+      if (existingByPhone.parentProfile) {
+        return existingByPhone.parentProfile;
+      }
+      return await prisma.parentProfile.create({
+        data: {
+          userId: existingByPhone.id,
+          fullName: cleanName || 'Verified Parent Member',
+          locality: 'Kamla Nagar',
+          city: 'Agra',
+        },
+        include: { children: true },
+      });
+    }
+  } else {
+    // Generate a unique 10-digit mobile number starting with 9
+    let attempts = 0;
+    while (attempts < 10) {
+      const candidate = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
+      const phoneExists = await prisma.user.findUnique({ where: { phone: candidate } });
+      if (!phoneExists) {
+        assignedPhone = candidate;
+        break;
+      }
+      attempts++;
+    }
+    if (!assignedPhone) {
+      assignedPhone = `9${Date.now().toString().slice(-9)}`;
+    }
+  }
+
+  // Check if cleanEmail is already taken by another user
+  if (cleanEmail) {
+    const existingByEmail = await prisma.user.findFirst({
+      where: { email: { equals: cleanEmail, mode: 'insensitive' } },
+      include: { parentProfile: { include: { children: true } } },
+    });
+    if (existingByEmail) {
+      if (existingByEmail.parentProfile) {
+        return existingByEmail.parentProfile;
+      }
+      return await prisma.parentProfile.create({
+        data: {
+          userId: existingByEmail.id,
+          fullName: cleanName || 'Verified Parent Member',
+          locality: 'Kamla Nagar',
+          city: 'Agra',
+        },
+        include: { children: true },
+      });
+    }
+  }
+
+  try {
     const newUser = await prisma.user.create({
       data: {
-        id: `usr-parent-${Date.now()}`,
-        email: cleanEmail,
-        phone: parentPhone || '+91 98370 11222',
+        id: `usr-parent-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+        email: cleanEmail || null,
+        phone: assignedPhone,
         role: Role.PARENT,
         parentProfile: {
           create: {
-            fullName: parentName,
+            fullName: cleanName || 'Verified Parent Member',
             locality: 'Kamla Nagar',
             city: 'Agra',
           },
@@ -377,9 +462,34 @@ async function resolveParentProfile(parentEmail?: string, parentName?: string, p
       include: { parentProfile: { include: { children: true } } },
     });
     return newUser.parentProfile;
+  } catch (createErr: any) {
+    if (createErr?.code === 'P2002') {
+      const fallbackUser: any = await prisma.user.findFirst({
+        where: {
+          OR: [
+            ...(cleanEmail ? [{ email: cleanEmail }] : []),
+            ...(assignedPhone ? [{ phone: assignedPhone }] : []),
+          ],
+        },
+        include: { parentProfile: { include: { children: true } } },
+      });
+      if (fallbackUser) {
+        if (fallbackUser.parentProfile) {
+          return fallbackUser.parentProfile;
+        }
+        return await prisma.parentProfile.create({
+          data: {
+            userId: fallbackUser.id,
+            fullName: cleanName || 'Verified Parent Member',
+            locality: 'Kamla Nagar',
+            city: 'Agra',
+          },
+          include: { children: true },
+        });
+      }
+    }
+    throw createErr;
   }
-
-  return null;
 }
 
 // Helper to resolve centre
@@ -450,6 +560,35 @@ async function resolveChildren(parent: any, childNames?: string[], childIds?: st
   return children;
 }
 
+export async function getBatchesForCentre(centreId: string) {
+  try {
+    if (!centreId) return [];
+    const batches = await prisma.batch.findMany({
+      where: {
+        coachingCentreId: centreId,
+        isAdmissionsOpen: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+    return batches.map((b) => ({
+      id: b.id,
+      name: b.name,
+      schedule: b.schedule,
+      pureSchedule: b.schedule,
+      time: b.schedule,
+      ageGroup: b.ageGroup,
+      totalSeats: b.totalSeats,
+      seatsFilled: b.seatsFilled,
+      monthlyFee: Number(b.monthlyFee),
+      isAdmissionsOpen: b.isAdmissionsOpen,
+      batchType: b.batchType,
+    }));
+  } catch (err) {
+    console.warn('Could not load batches for centre:', err);
+    return [];
+  }
+}
+
 export async function bookTrialSession(data: {
   centreId: string;
   centreName: string;
@@ -465,6 +604,23 @@ export async function bookTrialSession(data: {
   parentEmail?: string;
   parentName?: string;
 }): Promise<TrialBookingResult> {
+  // Populate from active NextAuth session if missing from modal payload
+  const session = await getServerSession(authOptions).catch(() => null);
+  const sessionUser = session?.user as any;
+  if (!data.parentEmail || !data.parentEmail.trim()) {
+    if (sessionUser?.email) {
+      data.parentEmail = sessionUser.email;
+    } else if (sessionUser?.phone) {
+      data.parentEmail = sessionUser.phone;
+    }
+  }
+  if (!data.parentPhone && sessionUser?.phone) {
+    data.parentPhone = sessionUser.phone;
+  }
+  if (!data.parentName && sessionUser?.name) {
+    data.parentName = sessionUser.name;
+  }
+
   // Enforce authentication: Guest users must not be allowed to book trials without account
   if (!data.parentEmail || !data.parentEmail.trim()) {
     return {
@@ -486,7 +642,7 @@ export async function bookTrialSession(data: {
   const qrCode = `KUC-PASS-${primaryBookingId}`;
 
   try {
-    const parent = await resolveParentProfile(data.parentEmail, data.parentName, data.parentPhone);
+    const parent = await resolveParentProfile(data.parentEmail, data.parentName, data.parentPhone, sessionUser?.id);
     if (!parent) {
       throw new Error('Parent profile could not be resolved. Please log in again.');
     }
@@ -679,6 +835,23 @@ export async function enrollMonthlyBatch(data: {
   parentEmail?: string;
   parentName?: string;
 }): Promise<{ success: boolean; bookingId: string; passId: string; message: string; isExisting?: boolean }> {
+  // Populate from active NextAuth session if missing from payload
+  const session = await getServerSession(authOptions).catch(() => null);
+  const sessionUser = session?.user as any;
+  if (!data.parentEmail || !data.parentEmail.trim()) {
+    if (sessionUser?.email) {
+      data.parentEmail = sessionUser.email;
+    } else if (sessionUser?.phone) {
+      data.parentEmail = sessionUser.phone;
+    }
+  }
+  if (!data.parentPhone && sessionUser?.phone) {
+    data.parentPhone = sessionUser.phone;
+  }
+  if (!data.parentName && sessionUser?.name) {
+    data.parentName = sessionUser.name;
+  }
+
   // Enforce authentication: Guest users must not be allowed to enroll without account
   if (!data.parentEmail || !data.parentEmail.trim()) {
     return {
@@ -692,7 +865,7 @@ export async function enrollMonthlyBatch(data: {
   const primaryPassId = `KUC-BAT-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 
   try {
-    const parent = await resolveParentProfile(data.parentEmail, data.parentName, data.parentPhone);
+    const parent = await resolveParentProfile(data.parentEmail, data.parentName, data.parentPhone, sessionUser?.id);
     if (!parent) {
       throw new Error('Parent profile could not be resolved. Please log in again.');
     }
@@ -849,6 +1022,22 @@ export async function enrollMonthlyBatch(data: {
       msg += `. Note: ${alreadyEnrolledChildren.map(x => `${x.child.fullName} already enrolled with pass ${x.passId}`).join(', ')}.`;
     }
 
+    const targetEmail = data.parentEmail || (parent ? (await prisma.user.findUnique({ where: { id: parent.userId } }))?.email : null);
+    if (targetEmail && newlyEnrolledChildren.length > 0) {
+      const childNamesList = newlyEnrolledChildren.map(c => c.child.fullName).join(', ');
+      sendBookingConfirmationEmail({
+        to: targetEmail,
+        parentName: data.parentName || parent?.fullName || 'Parent',
+        childName: childNamesList,
+        centreName: data.centreName || centre?.name || 'Sports Academy',
+        passId: effectivePassId,
+        date: selectedBatch?.schedule || 'Weekly Schedule',
+        timeSlot: selectedBatch?.name ? `${selectedBatch.name} (${selectedBatch.schedule || ''})` : 'Scheduled Batch Timings',
+        address: centre?.address || undefined,
+        phone: centre?.phone || undefined,
+      }).catch((err) => console.warn('Non-blocking monthly batch email warning:', err));
+    }
+
     return {
       success: true,
       isExisting: false,
@@ -880,6 +1069,23 @@ export async function registerTournamentEntry(data: {
   paymentId?: string;
   netAmountPaid?: number;
 }): Promise<{ success: boolean; bookingId: string; passId: string; message: string }> {
+  // Populate from active NextAuth session if missing from payload
+  const session = await getServerSession(authOptions).catch(() => null);
+  const sessionUser = session?.user as any;
+  if (!data.parentEmail || !data.parentEmail.trim()) {
+    if (sessionUser?.email) {
+      data.parentEmail = sessionUser.email;
+    } else if (sessionUser?.phone) {
+      data.parentEmail = sessionUser.phone;
+    }
+  }
+  if (!data.parentPhone && sessionUser?.phone) {
+    data.parentPhone = sessionUser.phone;
+  }
+  if (!data.parentName && sessionUser?.name) {
+    data.parentName = sessionUser.name;
+  }
+
   // 1. Enforce authentication: Guest users must not be allowed to register
   if (!data.parentEmail || !data.parentEmail.trim()) {
     return {
@@ -893,7 +1099,7 @@ export async function registerTournamentEntry(data: {
   const primaryPassId = `KUC-TRN-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 
   try {
-    const parent = await resolveParentProfile(data.parentEmail, data.parentName, data.parentPhone);
+    const parent = await resolveParentProfile(data.parentEmail, data.parentName, data.parentPhone, sessionUser?.id);
     if (!parent) {
       return {
         success: false,
@@ -2523,6 +2729,8 @@ export async function registerCoachAcademy(data: {
   password?: string;
   plan?: string;
   otp?: string;
+  coachType?: CoachType | string;
+  isInstitute?: boolean;
   docs?: {
     govIdDocName?: string;
     govIdNumber?: string;
@@ -2793,7 +3001,7 @@ export async function registerCoachAcademy(data: {
           nisCertified: Boolean(data.safetyChecklist?.nisCertified),
           policeVerifiedStaff: Boolean(data.safetyChecklist?.policeVerifiedStaff),
           firstAidAvailable: Boolean(data.safetyChecklist?.firstAidAvailable),
-          coachType: CoachType.INSTITUTE,
+          coachType: data.coachType ? (data.coachType === 'INDIVIDUAL' ? CoachType.INDIVIDUAL : CoachType.INSTITUTE) : (data.isInstitute ? CoachType.INSTITUTE : CoachType.INDIVIDUAL),
           planTier,
           planPurchasedAt: now,
           planExpiresAt,
@@ -3637,10 +3845,22 @@ export async function addChildProfile(
   child: { fullName: string; age: number | string; grade?: string; interests?: string[] }
 ) {
   try {
-    const { parent, isAdmin } = await requireParentSession();
-    const effectiveParent = isAdmin && userEmailOrId
-      ? (await resolveParentProfile(userEmailOrId)) || parent
-      : parent;
+    let effectiveParent: any = null;
+    try {
+      const { parent, isAdmin } = await requireParentSession();
+      effectiveParent = isAdmin && userEmailOrId
+        ? (await resolveParentProfile(userEmailOrId)) || parent
+        : parent;
+    } catch {
+      // Session or parent profile was not present; attempt resolution by email/ID
+      if (userEmailOrId) {
+        effectiveParent = await resolveParentProfile(userEmailOrId);
+      }
+    }
+
+    if (!effectiveParent && userEmailOrId) {
+      effectiveParent = await resolveParentProfile(userEmailOrId);
+    }
 
     if (!effectiveParent) {
       return { success: false, message: 'Parent profile not found.' };
@@ -4353,10 +4573,17 @@ export async function getCoachRevenueData(coachEmailOrId: string) {
     let totalCapacity = 0;
 
     const batchesSummary = batches.map((batch: any) => {
+      const monthlyBatchBookings = Array.isArray(batch.bookings)
+        ? batch.bookings.filter((b: any) => b.passType === 'MONTHLY_BATCH')
+        : [];
+      const trialBookings = Array.isArray(batch.bookings)
+        ? batch.bookings.filter((b: any) => b.passType === 'FREE_TRIAL')
+        : [];
       const enrolledCount = Math.max(
         Number(batch.seatsFilled) || 0,
-        Array.isArray(batch.bookings) ? batch.bookings.length : 0
+        monthlyBatchBookings.length
       );
+      const trialCount = trialBookings.length;
       const capacity = Number(batch.totalSeats) || 15;
       const fee = Number(batch.monthlyFee) || Number(centre.monthlyTuitionFee) || 1800;
       const batchMonthlyRevenue = enrolledCount * fee;
@@ -4372,6 +4599,7 @@ export async function getCoachRevenueData(coachEmailOrId: string) {
         schedule: batch.schedule,
         ageGroup: batch.ageGroup,
         enrolledCount,
+        trialCount,
         capacity,
         monthlyFee: fee,
         estimatedRevenue: batchMonthlyRevenue,
@@ -4384,17 +4612,19 @@ export async function getCoachRevenueData(coachEmailOrId: string) {
     const capacityUtilizationPct = totalCapacity > 0 ? Math.round((totalEnrolledStudents / totalCapacity) * 100) : 0;
     const annualProjectedRevenue = totalMonthlyEstimatedRevenue * 12;
 
-    const recentAdmissions = allBookings.map((bk: any) => ({
-      id: bk.id,
-      passId: bk.passId,
-      passType: bk.passType,
-      studentName: bk.child?.fullName || 'Student',
-      parentName: bk.parent?.fullName || 'Parent',
-      batchName: bk.batch?.name || 'General Batch',
-      batchSchedule: bk.batch?.schedule || '',
-      monthlyFee: Number(bk.batch?.monthlyFee) || Number(bk.grossAmount) || Number(centre.monthlyTuitionFee) || 1800,
-      enrolledAt: bk.createdAt,
-    }));
+    const recentAdmissions = allBookings
+      .filter((bk: any) => bk.passType === 'MONTHLY_BATCH')
+      .map((bk: any) => ({
+        id: bk.id,
+        passId: bk.passId,
+        passType: bk.passType,
+        studentName: bk.child?.fullName || 'Student',
+        parentName: bk.parent?.fullName || 'Parent',
+        batchName: bk.batch?.name || 'General Batch',
+        batchSchedule: bk.batch?.schedule || '',
+        monthlyFee: Number(bk.batch?.monthlyFee) || Number(bk.grossAmount) || Number(centre.monthlyTuitionFee) || 1800,
+        enrolledAt: bk.createdAt,
+      }));
 
     return {
       success: true,
@@ -4684,6 +4914,30 @@ export async function updateCoachSubscriptionPlan(
         trialDurationDays: config?.freeTierDurationDays || 90,
         expiresAt,
       }).catch((err) => console.warn('Non-blocking trial email error in updateCoachSubscriptionPlan:', err));
+    }
+
+    // Automatically send Payment Receipt & Subscription confirmation email to the coach
+    const targetCoachEmail = centre.owner?.email || userEmail;
+    if (targetCoachEmail) {
+      const cycleKey = (effectiveBillingCycle in BILLING_CYCLES ? effectiveBillingCycle : 'monthly') as keyof typeof BILLING_CYCLES;
+      const cycleConfig = BILLING_CYCLES[cycleKey] || BILLING_CYCLES.monthly;
+      const baseMonthlyPrice = planTier === SubscriptionPlan.PREMIUM
+        ? (Number(config?.premiumPlanPrice) || 3999)
+        : (Number(config?.standardPlanPrice) || 1499);
+      const computedCyclePricing = calculateCyclePrice(baseMonthlyPrice, cycleKey);
+      const amountPaid = planTier === SubscriptionPlan.FREE ? 0 : computedCyclePricing.total;
+
+      sendCoachPlanInvoiceEmail({
+        to: targetCoachEmail,
+        coachName: centre.headCoachName || centre.name,
+        centreName: centre.name,
+        planName,
+        planTier,
+        billingCycle: effectiveBillingCycle,
+        amount: amountPaid,
+        paymentId: finalPaymentId,
+        expiresAt,
+      }).catch((err) => console.warn('Non-blocking invoice email error in updateCoachSubscriptionPlan:', err));
     }
 
     await logAdminAction({
