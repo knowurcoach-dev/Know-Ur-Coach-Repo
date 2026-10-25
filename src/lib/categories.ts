@@ -736,24 +736,36 @@ export function extractCleanLocality(
   rawAddress?: string | null
 ): { slug: string; name: string } | null {
   if (!rawLocality && !rawAddress) return null;
-  // Normalize hyphens and underscores to spaces so patterns like /kamla\s*nagar/ match "kamla-nagar"
-  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase().replace(/[-_]/g, ' ');
 
+  // 1. Check known aliases / landmark regexes (e.g., to detect locality buried inside raw address strings)
+  const combined = `${rawLocality || ''} ${rawAddress || ''}`.toLowerCase().replace(/[-_]/g, ' ');
   for (const known of KNOWN_LOCALITIES) {
     if (known.pattern.test(combined)) {
       return { slug: known.slug, name: known.name };
     }
   }
 
-  if (!rawLocality) return null;
-  const clean = rawLocality.trim().replace(/^[-_]+|[-_]+$/g, '');
-  if (!clean || clean.length < 2) return null;
+  // 2. Dynamic Fallback for ANY new locality across India (no hardcoding needed)
+  if (rawLocality && rawLocality.trim()) {
+    const clean = rawLocality.trim().replace(/^[-_]+|[-_]+$/g, '');
+    if (clean.length >= 2) {
+      // If multi-part (e.g. "Shop 4, Indiranagar"), take the neighborhood part without breaking hyphenated words
+      const commaParts = clean.split(/[,/]/).map((p) => p.trim()).filter(Boolean);
+      const targetStr = commaParts.length > 1 ? commaParts[commaParts.length - 1] : clean;
 
-  const parts = clean.split(/[-_,/]/).map((p) => p.trim()).filter(Boolean);
-  const bestPart = parts[parts.length - 1] || clean;
-  const slug = bestPart.toLowerCase().replace(/\s+/g, '-');
-  const name = bestPart.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  return { slug, name };
+      const slug = targetStr.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const name = targetStr
+        .replace(/[-_]+/g, ' ')
+        .split(' ')
+        .filter(Boolean)
+        .map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+
+      return { slug, name };
+    }
+  }
+
+  return null;
 }
 
 export function extractCleanLocalityName(
