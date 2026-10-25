@@ -114,7 +114,7 @@ export default function ParentPaymentsPage() {
 
                     const batchFee = bk.batch?.monthlyFee
                       ? Number(bk.batch.monthlyFee)
-                      : (paid > 0 ? paid : (Number(bk.centre?.monthlyTuitionFee) || 1800));
+                      : (paid > 0 ? paid : (Number(bk.centre?.monthlyTuitionFee) || 0));
 
                     return (
                       <div

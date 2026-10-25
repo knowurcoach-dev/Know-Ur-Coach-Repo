@@ -442,7 +442,7 @@ export default function AcademyDetailPage() {
           const batchFees = (foundInDb.batches || [])
             .map((b: any) => Number(b.monthlyFee))
             .filter((f: number) => !isNaN(f) && f > 0);
-          const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : (Number(foundInDb.monthlyTuitionFee) || 1800);
+          const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(foundInDb.monthlyTuitionFee || 0);
 
           // Extract venue photos from statusNotes if uploaded during KYC
           const docsPayload = parseDocsPayload(foundInDb);
@@ -554,7 +554,7 @@ export default function AcademyDetailPage() {
               const coachBatchFees = (coachCentre.batches || [])
                 .map((b: any) => Number(b.monthlyFee))
                 .filter((f: number) => !isNaN(f) && f > 0);
-              const coachStartingFee = coachBatchFees.length > 0 ? Math.min(...coachBatchFees) : (Number(coachCentre.monthlyTuitionFee) || 1800);
+              const coachStartingFee = coachBatchFees.length > 0 ? Math.min(...coachBatchFees) : Number(coachCentre.monthlyTuitionFee || 0);
 
               const coachDocsPayload = parseDocsPayload(coachCentre);
               const coachVenuePhotos = (coachDocsPayload?.venuePhotos || [])
@@ -783,7 +783,7 @@ export default function AcademyDetailPage() {
   const batchFees = (academy?.batches || [])
     .map((b) => Number(b.monthlyFee))
     .filter((fee) => !isNaN(fee) && fee > 0);
-  const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : (Number(academy?.fee) || 1800);
+  const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(academy?.fee || 0);
 
   return (
     <div className="w-full bg-slate-50 pb-24 md:pb-16 text-slate-900">
@@ -1050,10 +1050,16 @@ export default function AcademyDetailPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-[10px] font-semibold text-slate-500">Monthly Tuition:</span>
-                  <span className="text-sm font-black text-[#0a1128]">
-                    ₹{minBatchFee.toLocaleString('en-IN')}
-                    <span className="text-[10px] font-normal text-slate-500"> /mo</span>
-                  </span>
+                  {minBatchFee > 0 ? (
+                    <span className="text-sm font-black text-[#0a1128]">
+                      ₹{minBatchFee.toLocaleString('en-IN')}
+                      <span className="text-[10px] font-normal text-slate-500"> /mo</span>
+                    </span>
+                  ) : (
+                    <span className="text-xs font-black text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+                      Fee on Inquiry
+                    </span>
+                  )}
                 </div>
                 <span className="bg-emerald-50 text-emerald-800 text-[9px] font-bold px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1 shadow-2xs">
                   <CheckCircle size={11} weight="fill" className="text-emerald-600" />
@@ -1100,10 +1106,17 @@ export default function AcademyDetailPage() {
           <div className="hidden lg:flex flex-col items-end gap-2 shrink-0">
             <div className="text-right">
               <div className="text-xs text-slate-500 font-bold">Monthly Coaching Tuition</div>
-              <div className="text-2xl font-black text-[#0a1128]">
-                Starts from ₹{minBatchFee.toLocaleString('en-IN')}{' '}
-                <span className="text-xs font-normal text-slate-400">/ month</span>
-              </div>
+              {minBatchFee > 0 ? (
+                <div className="text-2xl font-black text-[#0a1128]">
+                  Starts from ₹{minBatchFee.toLocaleString('en-IN')}{' '}
+                  <span className="text-xs font-normal text-slate-400">/ month</span>
+                </div>
+              ) : (
+                <div className="text-xl font-black text-blue-700">
+                  Fee on Inquiry
+                  <span className="text-xs font-normal text-slate-400 block font-sans">Contact coach for batch fees</span>
+                </div>
+              )}
             </div>
             <button
               onClick={() => handleBookTrial()}
@@ -1617,7 +1630,9 @@ export default function AcademyDetailPage() {
                           {batch.monthlyFee !== undefined && (
                             <div className="text-left md:text-right">
                               <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 block uppercase">Tuition Fee</span>
-                              <span className="font-mono font-extrabold text-xs sm:text-sm text-emerald-700">₹{batch.monthlyFee}/mo</span>
+                              <span className="font-mono font-extrabold text-xs sm:text-sm text-emerald-700">
+                                {Number(batch.monthlyFee) > 0 ? `₹${batch.monthlyFee}/mo` : 'Fee on Inquiry'}
+                              </span>
                             </div>
                           )}
                           <span className="text-[11px] sm:text-xs font-bold text-amber-700 bg-amber-100/80 px-2 sm:px-2.5 py-1 rounded-lg">
@@ -2010,7 +2025,7 @@ export default function AcademyDetailPage() {
                 const batchFees = (academy.batches || [])
                   .map((b) => Number(b.monthlyFee))
                   .filter((fee) => !isNaN(fee) && fee > 0);
-                const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : (Number(academy.fee) || 1800);
+                const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(academy.fee || 0);
                 const displayFee = selectedBatch?.monthlyFee ? Number(selectedBatch.monthlyFee) : minBatchFee;
 
                 return (
@@ -2023,10 +2038,17 @@ export default function AcademyDetailPage() {
                         Direct Coach Rate
                       </span>
                     </div>
-                    <div className="text-3xl font-black text-[#0a1128]">
-                      ₹{displayFee.toLocaleString('en-IN')}{' '}
-                      <span className="text-xs font-normal text-slate-400">/ month</span>
-                    </div>
+                    {displayFee > 0 ? (
+                      <div className="text-3xl font-black text-[#0a1128]">
+                        ₹{displayFee.toLocaleString('en-IN')}{' '}
+                        <span className="text-xs font-normal text-slate-400">/ month</span>
+                      </div>
+                    ) : (
+                      <div className="text-2xl font-black text-blue-700">
+                        Fee on Inquiry
+                        <span className="text-xs font-normal text-slate-400 block font-sans">Contact academy directly for tuition fee</span>
+                      </div>
+                    )}
                     <p className="text-[10px] text-slate-500">
                       Selected slot: <strong>{selectedBatch?.name || 'Standard Batch'}</strong> ({selectedBatch?.time || 'Regular Schedule'})
                     </p>
@@ -2047,7 +2069,7 @@ export default function AcademyDetailPage() {
                   >
                     {academy.batches.map((b, idx) => (
                       <option key={idx} value={idx}>
-                        {b.name} • {b.time} (₹{b.monthlyFee || minBatchFee}/mo)
+                        {b.name} • {b.time} {Number(b.monthlyFee || minBatchFee) > 0 ? `(₹${b.monthlyFee || minBatchFee}/mo)` : '(Fee on Inquiry)'}
                       </option>
                     ))}
                   </select>
@@ -2138,10 +2160,16 @@ export default function AcademyDetailPage() {
       <div className="lg:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-4 py-2.5 flex items-center justify-between gap-3 z-40 shadow-[0_-4px_25px_rgba(0,0,0,0.08)]">
         <div className="min-w-0">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block leading-tight">Monthly Tuition</span>
-          <div className="text-base font-black text-[#0a1128] leading-tight">
-            ₹{minBatchFee.toLocaleString('en-IN')}{' '}
-            <span className="text-[10px] font-normal text-slate-400">/mo</span>
-          </div>
+          {minBatchFee > 0 ? (
+            <div className="text-base font-black text-[#0a1128] leading-tight">
+              ₹{minBatchFee.toLocaleString('en-IN')}{' '}
+              <span className="text-[10px] font-normal text-slate-400">/mo</span>
+            </div>
+          ) : (
+            <div className="text-xs font-black text-blue-700 leading-tight">
+              Fee on Inquiry
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">

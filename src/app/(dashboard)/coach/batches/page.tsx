@@ -41,7 +41,7 @@ export default function CoachBatchesPage() {
   const [schedule, setSchedule] = useState('');
   const [ageGroup, setAgeGroup] = useState('6 - 14 Years');
   const [totalSeats, setTotalSeats] = useState('15');
-  const [monthlyFee, setMonthlyFee] = useState('1800');
+  const [monthlyFee, setMonthlyFee] = useState('');
 
   const userEmail = session?.user?.email || (user as any)?.email;
 
@@ -81,7 +81,7 @@ export default function CoachBatchesPage() {
     setSchedule('Mon, Wed, Fri • 4:00 PM - 5:15 PM');
     setAgeGroup('6 - 14 Years');
     setTotalSeats('15');
-    setMonthlyFee('1800');
+    setMonthlyFee(centreData?.monthlyTuitionFee ? String(Number(centreData.monthlyTuitionFee)) : '');
     setIsModalOpen(true);
   };
 
@@ -275,7 +275,9 @@ export default function CoachBatchesPage() {
                       </div>
                       <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                         <span className="text-slate-400 text-[10px] block font-bold">MONTHLY FEE</span>
-                        <span className="font-extrabold text-slate-800">₹{Number(batch.monthlyFee)}/mo</span>
+                        <span className="font-extrabold text-slate-800">
+                          {Number(batch.monthlyFee) > 0 ? `₹${Number(batch.monthlyFee)}/mo` : 'Fee on Inquiry'}
+                        </span>
                       </div>
                     </div>
 
@@ -473,7 +475,7 @@ export default function CoachBatchesPage() {
                   type="number"
                   min={0}
                   required
-                  placeholder="e.g. 1800"
+                  placeholder="e.g. 2000"
                   value={monthlyFee}
                   onChange={(e) => setMonthlyFee(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900"

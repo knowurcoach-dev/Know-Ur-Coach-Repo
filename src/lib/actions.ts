@@ -916,7 +916,7 @@ export async function enrollMonthlyBatch(data: {
 
     const tuitionFee = selectedBatch?.monthlyFee
       ? Number(selectedBatch.monthlyFee)
-      : (centre?.monthlyTuitionFee ? Number(centre.monthlyTuitionFee) : 1800.00);
+      : (centre?.monthlyTuitionFee ? Number(centre.monthlyTuitionFee) : 0);
 
     const newlyEnrolledChildren: any[] = [];
     const alreadyEnrolledChildren: any[] = [];
@@ -4585,7 +4585,7 @@ export async function getCoachRevenueData(coachEmailOrId: string) {
       );
       const trialCount = trialBookings.length;
       const capacity = Number(batch.totalSeats) || 15;
-      const fee = Number(batch.monthlyFee) || Number(centre.monthlyTuitionFee) || 1800;
+      const fee = Number(batch.monthlyFee) || Number(centre.monthlyTuitionFee) || 0;
       const batchMonthlyRevenue = enrolledCount * fee;
       const maxPossibleRevenue = capacity * fee;
 
@@ -4622,7 +4622,7 @@ export async function getCoachRevenueData(coachEmailOrId: string) {
         parentName: bk.parent?.fullName || 'Parent',
         batchName: bk.batch?.name || 'General Batch',
         batchSchedule: bk.batch?.schedule || '',
-        monthlyFee: Number(bk.batch?.monthlyFee) || Number(bk.grossAmount) || Number(centre.monthlyTuitionFee) || 1800,
+        monthlyFee: Number(bk.batch?.monthlyFee) || Number(bk.grossAmount) || Number(centre.monthlyTuitionFee) || 0,
         enrolledAt: bk.createdAt,
       }));
 

@@ -272,8 +272,16 @@ export function AcademyCard({
             </span>
           </div>
           <div className="font-extrabold text-[#0a1128] text-xs shrink-0 whitespace-nowrap">
-            ₹{Number(academy.fee || 0).toLocaleString('en-IN')}{' '}
-            <span className="text-[10px] font-normal text-slate-400">/mo</span>
+            {Number(academy.fee || 0) > 0 ? (
+              <>
+                ₹{Number(academy.fee).toLocaleString('en-IN')}{' '}
+                <span className="text-[10px] font-normal text-slate-400">/mo</span>
+              </>
+            ) : (
+              <span className="text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md text-[11px] font-extrabold">
+                Fee on Inquiry
+              </span>
+            )}
           </div>
         </div>
       </div>

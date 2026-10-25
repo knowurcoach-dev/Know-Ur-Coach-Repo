@@ -168,7 +168,7 @@ export default function ParentSavedPage() {
               const batchFees = (centre.batches || [])
                 .map((b: any) => Number(b.monthlyFee))
                 .filter((fee: number) => !isNaN(fee) && fee > 0);
-              const minFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(centre.monthlyTuitionFee || 1800);
+              const minFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(centre.monthlyTuitionFee || 0);
 
               return (
                 <div
@@ -220,7 +220,7 @@ export default function ParentSavedPage() {
                       </div>
                       <div className="text-slate-400">•</div>
                       <div className="text-slate-600 font-bold">
-                        Starts from ₹{minFee}/mo
+                        {minFee > 0 ? `Starts from ₹${minFee}/mo` : 'Fee on Inquiry'}
                       </div>
                     </div>
                   </div>

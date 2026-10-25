@@ -90,9 +90,12 @@ export default function CoachListingsPage() {
     : ['sports'];
 
   const batches = centreData?.batches || [];
-  const minBatchFee = batches.length > 0
-    ? Math.min(...batches.map((b: any) => Number(b.monthlyFee) || 1800))
-    : Number(centreData?.monthlyTuitionFee) || 1800;
+  const batchFees = batches
+    .map((b: any) => Number(b.monthlyFee))
+    .filter((f: number) => !isNaN(f) && f > 0);
+  const minBatchFee = batchFees.length > 0
+    ? Math.min(...batchFees)
+    : Number(centreData?.monthlyTuitionFee || 0);
 
   if (loading) {
     return <GeneralCoachPageSkeleton title="Public Directory Showcase" />;
@@ -430,10 +433,16 @@ export default function CoachListingsPage() {
                   <span className="text-[10px] text-slate-400 uppercase font-bold block">
                     Plan starts from
                   </span>
-                  <span className="text-base font-black text-slate-900">
-                    ₹{minBatchFee.toLocaleString('en-IN')}{' '}
-                    <span className="text-[10px] font-normal text-slate-400">/ mo</span>
-                  </span>
+                  {minBatchFee > 0 ? (
+                    <span className="text-base font-black text-slate-900">
+                      ₹{minBatchFee.toLocaleString('en-IN')}{' '}
+                      <span className="text-[10px] font-normal text-slate-400">/ mo</span>
+                    </span>
+                  ) : (
+                    <span className="text-xs font-black text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+                      Fee on Inquiry
+                    </span>
+                  )}
                 </div>
 
                 <div className="bg-[#0066ff] text-white text-xs font-extrabold px-4 py-2 rounded-xl shadow-xs">

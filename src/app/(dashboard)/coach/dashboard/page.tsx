@@ -190,7 +190,7 @@ export default function CoachDashboardPage() {
                 ageGroup: b.ageGroup,
                 totalSeats: b.totalSeats,
                 seatsFilled: b.seatsFilled || 0,
-                monthlyFee: Number(b.monthlyFee) || 1800,
+                monthlyFee: Number(b.monthlyFee) || 0,
               }))
             );
           } else {
@@ -573,7 +573,7 @@ export default function CoachDashboardPage() {
         ageGroup: '7 - 14 Yrs',
         totalSeats: 15,
         seatsFilled: 0,
-        monthlyFee: 1800,
+        monthlyFee: Number(centreData?.monthlyTuitionFee) || 0,
       },
     ]);
     showToast('Added new batch. Select category, timing & tuition fee below.');

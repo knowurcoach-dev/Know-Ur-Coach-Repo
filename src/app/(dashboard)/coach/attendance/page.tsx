@@ -282,7 +282,7 @@ export default function CoachAttendancePage() {
                       <p className="text-xs text-slate-300 flex items-center gap-2 flex-wrap">
                         <span>Age Group: {batch.ageGroup || 'All Ages'}</span>
                         <span>•</span>
-                        <span>Fee: ₹{Number(batch.monthlyFee) || 1800}/mo</span>
+                        <span>Fee: {Number(batch.monthlyFee) > 0 ? `₹${Number(batch.monthlyFee)}/mo` : 'Fee on Inquiry'}</span>
                         <span>•</span>
                         <span>
                           Capacity: <strong className="text-emerald-400">{seatsFilledCount}</strong> / {totalSeats} Enrolled

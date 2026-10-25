@@ -107,7 +107,7 @@ export default function ParentBookingsPage() {
     // Dynamic batch monthly fee priority over centre default
     const dynamicBatchFee = bk.batch?.monthlyFee
       ? Number(bk.batch.monthlyFee)
-      : (Number(bk.netAmountPaid) > 0 ? Number(bk.netAmountPaid) : (Number(bk.centre?.monthlyTuitionFee) || 1800));
+      : (Number(bk.netAmountPaid) > 0 ? Number(bk.netAmountPaid) : (Number(bk.centre?.monthlyTuitionFee) || 0));
 
     const coachName = bk.batch?.coachName || bk.centre?.headCoachName || 'Assigned Head Coach';
     const childFullName = bk.child ? `${bk.child.fullName}${bk.child.age ? ` (Age ${bk.child.age})` : ''}` : 'Student';

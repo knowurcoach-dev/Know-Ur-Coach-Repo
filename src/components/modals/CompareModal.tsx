@@ -140,7 +140,7 @@ export function CompareModal() {
                     <td className="p-3 font-bold text-slate-500 bg-slate-50/50">Monthly Fee</td>
                     {centres.map((c) => (
                       <td key={c.id} className="p-3 font-extrabold text-slate-900 border-l border-slate-100">
-                        ₹{Number(c.monthlyTuitionFee || 1800).toLocaleString('en-IN')}/mo
+                        {Number(c.monthlyTuitionFee || 0) > 0 ? `₹${Number(c.monthlyTuitionFee).toLocaleString('en-IN')}/mo` : 'Fee on Inquiry'}
                       </td>
                     ))}
                   </tr>

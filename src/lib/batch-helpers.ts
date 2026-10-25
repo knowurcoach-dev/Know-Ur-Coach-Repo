@@ -103,7 +103,7 @@ export function formatBatchItem(batch: any, defaultCategory?: string): BatchItem
       pureSchedule: '',
       ageGroup: '',
       totalSeats: 15,
-      monthlyFee: 1800,
+      monthlyFee: 0,
     };
   }
 
@@ -142,7 +142,7 @@ export function formatBatchItem(batch: any, defaultCategory?: string): BatchItem
     totalSeats: Number(batch.totalSeats) || 15,
     seatsFilled: actualSeats,
     seats: `${actualSeats}/${Number(batch.totalSeats) || 15} Enrolled`,
-    monthlyFee: Number(batch.monthlyFee) || 1800,
+    monthlyFee: Number(batch.monthlyFee) || 0,
     isAdmissionsOpen: batch.isAdmissionsOpen ?? true,
     bookings: batch.bookings || undefined,
     trialCount: trialBookingsCount,

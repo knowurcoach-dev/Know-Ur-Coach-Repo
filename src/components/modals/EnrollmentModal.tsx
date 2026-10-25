@@ -66,7 +66,7 @@ export function EnrollmentModal() {
     ? Number(currentBatch.monthlyFee)
     : (currentBatch?.fee
       ? Number(currentBatch.fee)
-      : (Number(academy.fee) || Number(academy.monthlyTuitionFee) || 1800));
+      : (Number(academy.fee) || Number(academy.monthlyTuitionFee) || 0));
 
   const userEmail = session?.user?.email || (user as any)?.email;
 

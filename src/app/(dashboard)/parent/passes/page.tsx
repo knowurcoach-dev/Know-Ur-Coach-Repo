@@ -97,7 +97,7 @@ export default function ParentPassesPage() {
               const type = bk.passType === 'FREE_TRIAL' ? 'trial' : 'batch';
               const dynamicBatchFee = bk.batch?.monthlyFee
                 ? Number(bk.batch.monthlyFee)
-                : (Number(bk.netAmountPaid) > 0 ? Number(bk.netAmountPaid) : (Number(bk.centre?.monthlyTuitionFee) || 1800));
+                : (Number(bk.netAmountPaid) > 0 ? Number(bk.netAmountPaid) : (Number(bk.centre?.monthlyTuitionFee) || 0));
               const feeInfo = type === 'trial' ? '₹0 (Free Trial)' : `₹${dynamicBatchFee.toLocaleString('en-IN')}/month`;
 
               return (
