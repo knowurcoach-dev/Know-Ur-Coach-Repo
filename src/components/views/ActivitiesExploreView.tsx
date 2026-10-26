@@ -521,7 +521,7 @@ function mapCentreToAcademy(c: any, activeCity: string, userCoords?: { lat: numb
   const catSlug = (c.category || 'sports').toLowerCase();
 
   const batchFees = (c.batches || []).map((b: any) => Number(b.monthlyFee)).filter((f: any) => !isNaN(f) && f > 0);
-  const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : 0;
+  const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(c.monthlyTuitionFee || c.fee || 0);
 
   const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
   let distance: number | undefined = undefined;

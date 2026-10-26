@@ -297,8 +297,10 @@ export function AcademyCard({
           </div>
           <div className="font-extrabold text-[#0a1128] text-xs shrink-0 whitespace-nowrap">
             {(() => {
-              const hasConfiguredBatches = Array.isArray(academy.batches) && academy.batches.some((b: any) => Number(b.monthlyFee) > 0);
-              const effectiveFee = hasConfiguredBatches ? Number(academy.fee || 0) : 0;
+              const batchFees = (academy.batches || [])
+                .map((b: any) => Number(b.monthlyFee))
+                .filter((f: any) => !isNaN(f) && f > 0);
+              const effectiveFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(academy.fee || 0);
               return effectiveFee > 0 ? (
                 <>
                   ₹{effectiveFee.toLocaleString('en-IN')}{' '}

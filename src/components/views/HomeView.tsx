@@ -104,7 +104,7 @@ function mapCentresToAcademies(centres: any[], activeCity?: string, userCoords?:
       .filter((f: any) => !isNaN(f) && f > 0);
     const startingFee = batchFees.length > 0
       ? Math.min(...batchFees)
-      : 0;
+      : Number(c.monthlyTuitionFee || c.fee || 0);
 
     return {
       id: c.id,
