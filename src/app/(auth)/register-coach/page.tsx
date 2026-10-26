@@ -92,6 +92,17 @@ export default function RegisterCoachPage() {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
+  // Read pre-filled email from URL query if navigated from login
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const emailParam = params.get('email');
+      if (emailParam) {
+        setEmail(emailParam);
+      }
+    }
+  }, []);
+
   // File Input Refs
   const govIdFileRef = useRef<HTMLInputElement>(null);
   const nisCertFileRef = useRef<HTMLInputElement>(null);

@@ -73,6 +73,7 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isNotRegistered, setIsNotRegistered] = useState(false);
 
   const emailInputRef = useRef<HTMLInputElement>(null);
   const otpInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +94,7 @@ function LoginForm() {
   const handleRoleSelect = (role: RoleOption) => {
     setSelectedRole(role);
     setError(null);
+    setIsNotRegistered(false);
     setEmail("");
     setIsOtpSent(false);
     setOtpNotice(null);
@@ -104,10 +106,32 @@ function LoginForm() {
   const handleBack = () => {
     setStep("role");
     setError(null);
+    setIsNotRegistered(false);
     setIsOtpSent(false);
     setOtpNotice(null);
     setOtp("");
     setPassword("");
+  };
+
+  // Pre-check on email blur to guide unregistered parents / coaches before submit
+  const handleEmailBlur = async () => {
+    if (!email || !email.includes('@') || email.length < 5) return;
+    try {
+      const res = await fetch('/api/auth/check-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (data && data.exists === false) {
+        setIsNotRegistered(true);
+        setError(null);
+      } else {
+        setIsNotRegistered(false);
+      }
+    } catch {
+      // Ignore background precheck network hiccups
+    }
   };
 
   const handleSendOtp = async () => {
@@ -131,6 +155,7 @@ function LoginForm() {
 
       if (data.success) {
         setIsOtpSent(true);
+        setIsNotRegistered(false);
         setOtpNotice(
           data.simulated
             ? `Verification code dispatched! (Dev mode: ${data.devOtp || "check server log"})`
@@ -138,7 +163,19 @@ function LoginForm() {
         );
         setTimeout(() => otpInputRef.current?.focus(), 150);
       } else {
-        setError(data.error || "Failed to send verification code. Please try again.");
+        const errLower = (data.error || "").toLowerCase();
+        if (
+          errLower.includes('not found') ||
+          errLower.includes('not registered') ||
+          errLower.includes('sign up or register') ||
+          errLower.includes('no registered account')
+        ) {
+          setIsNotRegistered(true);
+          setError(null);
+        } else {
+          setError(data.error || "Failed to send verification code. Please try again.");
+          setIsNotRegistered(false);
+        }
       }
     } catch {
       setError("Network error while sending OTP. Please check your connection.");
@@ -186,7 +223,19 @@ function LoginForm() {
       });
 
       if (result?.error) {
-        setError(result.error);
+        const errLower = result.error.toLowerCase();
+        if (
+          errLower.includes('not found') ||
+          errLower.includes('not registered') ||
+          errLower.includes('sign up or register') ||
+          errLower.includes('no registered account')
+        ) {
+          setIsNotRegistered(true);
+          setError(null);
+        } else {
+          setError(result.error);
+          setIsNotRegistered(false);
+        }
       } else if (result?.ok) {
         const destination = callbackUrl || getDefaultCallback(selectedRole.id);
         router.push(destination);
@@ -369,7 +418,12 @@ function LoginForm() {
                       ref={emailInputRef}
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (isNotRegistered) setIsNotRegistered(false);
+                        if (error) setError(null);
+                      }}
+                      onBlur={handleEmailBlur}
                       placeholder={
                         selectedRole?.id === 'COACH'
                           ? "Enter official academy email (e.g. academy@example.com)"
@@ -497,8 +551,32 @@ function LoginForm() {
                   </div>
                 )}
 
-                {/* Error */}
-                {error && (
+                {/* Unregistered or Mistyped Email Inform Message */}
+                {isNotRegistered && (
+                  <div className="p-3.5 bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-amber-600/10 border border-amber-400/30 rounded-2xl text-amber-100 text-xs shadow-md shadow-amber-500/5 animate-in fade-in duration-200">
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-lg shrink-0 select-none">🔍</span>
+                      <div className="space-y-1">
+                        <p className="font-extrabold text-sm text-white leading-snug">
+                          Wrong email or not registered yet?
+                        </p>
+                        <p className="text-amber-200/90 text-xs leading-relaxed">
+                          Please check your email address for any typos. If you don&apos;t have an account yet,{' '}
+                          <Link
+                            href={`${selectedRole?.id === 'COACH' ? '/register-coach' : '/register-parent'}?email=${encodeURIComponent(email)}`}
+                            className="text-amber-300 hover:text-white font-extrabold underline underline-offset-2 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <span>click here to sign up in 10 seconds</span>
+                            <ArrowRight size={12} weight="bold" />
+                          </Link>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Standard Error */}
+                {error && !isNotRegistered && (
                   <div className="p-3 bg-red-500/20 border border-red-400/30 rounded-xl text-red-300 text-xs font-medium flex items-center gap-2">
                     <span>⚠️</span>
                     <span>{error}</span>
@@ -526,6 +604,20 @@ function LoginForm() {
                     </>
                   )}
                 </button>
+
+                {/* New User Sign Up Link below Submit */}
+                <div className="pt-1 pb-1 text-center">
+                  <p className="text-xs text-slate-300 font-medium">
+                    Don&apos;t have an account yet?{' '}
+                    <Link
+                      href={`${selectedRole?.id === 'COACH' ? '/register-coach' : '/register-parent'}?email=${encodeURIComponent(email)}`}
+                      className="text-emerald-400 hover:text-emerald-300 font-bold underline underline-offset-2 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Sign Up in 10 Seconds</span>
+                      <ArrowRight size={12} weight="bold" />
+                    </Link>
+                  </p>
+                </div>
 
                 {/* Back to Role Selection */}
                 <button
