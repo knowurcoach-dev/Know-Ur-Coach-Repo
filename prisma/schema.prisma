@@ -157,6 +157,7 @@ model CoachingCentre {
   nisCertified        Boolean          @default(false)
   policeVerifiedStaff Boolean          @default(false)
   firstAidAvailable   Boolean          @default(false)
+  classMode           String           @default("offline") // online, offline, hybrid, or dynamic mode slug
   
   facilities          Facility[]
   batches             Batch[]
@@ -169,6 +170,7 @@ model CoachingCentre {
 
   @@index([isSuspended, isActive, kycStatus, planTier])
   @@index([locality, category, safetyGrade])
+  @@index([classMode])
 }
 
 model Facility {
@@ -478,7 +480,23 @@ model PlatformConfig {
   premiumPlanFeatures  String? // JSON string or comma list of features
   heroCarouselTheme   String?  // JSON string for hero carousel theme, overlay & typography styling
   locationConfig      String?  // JSON string for location modal settings, entry behavior & city arrangements
+  classModesConfig    String?  // JSON string for dynamic class delivery modes (online, offline, hybrid)
   updatedAt           DateTime @updatedAt
+}
+
+model ClassMode {
+  id          String   @id @default(cuid())
+  slug        String   @unique // "offline", "online", "hybrid", or custom slug
+  label       String   // "Offline", "Online", "Hybrid"
+  badgeColor  String   @default("blue") // blue, emerald, purple, amber, rose, cyan, teal, indigo
+  icon        String   @default("Buildings") // Buildings, Laptop, ArrowsClockwise, House, User, Trophy, Sparkle
+  description String?  // Optional helper text explaining format
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, order])
 }
 
 model AuditLog {

@@ -61,6 +61,7 @@ export interface Academy {
   hasCustomImage?: boolean;
   venuePhotos?: string[];
   primaryPillar?: 'sports' | 'brain-booster' | 'arts' | 'education' | string;
+  classMode?: 'offline' | 'online' | 'hybrid' | string;
 }
 
 export interface Competition {

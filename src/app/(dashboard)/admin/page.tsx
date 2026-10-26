@@ -28,6 +28,7 @@ import {
   SealCheck,
   Warning,
   Eye,
+  Laptop,
 } from '@phosphor-icons/react';
 
 export default function AdminOverviewDashboard() {
@@ -282,6 +283,14 @@ export default function AdminOverviewDashboard() {
                 icon: Palette,
                 color: 'bg-rose-50 text-rose-700 border-rose-200',
                 badge: `Taxonomy Hub`,
+              },
+              {
+                title: 'Delivery Modes',
+                desc: 'Configure dynamic coaching delivery formats (Offline, Online, Hybrid) with badge palettes and filters.',
+                href: '/admin/modes',
+                icon: Laptop,
+                color: 'bg-blue-50 text-blue-700 border-blue-200',
+                badge: 'Dynamic Formats',
               },
               {
                 title: 'Theme & Visual Styling',

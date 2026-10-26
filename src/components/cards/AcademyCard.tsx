@@ -9,6 +9,8 @@ import { useModalStore } from '@/hooks/useModalStore';
 import { useAuth } from '@/hooks/useAuth';
 import { getCategoryDisplayName, resolveCategoryCoverImage } from '@/lib/categories';
 import { toggleCentreBookmark } from '@/lib/actions';
+import { resolveClassModeInfo } from '@/lib/class-modes';
+import { getClassModeIconComponent } from '@/lib/class-modes-icons';
 import {
   Star,
   SealCheck,
@@ -108,6 +110,9 @@ export function AcademyCard({
 
   const isCurrentCoachCenter = false; // Shown only when coach is authenticated (NextAuth session)
 
+  const modeInfo = resolveClassModeInfo(academy.classMode);
+  const ModeIcon = getClassModeIconComponent(modeInfo.iconName);
+
   return (
     <div
       className="academy-card w-full bg-white rounded-3xl p-4 sm:p-5 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.06)] border border-slate-200/80 flex flex-col gap-3 relative hover:border-blue-400 hover:shadow-lg transition-all duration-200 text-left group"
@@ -147,6 +152,16 @@ export function AcademyCard({
                 <Star size={10} weight="fill" /> TOP IN AREA
               </span>
             )}
+
+            {/* Delivery Mode Badge (Offline, Online, Hybrid) */}
+            <span
+              className={`px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shrink-0 whitespace-nowrap font-extrabold text-[9px] border ${modeInfo.styles.bg} ${modeInfo.styles.text} ${modeInfo.styles.border} shadow-2xs`}
+              title={`${modeInfo.label} Class Delivery Format`}
+            >
+              <ModeIcon size={10} weight="fill" />
+              <span>{modeInfo.label}</span>
+            </span>
+
             {academy.reviewsCount && academy.reviewsCount > 0 ? (
               <>
                 <span className="bg-yellow-100 text-yellow-900 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shrink-0 whitespace-nowrap font-bold">

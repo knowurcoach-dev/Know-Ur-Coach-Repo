@@ -8,7 +8,8 @@ import { AcademyCard } from '@/components/cards/AcademyCard';
 import { ActivityCardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { usePersona } from '@/context/PersonaContext';
 import { useModalStore } from '@/hooks/useModalStore';
-import { getDiscoveryData } from '@/lib/actions';
+import { getDiscoveryData, getClassModes } from '@/lib/actions';
+import { DEFAULT_CLASS_MODES, ClassModeItem } from '@/lib/class-modes';
 import { resolveCentreCity, calculateDistance, formatDistanceText } from '@/lib/location';
 import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import {
@@ -571,6 +572,7 @@ function mapCentreToAcademy(c: any, activeCity: string, userCoords?: { lat: numb
     kycStatus: c.kycStatus,
     safetyGrade: c.safetyGrade,
     coachType: c.coachType,
+    classMode: c.classMode || 'offline',
     batches: (c.batches || []).map((b: any) => ({
       id: b.id,
       name: b.name,
@@ -623,6 +625,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
   const rawLocality = searchParams.get('locality') || 'all';
   const rawAge = searchParams.get('age') || 'all';
   const rawActivity = searchParams.get('activity');
+  const rawMode = searchParams.get('mode') || 'all';
 
   // If category wasn't explicit in URL, infer from search term if matching
   const inferred = (!rawCat || rawCat === 'all') && rawSearch ? resolveCategoryFromSearch(rawSearch) : null;
@@ -649,6 +652,13 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
   const [searchQuery, setSearchQuery] = useState<string>(rawSearch);
   const [selectedLocality, setSelectedLocality] = useState<string>(rawLocality);
   const [selectedAge, setSelectedAge] = useState<string>(rawAge);
+  const [selectedClassMode, setSelectedClassMode] = useState<string>(rawMode);
+  const [classModesList, setClassModesList] = useState<ClassModeItem[]>(() => {
+    if (initialData?.classModes && initialData.classModes.length > 0) {
+      return initialData.classModes;
+    }
+    return DEFAULT_CLASS_MODES;
+  });
   const [onlyTopInArea, setOnlyTopInArea] = useState<boolean>(false);
   const [onlyVerified, setOnlyVerified] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'top' | 'rating' | 'distance' | 'fee-low'>('top');
@@ -738,10 +748,29 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     if (age && age !== selectedAge) {
       setSelectedAge(age);
     }
+    const mode = searchParams.get('mode');
+    if (mode && mode !== selectedClassMode) {
+      setSelectedClassMode(mode);
+    } else if (!mode && selectedClassMode !== 'all') {
+      setSelectedClassMode('all');
+    }
     if (city && city !== activeCity) {
       setActiveCity(city);
     }
   }, [searchParams]);
+
+  // Load active delivery modes dynamically if not in initialData
+  useEffect(() => {
+    getClassModes()
+      .then((modes) => {
+        if (modes && modes.length > 0) {
+          setClassModesList(modes);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load dynamic class modes in ActivitiesExploreView:', err);
+      });
+  }, []);
 
   // 4. Debounced sync for search keyword input
   useEffect(() => {
@@ -1025,6 +1054,11 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
       result = result.filter((a) => matchesAgeGroup(a.ageText, selectedAge));
     }
 
+    // Delivery Format / Class Mode filter (Online, Offline, Hybrid, etc.)
+    if (selectedClassMode && selectedClassMode !== 'all') {
+      result = result.filter((a) => (a.classMode || 'offline').toLowerCase() === selectedClassMode.toLowerCase());
+    }
+
     // Premier Profiles Only (Top In Area / Premium Plan)
     if (onlyTopInArea) {
       result = result.filter((a) => Boolean(a.isTopInArea) || a.planTier === 'PREMIUM');
@@ -1064,6 +1098,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     searchQuery,
     selectedLocality,
     selectedAge,
+    selectedClassMode,
     onlyTopInArea,
     onlyVerified,
     sortBy,
@@ -1104,6 +1139,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     setSearchQuery('');
     setSelectedLocality('all');
     setSelectedAge('all');
+    setSelectedClassMode('all');
     setOnlyTopInArea(false);
     setOnlyVerified(false);
     setSortBy('top');
@@ -1113,6 +1149,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
       search: null,
       locality: null,
       age: null,
+      mode: null,
     });
   };
 
@@ -1372,6 +1409,36 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
               </button>
             ))}
 
+            {/* Delivery Format Filter Dropdown */}
+            <div className="relative shrink-0">
+              <select
+                value={selectedClassMode}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedClassMode(val);
+                  updateUrl({ mode: val === 'all' ? null : val });
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer appearance-none pr-7 ${
+                  selectedClassMode !== 'all'
+                    ? 'bg-blue-600 text-white border border-blue-600 shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <option value="all">Class Mode: All</option>
+                {classModesList.map((m) => (
+                  <option key={m.slug} value={m.slug} className="text-slate-800 bg-white">
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <CaretDown
+                size={11}
+                className={`absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${
+                  selectedClassMode !== 'all' ? 'text-white' : 'text-slate-400'
+                }`}
+              />
+            </div>
+
             {/* Locality Selector Dropdown */}
             {availableLocalities.length > 0 && (
               <div className="relative shrink-0">
@@ -1410,7 +1477,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
             </div>
 
             {/* Reset Button */}
-            {(searchQuery || selectedLocality !== 'all' || selectedAge !== 'all' || onlyTopInArea || onlyVerified || sortBy !== 'top') && (
+            {(searchQuery || selectedLocality !== 'all' || selectedAge !== 'all' || selectedClassMode !== 'all' || onlyTopInArea || onlyVerified || sortBy !== 'top') && (
               <button
                 onClick={handleResetFilters}
                 className="px-3 py-1.5 rounded-full text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"

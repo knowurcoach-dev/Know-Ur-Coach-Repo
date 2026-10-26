@@ -6,11 +6,14 @@ import { useRouter } from 'next/navigation';
 import { BrandLogo } from '@/components/brand/BrandLogo';
 import { signIn } from 'next-auth/react';
 import { usePersona } from '@/context/PersonaContext';
-import { registerCoachAcademy, getTaxonomyCategories } from '@/lib/actions';
+import { registerCoachAcademy, getTaxonomyCategories, getClassModes } from '@/lib/actions';
+import { ClassModeItem, DEFAULT_CLASS_MODES } from '@/lib/class-modes';
 import {
   ShieldCheck,
   CheckCircle,
   Buildings,
+  Laptop,
+  ArrowsClockwise,
   User,
   EnvelopeSimple,
   Phone,
@@ -107,6 +110,8 @@ export default function RegisterCoachPage() {
   const [city, setCity] = useState('Agra');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [classMode, setClassMode] = useState<string>('offline');
+  const [classModes, setClassModes] = useState<ClassModeItem[]>(DEFAULT_CLASS_MODES);
 
   // Step 2: Contact & Credentials
   const [email, setEmail] = useState('');
@@ -154,6 +159,19 @@ export default function RegisterCoachPage() {
       }
     }
     loadTaxonomy();
+
+    async function loadDeliveryModes() {
+      try {
+        const modes = await getClassModes();
+        if (modes && modes.length > 0) {
+          setClassModes(modes);
+          setClassMode((prev) => (modes.some((m) => m.slug === prev) ? prev : modes[0].slug));
+        }
+      } catch (err) {
+        console.warn('Could not load dynamic delivery modes in register-coach:', err);
+      }
+    }
+    loadDeliveryModes();
   }, []);
 
   const DRAFT_STORAGE_KEY = 'kuc_coach_register_draft_v1';
@@ -169,6 +187,7 @@ export default function RegisterCoachPage() {
         if (d.founder) setFounder(d.founder);
         if (Array.isArray(d.selectedCategories)) setSelectedCategories(d.selectedCategories);
         if (d.locality) setLocality(d.locality);
+        if (d.classMode) setClassMode(d.classMode);
         if (d.address) setAddress(d.address);
         if (d.pincode) setPincode(d.pincode);
         if (d.city) setCity(d.city);
@@ -225,6 +244,7 @@ export default function RegisterCoachPage() {
         acadName,
         founder,
         selectedCategories,
+        classMode,
         locality,
         address,
         pincode,
@@ -250,6 +270,7 @@ export default function RegisterCoachPage() {
     acadName,
     founder,
     selectedCategories,
+    classMode,
     locality,
     address,
     pincode,
@@ -664,6 +685,7 @@ export default function RegisterCoachPage() {
         phone: phone.trim(),
         category: selectedCategories.join(','),
         categories: selectedCategories,
+        classMode: classMode.trim().toLowerCase(),
         locality: locality.trim(),
         address: address.trim(),
         pincode: pincode.trim(),
@@ -1008,6 +1030,44 @@ export default function RegisterCoachPage() {
                               <WarningCircle size={13} weight="fill" /> {errors.founder}
                             </p>
                           )}
+                        </div>
+                      </div>
+
+                      {/* Coaching Delivery Format Dropdown (Online / Offline / Hybrid & dynamic modes) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-bold text-slate-700">
+                            Class / Coaching Delivery Format <span className="text-rose-500">*</span>
+                          </label>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            Badge shown on cards & public search filters
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                            {classMode === 'online' ? (
+                              <Laptop size={18} weight="fill" className="text-blue-600" />
+                            ) : classMode === 'hybrid' ? (
+                              <ArrowsClockwise size={18} weight="bold" className="text-purple-600" />
+                            ) : (
+                              <Buildings size={18} weight="fill" className="text-emerald-600" />
+                            )}
+                          </div>
+                          <select
+                            id="classMode"
+                            value={classMode}
+                            onChange={(e) => setClassMode(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-10 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0066ff] focus:ring-4 focus:ring-blue-500/10 cursor-pointer appearance-none transition-all shadow-2xs"
+                          >
+                            {classModes.map((m) => (
+                              <option key={m.slug} value={m.slug}>
+                                {m.label} {m.description ? `• ${m.description}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                            ▼
+                          </div>
                         </div>
                       </div>
 

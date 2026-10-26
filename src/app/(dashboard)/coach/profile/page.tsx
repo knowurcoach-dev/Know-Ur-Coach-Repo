@@ -4,7 +4,8 @@ import React, { useState, useEffect, useTransition } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersona } from '@/context/PersonaContext';
-import { getCoachDashboardData, updateCoachAcademyProfile, getTaxonomyCategories } from '@/lib/actions';
+import { getCoachDashboardData, updateCoachAcademyProfile, getTaxonomyCategories, getClassModes } from '@/lib/actions';
+import { DEFAULT_CLASS_MODES, ClassModeItem } from '@/lib/class-modes';
 import { GeneralCoachPageSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import {
   Buildings,
@@ -54,6 +55,8 @@ export default function CoachProfilePage() {
   const [address, setAddress] = useState('');
   const [headCoachName, setHeadCoachName] = useState('');
   const [headCoachBio, setHeadCoachBio] = useState('');
+  const [classMode, setClassMode] = useState('offline');
+  const [classModes, setClassModes] = useState<ClassModeItem[]>(DEFAULT_CLASS_MODES);
 
   const userEmail = session?.user?.email || (user as any)?.email;
 
@@ -79,15 +82,20 @@ export default function CoachProfilePage() {
     setLoading(true);
     setDbError(null);
     try {
-      const [res, tax] = await Promise.all([
+      const [res, tax, modes] = await Promise.all([
         getCoachDashboardData(userEmail),
         getTaxonomyCategories(),
+        getClassModes(),
       ]);
       setTaxonomy(tax || []);
+      if (modes && modes.length > 0) {
+        setClassModes(modes);
+      }
       if (res.success && res.centre) {
         setCentreData(res.centre);
         setName(res.centre.name || '');
         setTagline(res.centre.tagline || '');
+        setClassMode(res.centre.classMode || 'offline');
         const loadedCategories = (res.centre.category ? res.centre.category.split(',') : ['badminton'])
           .map((s: string) => s.trim().toLowerCase())
           .filter(Boolean);
@@ -133,6 +141,7 @@ export default function CoachProfilePage() {
           address,
           headCoachName,
           headCoachBio,
+          classMode,
         });
 
         if (res.success) {
@@ -226,6 +235,35 @@ export default function CoachProfilePage() {
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
+                </div>
+
+                {/* Coaching Delivery Format Selector */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span>Coaching Delivery Format *</span>
+                      <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        Public Badge
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-normal">
+                      Configured by Admin Panel
+                    </span>
+                  </label>
+                  <select
+                    value={classMode}
+                    onChange={(e) => setClassMode(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    {classModes.map((m) => (
+                      <option key={m.slug} value={m.slug}>
+                        {m.label} {m.description ? `(${m.description})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    This format determines the delivery badge on your cards across homepage, explore filters, and academy details.
+                  </p>
                 </div>
 
                 {/* Multi-Activity / Category 2-Dropdown Cascading Selector */}

@@ -22,6 +22,7 @@ import {
   Receipt,
   Slideshow,
   MapPin,
+  Laptop,
 } from '@phosphor-icons/react';
 
 const navItems = [
@@ -48,6 +49,7 @@ const navItems = [
       { label: 'Location Management', href: '/admin/locations', icon: MapPin },
       { label: 'Competition Management', href: '/admin/competitions', icon: Trophy },
       { label: 'Activities & Disciplines', href: '/admin/categories', icon: Palette },
+      { label: 'Delivery Modes', href: '/admin/modes', icon: Laptop },
     ],
   },
   {

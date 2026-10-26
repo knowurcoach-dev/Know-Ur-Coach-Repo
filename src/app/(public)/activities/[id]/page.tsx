@@ -16,6 +16,8 @@ import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import { AcademyReviewsSection } from '@/components/reviews/AcademyReviewsSection';
 import { useBookmarks } from '@/hooks/useBookmarks';
 import { getCentreSubscriptionStatus } from '@/lib/subscription';
+import { resolveClassModeInfo, getClassModeBadgeStyles } from '@/lib/class-modes';
+import { getClassModeIconComponent } from '@/lib/class-modes-icons';
 
 function getAcademyInitials(name: string): string {
   if (!name) return 'KC';
@@ -516,6 +518,7 @@ export default function AcademyDetailPage() {
             planTier: foundInDb.planTier,
             isVerifiedBatch: foundInDb.kycStatus === 'APPROVED' && Boolean(foundInDb.isVerifiedBatch),
             coachType: foundInDb.coachType,
+            classMode: foundInDb.classMode || 'offline',
             batches: (foundInDb.batches || []).map((b: any) => ({
               id: b.id,
               name: b.name,
@@ -627,6 +630,7 @@ export default function AcademyDetailPage() {
                 planTier: coachCentre.planTier,
                 isVerifiedBatch: coachCentre.kycStatus === 'APPROVED' && Boolean(coachCentre.isVerifiedBatch),
                 coachType: coachCentre.coachType,
+                classMode: coachCentre.classMode || 'offline',
                 batches: (coachCentre.batches || []).map((b: any) => ({
                   id: b.id,
                   name: b.name,
@@ -893,6 +897,22 @@ export default function AcademyDetailPage() {
                       <span className="text-xs">{primaryEmoji}</span>
                       <span>{primaryActivity}</span>
                     </span>
+
+                    {/* Delivery Format Badge (Online, Offline, Hybrid) */}
+                    {(() => {
+                      const modeInfo = resolveClassModeInfo(academy.classMode);
+                      const ModeIcon = getClassModeIconComponent(modeInfo.icon);
+                      const styles = getClassModeBadgeStyles(modeInfo.badgeColor);
+                      return (
+                        <span
+                          className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 font-bold shadow-2xs ${styles.bg} ${styles.text} ${styles.border}`}
+                          title={`Delivery Mode: ${modeInfo.label}`}
+                        >
+                          <ModeIcon size={12} weight="bold" />
+                          <span>{modeInfo.label}</span>
+                        </span>
+                      );
+                    })()}
 
                     {/* Interactive '+X more' Badge Button */}
                     {remainingCount > 0 && (

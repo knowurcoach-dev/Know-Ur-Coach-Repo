@@ -340,7 +340,6 @@ function LoginForm() {
                       </div>
                     </div>
                     <div className="relative z-10 flex flex-col items-end">
-                      <span className="text-xs font-black bg-white text-emerald-700 px-3 py-1 rounded-full shadow-md group-hover:shadow-lg transition-shadow">14-Day Free Listing</span>
                       <ArrowRight size={18} weight="bold" className="mt-1 opacity-70 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                     </div>
                   </Link>
@@ -391,8 +390,8 @@ function LoginForm() {
                       setError(null);
                     }}
                     className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${authMethod === "password"
-                        ? "bg-emerald-600 text-white shadow-sm"
-                        : "text-slate-400 hover:text-white"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-white"
                       }`}
                   >
                     Password
@@ -404,8 +403,8 @@ function LoginForm() {
                       setError(null);
                     }}
                     className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${authMethod === "otp"
-                        ? "bg-emerald-600 text-white shadow-sm"
-                        : "text-slate-400 hover:text-white"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-white"
                       }`}
                   >
                     Email OTP Code

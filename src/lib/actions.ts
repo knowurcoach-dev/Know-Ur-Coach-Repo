@@ -21,6 +21,7 @@ import { logAdminAction } from "@/lib/audit";
 import { PlatformCategory, getCategoryDisplayName } from "@/lib/categories";
 import { DEFAULT_HERO_SLIDES, HeroSlideData } from "@/lib/hero-slides";
 import { DEFAULT_HERO_CAROUSEL_THEME, HeroCarouselTheme } from "@/lib/hero-theme";
+import { DEFAULT_CLASS_MODES, ClassModeItem } from "@/lib/class-modes";
 import { readHeroCarouselTheme, writeHeroCarouselTheme } from "@/lib/hero-theme-server";
 import { sendBookingConfirmationEmail, sendCoachKycStatusEmail, sendWelcomeEmail, sendCoachTrialWelcomeEmail, sendCoachPlanInvoiceEmail } from "@/lib/mail";
 import { calculateCyclePrice, BillingCycle, BILLING_CYCLES, getCentreSubscriptionStatus } from "@/lib/subscription";
@@ -2731,6 +2732,7 @@ export async function registerCoachAcademy(data: {
   otp?: string;
   coachType?: CoachType | string;
   isInstitute?: boolean;
+  classMode?: string;
   docs?: {
     govIdDocName?: string;
     govIdNumber?: string;
@@ -2963,6 +2965,7 @@ export async function registerCoachAcademy(data: {
           planExpiresAt,
           planBillingCycle,
           isTrialActive,
+          classMode: data.classMode?.trim().toLowerCase() || 'offline',
           ...(statusNotesWithPayload && {
             statusNotes: statusNotesWithPayload,
             cctvMonitored: Boolean(data.safetyChecklist?.cctvMonitored),
@@ -3009,6 +3012,7 @@ export async function registerCoachAcademy(data: {
           isTrialActive,
           isTopInArea: false,
           isVerifiedBatch: false,
+          classMode: data.classMode?.trim().toLowerCase() || 'offline',
         },
       });
     }
@@ -3626,6 +3630,7 @@ export async function updateCoachAcademyProfile(data: {
   eligibleAgeGroup?: string;
   headCoachName?: string;
   headCoachBio?: string;
+  classMode?: string;
   batches?: Array<{
     name: string;
     schedule: string;
@@ -3675,6 +3680,7 @@ export async function updateCoachAcademyProfile(data: {
         ...(data.eligibleAgeGroup ? { eligibleAgeGroup: data.eligibleAgeGroup } : {}),
         ...(data.headCoachName ? { headCoachName: data.headCoachName } : {}),
         ...(data.headCoachBio ? { headCoachBio: data.headCoachBio } : {}),
+        ...(data.classMode ? { classMode: data.classMode.toLowerCase().trim() } : {}),
       },
     });
 
@@ -6068,5 +6074,296 @@ export async function resetLocationConfigAction() {
     return { success: false, message: err?.message || 'Failed to reset location configuration.' };
   }
 }
+
+// ────────────────────────────────────────────────────────────
+// CLASS DELIVERY MODES (Online, Offline, Hybrid & Custom Modes)
+// ────────────────────────────────────────────────────────────
+
+export async function getClassModes(): Promise<ClassModeItem[]> {
+  try {
+    const modes = await prisma.classMode.findMany({
+      where: { isActive: true },
+      orderBy: { order: 'asc' },
+    });
+
+    if (modes.length > 0) {
+      return toPlainObject(modes);
+    }
+
+    // Seed defaults if table is empty
+    await prisma.classMode.createMany({
+      data: DEFAULT_CLASS_MODES,
+      skipDuplicates: true,
+    });
+
+    const seeded = await prisma.classMode.findMany({
+      where: { isActive: true },
+      orderBy: { order: 'asc' },
+    });
+    return toPlainObject(seeded.length > 0 ? seeded : DEFAULT_CLASS_MODES);
+  } catch (err) {
+    console.warn('[DB] Failed to fetch class modes from database, using defaults:', err);
+    return DEFAULT_CLASS_MODES;
+  }
+}
+
+export async function getAllClassModesAdmin() {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    let modes = await prisma.classMode.findMany({
+      orderBy: { order: 'asc' },
+    });
+
+    if (modes.length === 0) {
+      await prisma.classMode.createMany({
+        data: DEFAULT_CLASS_MODES,
+        skipDuplicates: true,
+      });
+      modes = await prisma.classMode.findMany({
+        orderBy: { order: 'asc' },
+      });
+    }
+
+    // Compute academy counts per class mode
+    const counts: Record<string, number> = {};
+    const centres = await prisma.coachingCentre.findMany({
+      select: { classMode: true },
+    });
+    for (const c of centres) {
+      const mode = (c.classMode || 'offline').toLowerCase();
+      counts[mode] = (counts[mode] || 0) + 1;
+    }
+
+    const modesWithCounts = modes.map((m) => ({
+      ...m,
+      academyCount: counts[m.slug.toLowerCase()] || 0,
+    }));
+
+    return {
+      success: true,
+      modes: toPlainObject(modesWithCounts),
+      totalCentres: centres.length,
+    };
+  } catch (err: any) {
+    console.error('[DB] getAllClassModesAdmin error:', err);
+    return { success: false, message: err?.message || 'Failed to load class modes.' };
+  }
+}
+
+export async function createClassMode(data: {
+  label: string;
+  slug?: string;
+  badgeColor?: string;
+  icon?: string;
+  description?: string;
+  isActive?: boolean;
+  order?: number;
+}) {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    if (!data.label || !data.label.trim()) {
+      return { success: false, message: 'Mode label name is required.' };
+    }
+
+    const cleanLabel = data.label.trim();
+    let cleanSlug = (data.slug || cleanLabel)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+
+    if (!cleanSlug) cleanSlug = `mode-${Date.now()}`;
+
+    // Check slug collision
+    const existing = await prisma.classMode.findUnique({
+      where: { slug: cleanSlug },
+    });
+    if (existing) {
+      return { success: false, message: `A delivery mode with identifier "${cleanSlug}" already exists.` };
+    }
+
+    const count = await prisma.classMode.count();
+    const created = await prisma.classMode.create({
+      data: {
+        slug: cleanSlug,
+        label: cleanLabel,
+        description: data.description?.trim() || null,
+        badgeColor: data.badgeColor || 'blue',
+        icon: data.icon || 'Buildings',
+        isActive: data.isActive !== false,
+        order: typeof data.order === 'number' ? data.order : count + 1,
+      },
+    });
+
+    safeRevalidatePath('/admin/modes');
+    safeRevalidatePath('/activities');
+    safeRevalidatePath('/register-coach');
+    safeRevalidatePath('/');
+
+    return { success: true, mode: toPlainObject(created), message: `Class mode "${cleanLabel}" created successfully.` };
+  } catch (err: any) {
+    console.error('[DB] createClassMode error:', err);
+    return { success: false, message: err?.message || 'Failed to create class mode.' };
+  }
+}
+
+export async function updateClassMode(
+  id: string,
+  data: Partial<{
+    label: string;
+    slug: string;
+    badgeColor: string;
+    icon: string;
+    description: string;
+    isActive: boolean;
+    order: number;
+  }>
+) {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    const existing = await prisma.classMode.findUnique({ where: { id } });
+    if (!existing) {
+      return { success: false, message: 'Class mode not found.' };
+    }
+
+    let slugToUpdate = existing.slug;
+    if (data.slug && data.slug.trim()) {
+      const candidateSlug = data.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      if (candidateSlug !== existing.slug) {
+        const clash = await prisma.classMode.findUnique({ where: { slug: candidateSlug } });
+        if (clash && clash.id !== id) {
+          return { success: false, message: `Identifier "${candidateSlug}" is already in use by another mode.` };
+        }
+        slugToUpdate = candidateSlug;
+      }
+    }
+
+    const updated = await prisma.classMode.update({
+      where: { id },
+      data: {
+        ...(data.label ? { label: data.label.trim() } : {}),
+        slug: slugToUpdate,
+        ...(data.badgeColor ? { badgeColor: data.badgeColor } : {}),
+        ...(data.icon ? { icon: data.icon } : {}),
+        ...(typeof data.description !== 'undefined' ? { description: data.description?.trim() || null } : {}),
+        ...(typeof data.isActive === 'boolean' ? { isActive: data.isActive } : {}),
+        ...(typeof data.order === 'number' ? { order: data.order } : {}),
+      },
+    });
+
+    safeRevalidatePath('/admin/modes');
+    safeRevalidatePath('/activities');
+    safeRevalidatePath('/register-coach');
+    safeRevalidatePath('/');
+
+    return { success: true, mode: toPlainObject(updated), message: `Class mode updated successfully.` };
+  } catch (err: any) {
+    console.error('[DB] updateClassMode error:', err);
+    return { success: false, message: err?.message || 'Failed to update class mode.' };
+  }
+}
+
+export async function deleteClassMode(id: string) {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    const existing = await prisma.classMode.findUnique({ where: { id } });
+    if (!existing) {
+      return { success: false, message: 'Class mode not found.' };
+    }
+
+    // If any academies are assigned this mode, migrate them to 'offline'
+    await prisma.coachingCentre.updateMany({
+      where: { classMode: existing.slug },
+      data: { classMode: 'offline' },
+    });
+
+    await prisma.classMode.delete({ where: { id } });
+
+    safeRevalidatePath('/admin/modes');
+    safeRevalidatePath('/activities');
+    safeRevalidatePath('/register-coach');
+    safeRevalidatePath('/');
+
+    return { success: true, message: `Class mode "${existing.label}" deleted successfully.` };
+  } catch (err: any) {
+    console.error('[DB] deleteClassMode error:', err);
+    return { success: false, message: err?.message || 'Failed to delete class mode.' };
+  }
+}
+
+export async function toggleActiveClassMode(id: string, isActive: boolean) {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    const updated = await prisma.classMode.update({
+      where: { id },
+      data: { isActive },
+    });
+
+    safeRevalidatePath('/admin/modes');
+    safeRevalidatePath('/activities');
+    safeRevalidatePath('/register-coach');
+    safeRevalidatePath('/');
+
+    return { success: true, mode: toPlainObject(updated), message: `Mode ${isActive ? 'activated' : 'deactivated'}.` };
+  } catch (err: any) {
+    console.error('[DB] toggleActiveClassMode error:', err);
+    return { success: false, message: err?.message || 'Failed to update mode status.' };
+  }
+}
+
+export async function seedDefaultClassModesAction() {
+  try {
+    const session: any = await getServerSession(authOptions);
+    if (!session || session.user?.role !== 'ADMIN') {
+      return { success: false, message: 'Unauthorized. Admin privileges required.' };
+    }
+
+    for (const def of DEFAULT_CLASS_MODES) {
+      await prisma.classMode.upsert({
+        where: { slug: def.slug },
+        update: {
+          label: def.label,
+          description: def.description,
+          badgeColor: def.badgeColor,
+          icon: def.icon,
+          order: def.order,
+          isActive: true,
+        },
+        create: def,
+      });
+    }
+
+    safeRevalidatePath('/admin/modes');
+    safeRevalidatePath('/activities');
+    safeRevalidatePath('/register-coach');
+    safeRevalidatePath('/');
+
+    return { success: true, message: 'Default delivery modes (Offline, Online, Hybrid) restored.' };
+  } catch (err: any) {
+    console.error('[DB] seedDefaultClassModesAction error:', err);
+    return { success: false, message: err?.message || 'Failed to restore default modes.' };
+  }
+}
+
 
 

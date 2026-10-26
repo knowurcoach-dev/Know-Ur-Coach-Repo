@@ -139,6 +139,7 @@ function mapCentresToAcademies(centres: any[], activeCity?: string, userCoords?:
       planTier: c.planTier,
       isVerifiedBatch: c.isVerifiedBatch,
       coachType: c.coachType,
+      classMode: c.classMode || 'offline',
       batches: (c.batches || []).map((b: any) => ({
         id: b.id,
         name: b.name,

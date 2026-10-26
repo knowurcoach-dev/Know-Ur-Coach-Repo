@@ -5,6 +5,7 @@ import { readHeroCarouselTheme } from '@/lib/hero-theme-server';
 import { formatBatchItem } from '@/lib/batch-helpers';
 import { DEFAULT_HERO_CAROUSEL_THEME } from '@/lib/hero-theme';
 import { registerDynamicTaxonomy } from '@/lib/categories';
+import { DEFAULT_CLASS_MODES } from '@/lib/class-modes';
 
 function toPlainObject<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
@@ -16,7 +17,7 @@ function toPlainObject<T>(data: T): T {
  * with background revalidation every 300 seconds (5 minutes) and instant
  * on-demand cache tag invalidation via revalidateTag('discovery').
  */
-const fetchDiscoveryData = async () => {
+export const fetchDiscoveryData = async () => {
   const now = new Date();
   const config = await prisma.platformConfig.findUnique({
     where: { id: 'default' },
@@ -44,7 +45,7 @@ const fetchDiscoveryData = async () => {
       : []),
   ];
 
-  const [centres, competitions, majorActivities, heroSlides, heroCarouselTheme] =
+  const [centres, competitions, majorActivities, heroSlides, heroCarouselTheme, classModes] =
     await Promise.all([
       prisma.coachingCentre.findMany({
         where: {
@@ -90,6 +91,14 @@ const fetchDiscoveryData = async () => {
         orderBy: { order: 'asc' },
       }),
       readHeroCarouselTheme(),
+      (prisma as any).classMode?.findMany
+        ? (prisma as any).classMode
+            .findMany({
+              where: { isActive: true },
+              orderBy: { order: 'asc' },
+            })
+            .catch(() => DEFAULT_CLASS_MODES)
+        : Promise.resolve(DEFAULT_CLASS_MODES),
     ]);
 
   const mappedActivities = (majorActivities || []).map((act: any) => ({
@@ -122,6 +131,7 @@ const fetchDiscoveryData = async () => {
 
   const mappedCentres = (centres || []).map((c: any) => ({
     ...c,
+    classMode: c.classMode || 'offline',
     batches: (c.batches || []).map((b: any) => formatBatchItem(b, c.category)),
   }));
 
@@ -133,6 +143,7 @@ const fetchDiscoveryData = async () => {
     config,
     heroSlides: heroSlides || [],
     heroCarouselTheme: heroCarouselTheme || DEFAULT_HERO_CAROUSEL_THEME,
+    classModes: (classModes && classModes.length > 0) ? classModes : DEFAULT_CLASS_MODES,
   });
 };
 
@@ -141,7 +152,7 @@ const _getCachedDiscoveryData = unstable_cache(
   ['discovery-data-cache'],
   {
     revalidate: 300, // 5 minutes
-    tags: ['discovery', 'academies', 'competitions'],
+    tags: ['discovery', 'academies', 'competitions', 'class-modes'],
   }
 );
 
@@ -161,6 +172,7 @@ export async function getCachedDiscoveryData() {
       config: null,
       heroSlides: [],
       heroCarouselTheme: DEFAULT_HERO_CAROUSEL_THEME,
+      classModes: DEFAULT_CLASS_MODES,
     });
   }
 }
