@@ -147,7 +147,7 @@ export default function ParentPaymentsPage() {
                         <div className="flex items-center justify-between sm:justify-end gap-3 sm:shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                           <div className="text-left sm:text-right space-y-0.5">
                             <div className="font-black text-slate-900 text-base">
-                              {isTrial ? 'Free Trial' : `₹${batchFee.toLocaleString('en-IN')}/mo`}
+                              {isTrial ? 'Free Trial' : (batchFee > 0 ? `₹${batchFee.toLocaleString('en-IN')}/mo` : 'Fee on Inquiry')}
                             </div>
                             <div className="text-[10px] text-slate-500 font-medium">
                               {isTrial ? 'No charges applied' : 'Payable directly to Academy'}
@@ -166,7 +166,7 @@ export default function ParentPaymentsPage() {
                                 studentName: childName,
                                 schedule: bk.batch?.schedule,
                                 courtOrVenue: bk.batch?.name,
-                                feeInfo: isTrial ? 'Free Trial' : `₹${batchFee.toLocaleString('en-IN')}/month`,
+                                feeInfo: isTrial ? 'Free Trial' : (batchFee > 0 ? `₹${batchFee.toLocaleString('en-IN')}/month` : 'Fee on Inquiry'),
                                 contactPhone: bk.centre?.phone,
                               })
                             }

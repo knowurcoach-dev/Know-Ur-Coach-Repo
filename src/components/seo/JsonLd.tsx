@@ -122,7 +122,7 @@ export function AcademyJsonLd({
       bestRating: '5',
       worstRating: '1',
     },
-    ...(monthlyTuitionFee
+    ...(Number(monthlyTuitionFee) > 0
       ? {
           priceRange: `₹${monthlyTuitionFee}/month`,
         }

@@ -521,7 +521,7 @@ function mapCentreToAcademy(c: any, activeCity: string, userCoords?: { lat: numb
   const catSlug = (c.category || 'sports').toLowerCase();
 
   const batchFees = (c.batches || []).map((b: any) => Number(b.monthlyFee)).filter((f: any) => !isNaN(f) && f > 0);
-  const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(c.monthlyTuitionFee || c.fee || 0);
+  const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : 0;
 
   const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
   let distance: number | undefined = undefined;
@@ -580,7 +580,7 @@ function mapCentreToAcademy(c: any, activeCity: string, userCoords?: { lat: numb
       schedule: b.schedule,
       ageGroup: b.ageGroup,
       seats: `${b.seatsFilled || 0}/${b.totalSeats || 20} Enrolled`,
-      monthlyFee: Number(b.monthlyFee || startingFee || 0),
+      monthlyFee: Number(b.monthlyFee) > 0 ? Number(b.monthlyFee) : startingFee,
     })),
   };
 }

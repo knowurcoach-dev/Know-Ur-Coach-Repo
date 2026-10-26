@@ -104,7 +104,7 @@ function mapCentresToAcademies(centres: any[], activeCity?: string, userCoords?:
       .filter((f: any) => !isNaN(f) && f > 0);
     const startingFee = batchFees.length > 0
       ? Math.min(...batchFees)
-      : Number(c.monthlyTuitionFee || c.fee || 0);
+      : 0;
 
     return {
       id: c.id,
@@ -148,7 +148,7 @@ function mapCentresToAcademies(centres: any[], activeCity?: string, userCoords?:
         pureSchedule: b.schedule,
         ageGroup: b.ageGroup,
         seats: `${b.seatsFilled || 0}/${b.totalSeats || 20} Enrolled`,
-        monthlyFee: Number(b.monthlyFee || startingFee || 0),
+        monthlyFee: Number(b.monthlyFee) > 0 ? Number(b.monthlyFee) : startingFee,
       })),
     };
   });

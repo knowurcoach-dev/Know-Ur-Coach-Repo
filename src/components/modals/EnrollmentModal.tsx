@@ -62,11 +62,11 @@ export function EnrollmentModal() {
   const [loadingBatches, setLoadingBatches] = useState(false);
 
   const currentBatch = batchesList.find((b: any) => b.id === selectedBatchId) || batchesList[0];
-  const dynamicMonthlyFee = currentBatch?.monthlyFee
+  const dynamicMonthlyFee = Number(currentBatch?.monthlyFee) > 0
     ? Number(currentBatch.monthlyFee)
-    : (currentBatch?.fee
+    : (Number(currentBatch?.fee) > 0
       ? Number(currentBatch.fee)
-      : (Number(academy.fee) || Number(academy.monthlyTuitionFee) || 0));
+      : (Number(academy.fee) > 0 ? Number(academy.fee) : 0));
 
   const userEmail = session?.user?.email || (user as any)?.email;
 
@@ -325,7 +325,16 @@ export function EnrollmentModal() {
               </div>
               <div className="text-right">
                 <span className="text-[10px] text-slate-400 font-bold block uppercase">Monthly Fee</span>
-                <span className="text-base font-black text-slate-900">₹{Number(dynamicMonthlyFee).toLocaleString('en-IN')}<span className="text-[10px] font-normal text-slate-400">/mo</span></span>
+                {Number(dynamicMonthlyFee) > 0 ? (
+                  <span className="text-base font-black text-slate-900">
+                    ₹{Number(dynamicMonthlyFee).toLocaleString('en-IN')}
+                    <span className="text-[10px] font-normal text-slate-400">/mo</span>
+                  </span>
+                ) : (
+                  <span className="text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md text-[11px] font-extrabold inline-block mt-0.5">
+                    Fee on Inquiry
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -600,7 +609,9 @@ export function EnrollmentModal() {
                   parentPhone: session?.user?.email || '',
                   schedule: currentBatch?.pureSchedule || currentBatch?.schedule || currentBatch?.time || 'Regular Weekly Timings',
                   courtOrVenue: currentBatch?.name || 'Monthly Coaching Batch',
-                  feeInfo: `₹${Number(dynamicMonthlyFee).toLocaleString('en-IN')}/month`,
+                  feeInfo: Number(dynamicMonthlyFee) > 0
+                    ? `₹${Number(dynamicMonthlyFee).toLocaleString('en-IN')}/month`
+                    : 'Fee on Inquiry',
                   paymentStatus: 'Direct Academy Settlement',
                   dateBooked: new Date().toLocaleDateString('en-IN'),
                 });

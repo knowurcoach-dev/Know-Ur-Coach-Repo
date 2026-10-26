@@ -125,7 +125,7 @@ export default function ParentBookingsPage() {
         (bk.scheduledAt ? new Date(bk.scheduledAt).toLocaleDateString() : 'Scheduled Class'),
       courtOrVenue: bk.batch ? `${bk.batch.name}` : bk.competition?.venue || 'Main Court',
       passId,
-      feeInfo: type === 'trial' ? 'Free Trial' : `Tuition: ₹${dynamicBatchFee.toLocaleString('en-IN')}/mo`,
+      feeInfo: type === 'trial' ? 'Free Trial' : (dynamicBatchFee > 0 ? `Tuition: ₹${dynamicBatchFee.toLocaleString('en-IN')}/mo` : 'Tuition: Fee on Inquiry'),
       phone: bk.centre?.phone || bk.centre?.owner?.phone || '9897012345',
       coachName,
       attendances: bk.attendances || [],

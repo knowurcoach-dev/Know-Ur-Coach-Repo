@@ -36,7 +36,8 @@ export async function generateMetadata({
     const city = (centre as any).city || 'Agra';
     const cleanTag = centre.tagline ? centre.tagline.replace(/kamla nagarkamla nagar/gi, 'Kamla Nagar') : '';
     const title = `${centre.name} - Kids Coaching in ${cleanLoc}, ${city}`;
-    const description = `${centre.name} in ${cleanLoc}, ${city}: ${cleanTag}. Verified rating: ${Number(centre.rating).toFixed(1)}/5. Monthly fee: ₹${centre.monthlyTuitionFee}. Book a free trial now on KnowUrCoach.`;
+    const feeDesc = Number(centre.monthlyTuitionFee) > 0 ? `Monthly fee: ₹${centre.monthlyTuitionFee}.` : 'Tuition: Fee on Inquiry.';
+    const description = `${centre.name} in ${cleanLoc}, ${city}: ${cleanTag}. Verified rating: ${Number(centre.rating).toFixed(1)}/5. ${feeDesc} Book a free trial now on KnowUrCoach.`;
 
     return {
       title,

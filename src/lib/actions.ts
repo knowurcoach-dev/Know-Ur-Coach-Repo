@@ -984,7 +984,7 @@ export async function enrollMonthlyBatch(data: {
               parentPhone: parent.emergencyContactPhone || data.parentPhone || '',
               childName: child.fullName,
               childAge: child.age || 8,
-              inquiryNotes: `Monthly Batch Enrollment - ${selectedBatch?.name || 'Class'} (${selectedBatch?.schedule || ''}) • Fee ₹${tuitionFee}/mo (Payable Directly to Academy Offline)`,
+              inquiryNotes: `Monthly Batch Enrollment - ${selectedBatch?.name || 'Class'} (${selectedBatch?.schedule || ''}) • ${tuitionFee > 0 ? `Fee ₹${tuitionFee}/mo` : 'Fee on Inquiry'} (Payable Directly to Academy Offline)`,
               status: 'enrolled',
             },
           }).catch((err) => console.warn('Could not create lead on monthly batch:', err));

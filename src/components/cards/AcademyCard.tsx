@@ -296,16 +296,20 @@ export function AcademyCard({
             </span>
           </div>
           <div className="font-extrabold text-[#0a1128] text-xs shrink-0 whitespace-nowrap">
-            {Number(academy.fee || 0) > 0 ? (
-              <>
-                ₹{Number(academy.fee).toLocaleString('en-IN')}{' '}
-                <span className="text-[10px] font-normal text-slate-400">/mo</span>
-              </>
-            ) : (
-              <span className="text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md text-[11px] font-extrabold">
-                Fee on Inquiry
-              </span>
-            )}
+            {(() => {
+              const hasConfiguredBatches = Array.isArray(academy.batches) && academy.batches.some((b: any) => Number(b.monthlyFee) > 0);
+              const effectiveFee = hasConfiguredBatches ? Number(academy.fee || 0) : 0;
+              return effectiveFee > 0 ? (
+                <>
+                  ₹{effectiveFee.toLocaleString('en-IN')}{' '}
+                  <span className="text-[10px] font-normal text-slate-400">/mo</span>
+                </>
+              ) : (
+                <span className="text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md text-[11px] font-extrabold">
+                  Fee on Inquiry
+                </span>
+              );
+            })()}
           </div>
         </div>
       </div>

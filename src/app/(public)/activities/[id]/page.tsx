@@ -445,7 +445,7 @@ export default function AcademyDetailPage() {
           const batchFees = (foundInDb.batches || [])
             .map((b: any) => Number(b.monthlyFee))
             .filter((f: number) => !isNaN(f) && f > 0);
-          const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(foundInDb.monthlyTuitionFee || 0);
+          const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : 0;
 
           // Extract venue photos from statusNotes if uploaded during KYC
           const docsPayload = parseDocsPayload(foundInDb);
@@ -529,7 +529,7 @@ export default function AcademyDetailPage() {
               time: b.pureSchedule || b.schedule,
               schedule: b.pureSchedule || b.schedule,
               ageGroup: b.ageGroup || 'All Ages',
-              monthlyFee: Number(b.monthlyFee) || startingFee,
+              monthlyFee: Number(b.monthlyFee) > 0 ? Number(b.monthlyFee) : startingFee,
               totalSeats: b.totalSeats || 15,
               seatsFilled: b.seatsFilled || 0,
               seats: `${b.seatsFilled || 0}/${b.totalSeats || 15} Enrolled`,
@@ -558,7 +558,7 @@ export default function AcademyDetailPage() {
               const coachBatchFees = (coachCentre.batches || [])
                 .map((b: any) => Number(b.monthlyFee))
                 .filter((f: number) => !isNaN(f) && f > 0);
-              const coachStartingFee = coachBatchFees.length > 0 ? Math.min(...coachBatchFees) : Number(coachCentre.monthlyTuitionFee || 0);
+              const coachStartingFee = coachBatchFees.length > 0 ? Math.min(...coachBatchFees) : 0;
 
               const coachDocsPayload = parseDocsPayload(coachCentre);
               const coachVenuePhotos = (coachDocsPayload?.venuePhotos || [])
@@ -641,7 +641,7 @@ export default function AcademyDetailPage() {
                   time: b.pureSchedule || b.schedule,
                   schedule: b.pureSchedule || b.schedule,
                   ageGroup: b.ageGroup || 'All Ages',
-                  monthlyFee: Number(b.monthlyFee) || coachStartingFee,
+                  monthlyFee: Number(b.monthlyFee) > 0 ? Number(b.monthlyFee) : coachStartingFee,
                   totalSeats: b.totalSeats || 15,
                   seatsFilled: b.seatsFilled || 0,
                 })),
@@ -788,7 +788,7 @@ export default function AcademyDetailPage() {
   const batchFees = (academy?.batches || [])
     .map((b) => Number(b.monthlyFee))
     .filter((fee) => !isNaN(fee) && fee > 0);
-  const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(academy?.fee || 0);
+  const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : 0;
 
   return (
     <div className="w-full bg-slate-50 pb-24 md:pb-16 text-slate-900">
@@ -2061,8 +2061,8 @@ export default function AcademyDetailPage() {
                 const batchFees = (academy.batches || [])
                   .map((b) => Number(b.monthlyFee))
                   .filter((fee) => !isNaN(fee) && fee > 0);
-                const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(academy.fee || 0);
-                const displayFee = selectedBatch?.monthlyFee ? Number(selectedBatch.monthlyFee) : minBatchFee;
+                const minBatchFee = batchFees.length > 0 ? Math.min(...batchFees) : 0;
+                const displayFee = Number(selectedBatch?.monthlyFee) > 0 ? Number(selectedBatch.monthlyFee) : minBatchFee;
 
                 return (
                   <div className="border-b border-slate-100 pb-4 space-y-1">
@@ -2086,7 +2086,11 @@ export default function AcademyDetailPage() {
                       </div>
                     )}
                     <p className="text-[10px] text-slate-500">
-                      Selected slot: <strong>{selectedBatch?.name || 'Standard Batch'}</strong> ({selectedBatch?.time || 'Regular Schedule'})
+                      {academy.batches && academy.batches.length > 0 ? (
+                        <>Selected slot: <strong>{selectedBatch?.name || 'Standard Batch'}</strong> ({selectedBatch?.time || 'Regular Schedule'})</>
+                      ) : (
+                        <>Batch timings &amp; slots flexible • Inquire with coach</>
+                      )}
                     </p>
                   </div>
                 );
