@@ -98,8 +98,38 @@ export const fetchDiscoveryData = async () => {
               orderBy: { order: 'asc' },
             })
             .catch(() => DEFAULT_CLASS_MODES)
-        : Promise.resolve(DEFAULT_CLASS_MODES),
+        : prisma
+            .$queryRawUnsafe<any[]>(
+              'SELECT * FROM "ClassMode" WHERE "isActive" = true ORDER BY "order" ASC'
+            )
+            .then((rows) =>
+              rows && rows.length > 0
+                ? rows.map((r) => ({
+                    id: r.id,
+                    slug: r.slug,
+                    label: r.label,
+                    description: r.description || null,
+                    badgeColor: r.badgeColor || 'blue',
+                    icon: r.icon || 'Buildings',
+                    isActive: Boolean(r.isActive),
+                    order: Number(r.order) || 0,
+                  }))
+                : DEFAULT_CLASS_MODES
+            )
+            .catch(() => DEFAULT_CLASS_MODES),
     ]);
+
+  let modesById: Record<string, string> = {};
+  try {
+    const rawModes = await prisma.$queryRawUnsafe<Array<{ id: string; classMode?: string }>>(
+      'SELECT "id", "classMode" FROM "CoachingCentre"'
+    );
+    for (const rm of rawModes) {
+      if (rm.id && rm.classMode) {
+        modesById[rm.id] = rm.classMode;
+      }
+    }
+  } catch {}
 
   const mappedActivities = (majorActivities || []).map((act: any) => ({
     id: act.id,
@@ -131,7 +161,7 @@ export const fetchDiscoveryData = async () => {
 
   const mappedCentres = (centres || []).map((c: any) => ({
     ...c,
-    classMode: c.classMode || 'offline',
+    classMode: modesById[c.id] || c.classMode || 'offline',
     batches: (c.batches || []).map((b: any) => formatBatchItem(b, c.category)),
   }));
 
@@ -210,7 +240,19 @@ export async function getCachedAcademyById(id: string) {
             },
           },
         });
-        return centre ? toPlainObject(centre) : null;
+        if (centre) {
+          try {
+            const raw = await prisma.$queryRawUnsafe<Array<{ classMode?: string }>>(
+              'SELECT "classMode" FROM "CoachingCentre" WHERE "id" = $1 LIMIT 1',
+              centre.id
+            );
+            if (raw?.[0]?.classMode) {
+              (centre as any).classMode = raw[0].classMode;
+            }
+          } catch {}
+          return toPlainObject(centre);
+        }
+        return null;
       } catch (err) {
         console.warn(`[DB_OFFLINE] Database unreachable during cached academy lookup (${targetId}):`, (err as any)?.message);
         return null;

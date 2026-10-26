@@ -2965,7 +2965,6 @@ export async function registerCoachAcademy(data: {
           planExpiresAt,
           planBillingCycle,
           isTrialActive,
-          classMode: data.classMode?.trim().toLowerCase() || 'offline',
           ...(statusNotesWithPayload && {
             statusNotes: statusNotesWithPayload,
             cctvMonitored: Boolean(data.safetyChecklist?.cctvMonitored),
@@ -2976,6 +2975,18 @@ export async function registerCoachAcademy(data: {
           }),
         },
       });
+
+      const targetClassMode = data.classMode?.trim().toLowerCase() || 'offline';
+      try {
+        await prisma.$executeRawUnsafe(
+          'UPDATE "CoachingCentre" SET "classMode" = $1 WHERE "id" = $2',
+          targetClassMode,
+          centre.id
+        );
+        (centre as any).classMode = targetClassMode;
+      } catch (e) {
+        console.warn('[DB] Failed to update classMode via raw SQL:', e);
+      }
     } else {
       centre = await prisma.coachingCentre.create({
         data: {
@@ -3012,9 +3023,20 @@ export async function registerCoachAcademy(data: {
           isTrialActive,
           isTopInArea: false,
           isVerifiedBatch: false,
-          classMode: data.classMode?.trim().toLowerCase() || 'offline',
         },
       });
+
+      const targetClassMode = data.classMode?.trim().toLowerCase() || 'offline';
+      try {
+        await prisma.$executeRawUnsafe(
+          'UPDATE "CoachingCentre" SET "classMode" = $1 WHERE "id" = $2',
+          targetClassMode,
+          centre.id
+        );
+        (centre as any).classMode = targetClassMode;
+      } catch (e) {
+        console.warn('[DB] Failed to set classMode on CoachingCentre:', e);
+      }
     }
 
     // Trigger Free Trial welcome email if trial is active
@@ -3346,11 +3368,23 @@ export async function getCoachDashboardData(userEmailOrId?: string) {
 
     const plainCentre = centre ? toPlainObject(centre) : null;
     if (plainCentre) {
-      (plainCentre as any).categories = plainCentre.category
+      const pCentre = plainCentre as any;
+      if (!pCentre.classMode) {
+        try {
+          const raw = await prisma.$queryRawUnsafe<Array<{ classMode?: string }>>(
+            'SELECT "classMode" FROM "CoachingCentre" WHERE "id" = $1 LIMIT 1',
+            plainCentre.id
+          );
+          pCentre.classMode = raw?.[0]?.classMode || 'offline';
+        } catch {
+          pCentre.classMode = 'offline';
+        }
+      }
+      pCentre.categories = plainCentre.category
         ? plainCentre.category.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean)
         : [];
-      if (Array.isArray((plainCentre as any).batches)) {
-        (plainCentre as any).batches = (plainCentre as any).batches.map((b: any) => formatBatchItem(b, plainCentre.category));
+      if (Array.isArray(pCentre.batches)) {
+        pCentre.batches = pCentre.batches.map((b: any) => formatBatchItem(b, plainCentre.category));
       }
     }
 
@@ -3680,9 +3714,22 @@ export async function updateCoachAcademyProfile(data: {
         ...(data.eligibleAgeGroup ? { eligibleAgeGroup: data.eligibleAgeGroup } : {}),
         ...(data.headCoachName ? { headCoachName: data.headCoachName } : {}),
         ...(data.headCoachBio ? { headCoachBio: data.headCoachBio } : {}),
-        ...(data.classMode ? { classMode: data.classMode.toLowerCase().trim() } : {}),
       },
     });
+
+    if (data.classMode) {
+      const modeVal = data.classMode.toLowerCase().trim();
+      try {
+        await prisma.$executeRawUnsafe(
+          'UPDATE "CoachingCentre" SET "classMode" = $1 WHERE "id" = $2',
+          modeVal,
+          data.centreId
+        );
+        (updated as any).classMode = modeVal;
+      } catch (err) {
+        console.warn('[DB] Failed to update classMode on coaching centre:', err);
+      }
+    }
 
     if (data.batches && data.batches.length > 0) {
       for (const b of data.batches) {
@@ -6079,28 +6126,182 @@ export async function resetLocationConfigAction() {
 // CLASS DELIVERY MODES (Online, Offline, Hybrid & Custom Modes)
 // ────────────────────────────────────────────────────────────
 
+async function dbGetClassModesRaw(onlyActive = true): Promise<ClassModeItem[]> {
+  if ((prisma as any).classMode?.findMany) {
+    try {
+      const res = await (prisma as any).classMode.findMany({
+        where: onlyActive ? { isActive: true } : undefined,
+        orderBy: { order: 'asc' },
+      });
+      if (res && res.length > 0) return toPlainObject(res);
+    } catch {}
+  }
+
+  try {
+    const sql = onlyActive
+      ? 'SELECT * FROM "ClassMode" WHERE "isActive" = true ORDER BY "order" ASC'
+      : 'SELECT * FROM "ClassMode" ORDER BY "order" ASC';
+    const rows = await prisma.$queryRawUnsafe<any[]>(sql);
+    if (rows && rows.length > 0) {
+      return toPlainObject(
+        rows.map((r) => ({
+          id: r.id,
+          slug: r.slug,
+          label: r.label,
+          description: r.description || null,
+          badgeColor: r.badgeColor || 'blue',
+          icon: r.icon || 'Buildings',
+          isActive: Boolean(r.isActive),
+          order: Number(r.order) || 0,
+        }))
+      );
+    }
+  } catch (err) {
+    console.warn('[DB] ClassMode raw query fallback:', err);
+  }
+
+  return DEFAULT_CLASS_MODES;
+}
+
+async function dbFindClassModeBySlugRaw(slug: string): Promise<any | null> {
+  if ((prisma as any).classMode?.findUnique) {
+    try {
+      const res = await (prisma as any).classMode.findUnique({ where: { slug } });
+      if (res) return toPlainObject(res);
+    } catch {}
+  }
+
+  try {
+    const rows = await prisma.$queryRawUnsafe<any[]>('SELECT * FROM "ClassMode" WHERE "slug" = $1 LIMIT 1', slug);
+    return rows && rows.length > 0 ? toPlainObject(rows[0]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function dbFindClassModeByIdRaw(id: string): Promise<any | null> {
+  if ((prisma as any).classMode?.findUnique) {
+    try {
+      const res = await (prisma as any).classMode.findUnique({ where: { id } });
+      if (res) return toPlainObject(res);
+    } catch {}
+  }
+
+  try {
+    const rows = await prisma.$queryRawUnsafe<any[]>('SELECT * FROM "ClassMode" WHERE "id" = $1 LIMIT 1', id);
+    return rows && rows.length > 0 ? toPlainObject(rows[0]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function dbCreateClassModeRaw(data: {
+  slug: string;
+  label: string;
+  badgeColor: string;
+  icon: string;
+  description?: string | null;
+  isActive: boolean;
+  order: number;
+}) {
+  if ((prisma as any).classMode?.create) {
+    try {
+      const created = await (prisma as any).classMode.create({ data });
+      return toPlainObject(created);
+    } catch {}
+  }
+
+  const id = 'cm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ClassMode" ("id", "slug", "label", "badgeColor", "icon", "description", "isActive", "order", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+    id,
+    data.slug,
+    data.label,
+    data.badgeColor,
+    data.icon,
+    data.description || null,
+    data.isActive,
+    data.order
+  );
+
+  return { id, ...data };
+}
+
+async function dbUpdateClassModeRaw(id: string, data: any) {
+  if ((prisma as any).classMode?.update) {
+    try {
+      const updated = await (prisma as any).classMode.update({ where: { id }, data });
+      return toPlainObject(updated);
+    } catch {}
+  }
+
+  const existing = await dbFindClassModeByIdRaw(id);
+  if (!existing) return null;
+
+  const slug = data.slug || existing.slug;
+  const label = data.label || existing.label;
+  const badgeColor = data.badgeColor || existing.badgeColor;
+  const icon = data.icon || existing.icon;
+  const description = typeof data.description !== 'undefined' ? data.description : existing.description;
+  const isActive = typeof data.isActive === 'boolean' ? data.isActive : existing.isActive;
+  const order = typeof data.order === 'number' ? data.order : existing.order;
+
+  await prisma.$executeRawUnsafe(
+    `UPDATE "ClassMode"
+     SET "slug" = $1, "label" = $2, "badgeColor" = $3, "icon" = $4, "description" = $5, "isActive" = $6, "order" = $7, "updatedAt" = NOW()
+     WHERE "id" = $8`,
+    slug,
+    label,
+    badgeColor,
+    icon,
+    description,
+    isActive,
+    order,
+    id
+  );
+
+  return { id, slug, label, badgeColor, icon, description, isActive, order };
+}
+
+async function dbDeleteClassModeRaw(id: string) {
+  const existing = await dbFindClassModeByIdRaw(id);
+  if (!existing) return false;
+
+  try {
+    await prisma.$executeRawUnsafe(
+      'UPDATE "CoachingCentre" SET "classMode" = $1 WHERE "classMode" = $2',
+      'offline',
+      existing.slug
+    );
+  } catch (err) {
+    console.warn('[DB] Failed to reset classMode on deleted mode:', err);
+  }
+
+  if ((prisma as any).classMode?.delete) {
+    try {
+      await (prisma as any).classMode.delete({ where: { id } });
+      return true;
+    } catch {}
+  }
+
+  await prisma.$executeRawUnsafe('DELETE FROM "ClassMode" WHERE "id" = $1', id);
+  return true;
+}
+
 export async function getClassModes(): Promise<ClassModeItem[]> {
   try {
-    const modes = await prisma.classMode.findMany({
-      where: { isActive: true },
-      orderBy: { order: 'asc' },
-    });
-
+    const modes = await dbGetClassModesRaw(true);
     if (modes.length > 0) {
-      return toPlainObject(modes);
+      return modes;
     }
 
     // Seed defaults if table is empty
-    await prisma.classMode.createMany({
-      data: DEFAULT_CLASS_MODES,
-      skipDuplicates: true,
-    });
+    for (const def of DEFAULT_CLASS_MODES) {
+      await dbCreateClassModeRaw(def);
+    }
 
-    const seeded = await prisma.classMode.findMany({
-      where: { isActive: true },
-      orderBy: { order: 'asc' },
-    });
-    return toPlainObject(seeded.length > 0 ? seeded : DEFAULT_CLASS_MODES);
+    return await dbGetClassModesRaw(true);
   } catch (err) {
     console.warn('[DB] Failed to fetch class modes from database, using defaults:', err);
     return DEFAULT_CLASS_MODES;
@@ -6114,26 +6315,27 @@ export async function getAllClassModesAdmin() {
       return { success: false, message: 'Unauthorized. Admin privileges required.' };
     }
 
-    let modes = await prisma.classMode.findMany({
-      orderBy: { order: 'asc' },
-    });
+    let modes = await dbGetClassModesRaw(false);
 
     if (modes.length === 0) {
-      await prisma.classMode.createMany({
-        data: DEFAULT_CLASS_MODES,
-        skipDuplicates: true,
-      });
-      modes = await prisma.classMode.findMany({
-        orderBy: { order: 'asc' },
-      });
+      for (const def of DEFAULT_CLASS_MODES) {
+        await dbCreateClassModeRaw(def);
+      }
+      modes = await dbGetClassModesRaw(false);
     }
 
     // Compute academy counts per class mode
     const counts: Record<string, number> = {};
-    const centres = await prisma.coachingCentre.findMany({
-      select: { classMode: true },
-    });
-    for (const c of centres) {
+    let centreModes: Array<{ classMode?: string }> = [];
+    try {
+      centreModes = await prisma.$queryRawUnsafe<Array<{ classMode?: string }>>(
+        'SELECT "classMode" FROM "CoachingCentre"'
+      );
+    } catch (e) {
+      console.warn('[DB] Failed to query classMode from CoachingCentre:', e);
+      centreModes = [];
+    }
+    for (const c of centreModes) {
       const mode = (c.classMode || 'offline').toLowerCase();
       counts[mode] = (counts[mode] || 0) + 1;
     }
@@ -6146,7 +6348,7 @@ export async function getAllClassModesAdmin() {
     return {
       success: true,
       modes: toPlainObject(modesWithCounts),
-      totalCentres: centres.length,
+      totalCentres: centreModes.length,
     };
   } catch (err: any) {
     console.error('[DB] getAllClassModesAdmin error:', err);
@@ -6183,24 +6385,20 @@ export async function createClassMode(data: {
     if (!cleanSlug) cleanSlug = `mode-${Date.now()}`;
 
     // Check slug collision
-    const existing = await prisma.classMode.findUnique({
-      where: { slug: cleanSlug },
-    });
+    const existing = await dbFindClassModeBySlugRaw(cleanSlug);
     if (existing) {
       return { success: false, message: `A delivery mode with identifier "${cleanSlug}" already exists.` };
     }
 
-    const count = await prisma.classMode.count();
-    const created = await prisma.classMode.create({
-      data: {
-        slug: cleanSlug,
-        label: cleanLabel,
-        description: data.description?.trim() || null,
-        badgeColor: data.badgeColor || 'blue',
-        icon: data.icon || 'Buildings',
-        isActive: data.isActive !== false,
-        order: typeof data.order === 'number' ? data.order : count + 1,
-      },
+    const allCurrent = await dbGetClassModesRaw(false);
+    const created = await dbCreateClassModeRaw({
+      slug: cleanSlug,
+      label: cleanLabel,
+      description: data.description?.trim() || null,
+      badgeColor: data.badgeColor || 'blue',
+      icon: data.icon || 'Buildings',
+      isActive: data.isActive !== false,
+      order: typeof data.order === 'number' ? data.order : allCurrent.length + 1,
     });
 
     safeRevalidatePath('/admin/modes');
@@ -6233,7 +6431,7 @@ export async function updateClassMode(
       return { success: false, message: 'Unauthorized. Admin privileges required.' };
     }
 
-    const existing = await prisma.classMode.findUnique({ where: { id } });
+    const existing = await dbFindClassModeByIdRaw(id);
     if (!existing) {
       return { success: false, message: 'Class mode not found.' };
     }
@@ -6242,7 +6440,7 @@ export async function updateClassMode(
     if (data.slug && data.slug.trim()) {
       const candidateSlug = data.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       if (candidateSlug !== existing.slug) {
-        const clash = await prisma.classMode.findUnique({ where: { slug: candidateSlug } });
+        const clash = await dbFindClassModeBySlugRaw(candidateSlug);
         if (clash && clash.id !== id) {
           return { success: false, message: `Identifier "${candidateSlug}" is already in use by another mode.` };
         }
@@ -6250,17 +6448,14 @@ export async function updateClassMode(
       }
     }
 
-    const updated = await prisma.classMode.update({
-      where: { id },
-      data: {
-        ...(data.label ? { label: data.label.trim() } : {}),
-        slug: slugToUpdate,
-        ...(data.badgeColor ? { badgeColor: data.badgeColor } : {}),
-        ...(data.icon ? { icon: data.icon } : {}),
-        ...(typeof data.description !== 'undefined' ? { description: data.description?.trim() || null } : {}),
-        ...(typeof data.isActive === 'boolean' ? { isActive: data.isActive } : {}),
-        ...(typeof data.order === 'number' ? { order: data.order } : {}),
-      },
+    const updated = await dbUpdateClassModeRaw(id, {
+      ...(data.label ? { label: data.label.trim() } : {}),
+      slug: slugToUpdate,
+      ...(data.badgeColor ? { badgeColor: data.badgeColor } : {}),
+      ...(data.icon ? { icon: data.icon } : {}),
+      ...(typeof data.description !== 'undefined' ? { description: data.description?.trim() || null } : {}),
+      ...(typeof data.isActive === 'boolean' ? { isActive: data.isActive } : {}),
+      ...(typeof data.order === 'number' ? { order: data.order } : {}),
     });
 
     safeRevalidatePath('/admin/modes');
@@ -6282,18 +6477,12 @@ export async function deleteClassMode(id: string) {
       return { success: false, message: 'Unauthorized. Admin privileges required.' };
     }
 
-    const existing = await prisma.classMode.findUnique({ where: { id } });
+    const existing = await dbFindClassModeByIdRaw(id);
     if (!existing) {
       return { success: false, message: 'Class mode not found.' };
     }
 
-    // If any academies are assigned this mode, migrate them to 'offline'
-    await prisma.coachingCentre.updateMany({
-      where: { classMode: existing.slug },
-      data: { classMode: 'offline' },
-    });
-
-    await prisma.classMode.delete({ where: { id } });
+    await dbDeleteClassModeRaw(id);
 
     safeRevalidatePath('/admin/modes');
     safeRevalidatePath('/activities');
@@ -6314,10 +6503,7 @@ export async function toggleActiveClassMode(id: string, isActive: boolean) {
       return { success: false, message: 'Unauthorized. Admin privileges required.' };
     }
 
-    const updated = await prisma.classMode.update({
-      where: { id },
-      data: { isActive },
-    });
+    const updated = await dbUpdateClassModeRaw(id, { isActive });
 
     safeRevalidatePath('/admin/modes');
     safeRevalidatePath('/activities');
@@ -6339,18 +6525,19 @@ export async function seedDefaultClassModesAction() {
     }
 
     for (const def of DEFAULT_CLASS_MODES) {
-      await prisma.classMode.upsert({
-        where: { slug: def.slug },
-        update: {
+      const existing = await dbFindClassModeBySlugRaw(def.slug);
+      if (!existing) {
+        await dbCreateClassModeRaw(def);
+      } else {
+        await dbUpdateClassModeRaw(existing.id, {
           label: def.label,
           description: def.description,
           badgeColor: def.badgeColor,
           icon: def.icon,
           order: def.order,
           isActive: true,
-        },
-        create: def,
-      });
+        });
+      }
     }
 
     safeRevalidatePath('/admin/modes');
