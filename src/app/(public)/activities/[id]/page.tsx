@@ -544,7 +544,7 @@ export default function AcademyDetailPage() {
         if (userEmail) {
           try {
             const coachData = await getCoachDashboardData();
-            const coachCentre = coachData?.centre;
+            const coachCentre: any = coachData?.centre;
             if (
               coachCentre &&
               (coachCentre.id === id || coachCentre.id?.toLowerCase() === id?.toLowerCase())
@@ -630,7 +630,7 @@ export default function AcademyDetailPage() {
                 planTier: coachCentre.planTier,
                 isVerifiedBatch: coachCentre.kycStatus === 'APPROVED' && Boolean(coachCentre.isVerifiedBatch),
                 coachType: coachCentre.coachType,
-                classMode: coachCentre.classMode || 'offline',
+                classMode: (coachCentre as any)?.classMode || 'offline',
                 batches: (coachCentre.batches || []).map((b: any) => ({
                   id: b.id,
                   name: b.name,

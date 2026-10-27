@@ -3390,7 +3390,7 @@ export async function getCoachDashboardData(userEmailOrId?: string) {
 
     return {
       success: true,
-      centre: plainCentre,
+      centre: plainCentre as any,
       config: config ? toPlainObject(config) : null,
     };
   } catch (err) {
