@@ -20,6 +20,7 @@ import {
 import {
   PlatformCategory,
   TaxonomyGroup,
+  registerDynamicTaxonomy,
   getCategoryDisplayName,
   getCategoryEmoji,
   getCategoryPillar,
@@ -158,6 +159,10 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
   const router = useRouter();
   const { activeCity, activeLocality, activeCoords, setLocation, showToast } = usePersona();
 
+  if (initialData?.activities && initialData.activities.length > 0) {
+    registerDynamicTaxonomy(initialData.activities);
+  }
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSectionRef = useRef<HTMLDivElement>(null);
   const journeySectionRef = useRef<HTMLDivElement>(null);
@@ -171,8 +176,8 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
     initialData?.centres ? mapCentresToAcademies(initialData.centres, activeCity, activeCoords) : []
   );
   const hasDiscoveryData = Boolean(
-    (initialData?.activities && initialData.activities.length > 0) ||
-    (initialData?.heroSlides && initialData.heroSlides.length > 0)
+    (initialData?.centres && initialData.centres.length > 0) ||
+    (initialData?.activities && initialData.activities.length > 0)
   );
   const [isLoading, setIsLoading] = useState(!hasDiscoveryData);
 
@@ -230,6 +235,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
       }
       if (data.activities && Array.isArray(data.activities)) {
         setActivitiesList(data.activities);
+        registerDynamicTaxonomy(data.activities);
       } else {
         setActivitiesList([]);
       }

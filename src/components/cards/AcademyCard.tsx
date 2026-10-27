@@ -108,6 +108,23 @@ export function AcademyCard({
     }
   };
 
+  if (!academy || !academy.id) {
+    return (
+      <div className="w-full bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 animate-pulse flex flex-col gap-3 h-52">
+        <div className="h-6 bg-slate-100 rounded-md w-1/3" />
+        <div className="flex gap-3.5 items-center">
+          <div className="w-[88px] h-[88px] rounded-2xl bg-slate-200 shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 bg-slate-200 rounded w-3/4" />
+            <div className="h-3 bg-slate-100 rounded w-1/2" />
+            <div className="h-4 bg-slate-100 rounded w-1/3" />
+          </div>
+        </div>
+        <div className="h-10 bg-slate-50 rounded-xl" />
+      </div>
+    );
+  }
+
   const isCurrentCoachCenter = false; // Shown only when coach is authenticated (NextAuth session)
 
   const modeInfo = resolveClassModeInfo(academy.classMode);
@@ -270,13 +287,17 @@ export function AcademyCard({
             {/* Activities & Age: Exactly 1 line (h-5) with truncate */}
             <div className="h-5 flex items-center">
               {(() => {
-                const displayCategory = getCategoryDisplayName(academy.activitiesText || academy.category);
+                const rawCategoryText = academy.activitiesText || academy.category;
+                if (!rawCategoryText) {
+                  return <span className="h-4 w-28 bg-slate-200 animate-pulse rounded-md inline-block" />;
+                }
+                const displayCategory = getCategoryDisplayName(rawCategoryText);
                 return (
                   <span
-                    title={`${displayCategory} • ${academy.ageText}`}
+                    title={`${displayCategory} • ${academy.ageText || 'All Ages'}`}
                     className="text-[10px] text-emerald-800 font-extrabold bg-emerald-50 border border-emerald-100/80 px-2 py-0.5 rounded-md truncate max-w-full"
                   >
-                    {displayCategory} • {academy.ageText}
+                    {displayCategory} • {academy.ageText || 'All Ages'}
                   </span>
                 );
               })()}

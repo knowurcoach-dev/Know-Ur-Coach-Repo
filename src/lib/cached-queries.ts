@@ -207,6 +207,9 @@ export async function getCachedDiscoveryData() {
   try {
     const now = Date.now();
     if (memoryDiscoveryCache && (now - memoryDiscoveryCache.timestamp < MEMORY_TTL_MS)) {
+      if (memoryDiscoveryCache.data?.activities) {
+        registerDynamicTaxonomy(memoryDiscoveryCache.data.activities);
+      }
       return memoryDiscoveryCache.data;
     }
 
@@ -215,6 +218,10 @@ export async function getCachedDiscoveryData() {
       data = await fetchDiscoveryData();
     } else {
       data = await _getCachedDiscoveryData();
+    }
+
+    if (data?.activities) {
+      registerDynamicTaxonomy(data.activities);
     }
 
     memoryDiscoveryCache = { data, timestamp: now };

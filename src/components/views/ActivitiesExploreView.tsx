@@ -441,23 +441,38 @@ function matchesCategory(acad: Academy, catSlug: string): boolean {
         activities.some((a) => a.includes('handwriting') || a.includes('cursive'))
       );
     case 'dance':
+    case 'western-dance':
+    case 'western-and-hiphop-dance':
       return (
         rawSlugs.includes('dance') ||
-        rawSlugs.includes('kathak') ||
-        cat === 'dance' ||
-        name.includes('dance') ||
-        name.includes('kathak') ||
-        tagline.includes('dance') ||
-        activities.some((a) => a.includes('dance') || a.includes('kathak'))
-      );
-    case 'western-dance':
-      return (
         rawSlugs.includes('western-dance') ||
+        rawSlugs.includes('western-and-hiphop-dance') ||
         rawSlugs.includes('hip-hop') ||
+        cat === 'dance' ||
         cat === 'western-dance' ||
+        cat === 'western-and-hiphop-dance' ||
+        name.includes('dance') ||
         name.includes('hip hop') ||
-        name.includes('western dance') ||
-        activities.some((a) => a.includes('hip hop') || a.includes('western'))
+        name.includes('western') ||
+        tagline.includes('dance') ||
+        tagline.includes('western') ||
+        activities.some((a) => a.includes('dance') || a.includes('western') || a.includes('hip hop'))
+      );
+    case 'classical-&-semi-classical':
+    case 'classical-dance':
+    case 'kathak':
+      return (
+        rawSlugs.includes('classical-&-semi-classical') ||
+        rawSlugs.includes('classical-dance') ||
+        rawSlugs.includes('kathak') ||
+        cat === 'classical-&-semi-classical' ||
+        cat === 'classical-dance' ||
+        cat === 'kathak' ||
+        name.includes('kathak') ||
+        name.includes('classical') ||
+        tagline.includes('kathak') ||
+        tagline.includes('classical') ||
+        activities.some((a) => a.includes('kathak') || a.includes('classical'))
       );
     case 'instruments':
       return (
@@ -634,6 +649,10 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
 
   const rawCentresRef = useRef<any[]>(initialData?.centres || initialData?.academies || []);
 
+  if (initialData?.activities && initialData.activities.length > 0) {
+    registerDynamicTaxonomy(initialData.activities);
+  }
+
   const [academiesList, setAcademiesList] = useState<Academy[]>(() => {
     const raw = rawCentresRef.current;
     if (raw.length > 0) {
@@ -800,6 +819,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
       const res = await getDiscoveryData();
       if (res.activities) {
         setActivitiesList(res.activities);
+        registerDynamicTaxonomy(res.activities);
       }
       const rawCentres = (res as any).centres || (res as any).academies || [];
       rawCentresRef.current = rawCentres;
@@ -1498,11 +1518,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
 
           {/* Skeletons while loading */}
           {isLoadingDb && academiesList.length === 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <ActivityCardSkeleton key={i} />
-              ))}
-            </div>
+            <ActivityCardSkeleton count={6} />
           ) : filteredAcademies.length === 0 ? (
             /* Empty State */
             <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border border-slate-200 shadow-2xs space-y-4">

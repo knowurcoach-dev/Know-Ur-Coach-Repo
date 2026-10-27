@@ -10,6 +10,7 @@ import { DatabaseErrorView } from '@/components/ui/DatabaseErrorView';
 import { resolveCentreCity } from '@/lib/location';
 import {
   getCategoryPillar,
+  registerDynamicTaxonomy,
   getCategoryDisplayName,
   getCategoryEmoji,
   resolveCategoryCoverImage,
@@ -82,6 +83,10 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
   const { activeCity, activeLocality } = usePersona();
   const { openModal } = useModalStore();
 
+  if (initialData?.activities && initialData.activities.length > 0) {
+    registerDynamicTaxonomy(initialData.activities);
+  }
+
   const rawSearch = searchParams.get('search') || '';
   const rawCategory = searchParams.get('category');
   const rawActivity = searchParams.get('activity');
@@ -149,6 +154,7 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
       const res = await getDiscoveryData();
       if (res.activities) {
         setActivitiesList(res.activities);
+        registerDynamicTaxonomy(res.activities);
       }
       const rawCentres = (res as any).centres || (res as any).academies || [];
       rawCentresRef.current = rawCentres;
