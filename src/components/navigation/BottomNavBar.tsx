@@ -70,6 +70,7 @@ export function BottomNavBar() {
           <Link
             key={id}
             href={href}
+            prefetch={true}
             id={`nav-${id}`}
             className={`flex flex-col items-center gap-0.5 transition-all w-14 py-0.5 active:scale-95 ${
               active ? 'text-emerald-600' : 'text-gray-400 hover:text-emerald-500'

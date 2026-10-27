@@ -396,6 +396,118 @@ export default function AcademyDetailPage() {
     }
   };
 
+  const rawCentreRef = React.useRef<any>(null);
+
+  const mapDbCentreToAcademy = React.useCallback(
+    (foundInDb: any, targetCity: string | null, targetCoords: { lat: number; lon: number } | null): Academy => {
+      const categorySlugs = (foundInDb.category ? foundInDb.category.split(',') : ['tennis'])
+        .map((s: string) => s.trim().toLowerCase())
+        .filter(Boolean);
+      const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
+
+      const batchFees = (foundInDb.batches || [])
+        .map((b: any) => Number(b.monthlyFee))
+        .filter((f: number) => !isNaN(f) && f > 0);
+      const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(foundInDb.monthlyTuitionFee || 0);
+
+      const docsPayload = parseDocsPayload(foundInDb);
+      const venuePhotos = (docsPayload?.venuePhotos || [])
+        .map((p: any) => p.url)
+        .filter((u: string) => u && (u.startsWith('http') || u.startsWith('data:image/')));
+
+      const rawCustomImage = (foundInDb as any).image;
+      const hasCustomImage = Boolean(
+        (rawCustomImage && typeof rawCustomImage === 'string' && !rawCustomImage.includes('photo-1534438327276-14e5300c3a48') && (rawCustomImage.startsWith('http') || rawCustomImage.startsWith('data:image/'))) ||
+        venuePhotos.length > 0
+      );
+      const primaryImage = venuePhotos[0] || (hasCustomImage ? rawCustomImage : '');
+      const primaryPillar = categorySlugs[0] ? getCategoryPillar(categorySlugs[0]) : 'education';
+
+      return {
+        id: foundInDb.id,
+        name: foundInDb.name,
+        tagline: foundInDb.tagline || `Verified ${primaryPillar === 'education' ? 'Academic Coaching Center' : 'Sports & Activities Academy'} in ${(foundInDb as any).city || targetCity || 'Agra'}`,
+        category: (foundInDb.category as any) || 'tennis',
+        categorySlugs,
+        activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(foundInDb.category)],
+        activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(foundInDb.category),
+        locality: extractCleanLocalitySlug(foundInDb.locality, foundInDb.address),
+        localityName: extractCleanLocalityName(foundInDb.locality, foundInDb.address, (foundInDb as any).city || targetCity || 'Kamla Nagar'),
+        city: (foundInDb as any).city || targetCity || 'Agra',
+        address: foundInDb.address || `${(foundInDb as any).city || targetCity || 'Agra'}, Uttar Pradesh`,
+        phone: foundInDb.phone || '+91 98970 12345',
+        distance: (() => {
+          const isAllIndia = !targetCity || targetCity.toLowerCase() === 'all' || targetCity.toLowerCase().includes('india');
+          if (!isAllIndia && targetCoords && typeof foundInDb.latitude === 'number' && typeof foundInDb.longitude === 'number') {
+            const d = calculateDistance(targetCoords.lat, targetCoords.lon, foundInDb.latitude, foundInDb.longitude);
+            return d <= 100 ? d : undefined;
+          }
+          return undefined;
+        })(),
+        distanceText: (() => {
+          const isAllIndia = !targetCity || targetCity.toLowerCase() === 'all' || targetCity.toLowerCase().includes('india');
+          if (!isAllIndia && targetCoords && typeof foundInDb.latitude === 'number' && typeof foundInDb.longitude === 'number') {
+            const d = calculateDistance(targetCoords.lat, targetCoords.lon, foundInDb.latitude, foundInDb.longitude);
+            return d <= 100 ? formatDistanceText(d) : undefined;
+          }
+          return undefined;
+        })(),
+        age: ['u8', 'u12', 'u16'],
+        ageText: foundInDb.eligibleAgeGroup || '4 - 17 Yrs',
+        fee: startingFee,
+        trialFee: Number(foundInDb.trialFee) || 0,
+        rating: Number(foundInDb.rating) || 5.0,
+        reviewsCount: typeof foundInDb.reviewsCount === 'number' ? foundInDb.reviewsCount : (Number(foundInDb.reviewsCount) || 0),
+        verifiedTag: foundInDb.kycStatus === 'APPROVED' ? (foundInDb.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Audited') : 'Pending Verification',
+        image: primaryImage,
+        hasCustomImage,
+        venuePhotos,
+        primaryPillar,
+        coachName: foundInDb.headCoachName || 'Certified Head Coach',
+        coachTitle: foundInDb.nisCertified
+          ? 'NIS Certified Head Coach'
+          : (primaryPillar === 'education' ? 'Lead Academic Mentor & Faculty' : 'Certified Head Coach'),
+        coachBio: foundInDb.headCoachBio,
+        coachesCount: foundInDb.coachesCount ?? (primaryPillar === 'education' ? 1 : 2),
+        ratio: foundInDb.studentCoachRatio || '1 : 8',
+        nisCertified: Boolean(foundInDb.nisCertified),
+        policeVerifiedStaff: Boolean(foundInDb.policeVerifiedStaff),
+        cctvMonitored: Boolean(foundInDb.cctvMonitored),
+        firstAidAvailable: Boolean(foundInDb.firstAidAvailable),
+        facilities: (foundInDb.facilities || []).map((f: any) => f.description),
+        safety: '24/7 CCTV • First Aid • Police Verified Staff',
+        isTopInArea: foundInDb.isTopInArea,
+        planTier: foundInDb.planTier,
+        isVerifiedBatch: foundInDb.kycStatus === 'APPROVED' && Boolean(foundInDb.isVerifiedBatch),
+        coachType: foundInDb.coachType,
+        classMode: (foundInDb as any)?.classMode || 'offline',
+        batches: (foundInDb.batches || []).map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          category: b.category,
+          categoryDisplayName: b.categoryDisplayName || (b.category ? getCategoryDisplayName(b.category) : undefined),
+          categoryEmoji: b.categoryEmoji || (b.category ? getCategoryEmoji(b.category) : undefined),
+          coachName: b.coachName,
+          time: b.pureSchedule || b.schedule,
+          schedule: b.pureSchedule || b.schedule,
+          ageGroup: b.ageGroup || 'All Ages',
+          monthlyFee: Number(b.monthlyFee) > 0 ? Number(b.monthlyFee) : startingFee,
+          totalSeats: b.totalSeats || 15,
+          seatsFilled: b.seatsFilled || 0,
+          seats: `${b.seatsFilled || 0}/${b.totalSeats || 15} Enrolled`,
+        })),
+      };
+    },
+    []
+  );
+
+  // Instant re-render on city / coordinates change without triggering a server fetch
+  useEffect(() => {
+    if (rawCentreRef.current) {
+      setAcademy(mapDbCentreToAcademy(rawCentreRef.current, activeCity, activeCoords));
+    }
+  }, [activeCity, activeCoords, mapDbCentreToAcademy]);
+
   const loadAcademy = React.useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -403,273 +515,77 @@ export default function AcademyDetailPage() {
     try {
       const res = await getAcademyById(id);
       let foundInDb: any = res.centre;
-        if (!foundInDb) {
-          const { centres } = await getDiscoveryData();
-          foundInDb = centres.find(
-            (c: any) => c.id === id || c.id?.toLowerCase() === id?.toLowerCase()
-          );
-        }
-        if (foundInDb) {
-          const subStatus = getCentreSubscriptionStatus(foundInDb);
-          const isPublicLive = subStatus.isPublicLive;
-          const isOwner = Boolean(
-            userEmail &&
-              (foundInDb.owner?.email === userEmail ||
-                foundInDb.ownerUserId === session?.user?.id ||
-                (user as any)?.centreId === foundInDb.id)
-          );
-          const isAdmin =
-            (session?.user as any)?.role === 'ADMIN' || (user as any)?.role === 'ADMIN';
+      if (!foundInDb) {
+        const { centres } = await getDiscoveryData();
+        foundInDb = centres.find(
+          (c: any) => c.id === id || c.id?.toLowerCase() === id?.toLowerCase()
+        );
+      }
+      if (foundInDb) {
+        rawCentreRef.current = foundInDb;
+        const subStatus = getCentreSubscriptionStatus(foundInDb);
+        const isPublicLive = subStatus.isPublicLive;
+        const isOwner = Boolean(
+          userEmail &&
+            (foundInDb.owner?.email === userEmail ||
+              foundInDb.ownerUserId === session?.user?.id ||
+              (user as any)?.centreId === foundInDb.id)
+        );
+        const isAdmin =
+          (session?.user as any)?.role === 'ADMIN' || (user as any)?.role === 'ADMIN';
 
-          // Guard: If not live and not owner/admin, prevent unauthorized public access
-          if (!isPublicLive && !isOwner && !isAdmin) {
-            setAcademy(null);
-            setIsOwnerPreview(false);
-            setLoading(false);
-            return;
-          }
-
-          const isPreview = !isPublicLive && (isOwner || isAdmin);
-          setIsOwnerPreview(isPreview);
-          if (isPreview) {
-            setPreviewReason(subStatus.publicListingMessage);
-          } else {
-            setPreviewReason('');
-          }
-
-          const categorySlugs = (foundInDb.category ? foundInDb.category.split(',') : ['tennis'])
-            .map((s: string) => s.trim().toLowerCase())
-            .filter(Boolean);
-          const activityNames = categorySlugs.map((slug: string) => getCategoryDisplayName(slug));
-
-          const batchFees = (foundInDb.batches || [])
-            .map((b: any) => Number(b.monthlyFee))
-            .filter((f: number) => !isNaN(f) && f > 0);
-          const startingFee = batchFees.length > 0 ? Math.min(...batchFees) : Number(foundInDb.monthlyTuitionFee || 0);
-
-          // Extract venue photos from statusNotes if uploaded during KYC
-          const docsPayload = parseDocsPayload(foundInDb);
-          const venuePhotos = (docsPayload?.venuePhotos || [])
-            .map((p: any) => p.url)
-            .filter((u: string) => u && (u.startsWith('http') || u.startsWith('data:image/')));
-
-          const rawCustomImage = (foundInDb as any).image;
-          const hasCustomImage = Boolean(
-            (rawCustomImage && typeof rawCustomImage === 'string' && !rawCustomImage.includes('photo-1534438327276-14e5300c3a48') && (rawCustomImage.startsWith('http') || rawCustomImage.startsWith('data:image/'))) ||
-            venuePhotos.length > 0
-          );
-          const primaryImage = venuePhotos[0] || (hasCustomImage ? rawCustomImage : '');
-          const primaryPillar = categorySlugs[0] ? getCategoryPillar(categorySlugs[0]) : 'education';
-
-          const mapped: Academy = {
-            id: foundInDb.id,
-            name: foundInDb.name,
-            tagline: foundInDb.tagline || `Verified ${primaryPillar === 'education' ? 'Academic Coaching Center' : 'Sports & Activities Academy'} in ${(foundInDb as any).city || activeCity || 'Agra'}`,
-            category: (foundInDb.category as any) || 'tennis',
-            categorySlugs,
-            activities: activityNames.length > 0 ? activityNames : [getCategoryDisplayName(foundInDb.category)],
-            activitiesText: activityNames.length > 0 ? activityNames.join(' • ') : getCategoryDisplayName(foundInDb.category),
-            locality: extractCleanLocalitySlug(foundInDb.locality, foundInDb.address),
-            localityName: extractCleanLocalityName(foundInDb.locality, foundInDb.address, (foundInDb as any).city || activeCity || 'Kamla Nagar'),
-            city: (foundInDb as any).city || activeCity || 'Agra',
-            address: foundInDb.address || `${(foundInDb as any).city || activeCity || 'Agra'}, Uttar Pradesh`,
-            phone: foundInDb.phone || '+91 98970 12345',
-            distance: (() => {
-              const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
-              if (!isAllIndia && activeCoords && typeof foundInDb.latitude === 'number' && typeof foundInDb.longitude === 'number') {
-                const d = calculateDistance(activeCoords.lat, activeCoords.lon, foundInDb.latitude, foundInDb.longitude);
-                return d <= 100 ? d : undefined;
-              }
-              return undefined;
-            })(),
-            distanceText: (() => {
-              const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
-              if (!isAllIndia && activeCoords && typeof foundInDb.latitude === 'number' && typeof foundInDb.longitude === 'number') {
-                const d = calculateDistance(activeCoords.lat, activeCoords.lon, foundInDb.latitude, foundInDb.longitude);
-                return d <= 100 ? formatDistanceText(d) : undefined;
-              }
-              return undefined;
-            })(),
-            age: ['u8', 'u12', 'u16'],
-            ageText: foundInDb.eligibleAgeGroup || '4 - 17 Yrs',
-            fee: startingFee,
-            trialFee: Number(foundInDb.trialFee) || 0,
-            rating: Number(foundInDb.rating) || 5.0,
-            reviewsCount: typeof foundInDb.reviewsCount === 'number' ? foundInDb.reviewsCount : (Number(foundInDb.reviewsCount) || 0),
-            verifiedTag: foundInDb.kycStatus === 'APPROVED' ? (foundInDb.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Audited') : 'Pending Verification',
-            image: primaryImage,
-            hasCustomImage,
-            venuePhotos,
-            primaryPillar,
-            coachName: foundInDb.headCoachName || 'Certified Head Coach',
-            coachTitle: foundInDb.nisCertified
-              ? 'NIS Certified Head Coach'
-              : (primaryPillar === 'education' ? 'Lead Academic Mentor & Faculty' : 'Certified Head Coach'),
-            coachBio: foundInDb.headCoachBio,
-            coachesCount: foundInDb.coachesCount ?? (primaryPillar === 'education' ? 1 : 2),
-            ratio: foundInDb.studentCoachRatio || '1 : 8',
-            nisCertified: Boolean(foundInDb.nisCertified),
-            policeVerifiedStaff: Boolean(foundInDb.policeVerifiedStaff),
-            cctvMonitored: Boolean(foundInDb.cctvMonitored),
-            firstAidAvailable: Boolean(foundInDb.firstAidAvailable),
-            facilities: (foundInDb.facilities || []).map((f: any) => f.description),
-            safety: '24/7 CCTV • First Aid • Police Verified Staff',
-            isTopInArea: foundInDb.isTopInArea,
-            planTier: foundInDb.planTier,
-            isVerifiedBatch: foundInDb.kycStatus === 'APPROVED' && Boolean(foundInDb.isVerifiedBatch),
-            coachType: foundInDb.coachType,
-            classMode: foundInDb.classMode || 'offline',
-            batches: (foundInDb.batches || []).map((b: any) => ({
-              id: b.id,
-              name: b.name,
-              category: b.category,
-              categoryDisplayName: b.categoryDisplayName || (b.category ? getCategoryDisplayName(b.category) : undefined),
-              categoryEmoji: b.categoryEmoji || (b.category ? getCategoryEmoji(b.category) : undefined),
-              coachName: b.coachName,
-              time: b.pureSchedule || b.schedule,
-              schedule: b.pureSchedule || b.schedule,
-              ageGroup: b.ageGroup || 'All Ages',
-              monthlyFee: Number(b.monthlyFee) > 0 ? Number(b.monthlyFee) : startingFee,
-              totalSeats: b.totalSeats || 15,
-              seatsFilled: b.seatsFilled || 0,
-              seats: `${b.seatsFilled || 0}/${b.totalSeats || 15} Enrolled`,
-            })),
-          };
-          setAcademy(mapped);
+        // Guard: If not live and not owner/admin, prevent unauthorized public access
+        if (!isPublicLive && !isOwner && !isAdmin) {
+          setAcademy(null);
+          setIsOwnerPreview(false);
           setLoading(false);
           return;
         }
 
-        // If not in public discovery, check if the active user is the coach owner previewing their private profile
-        if (userEmail) {
-          try {
-            const coachData = await getCoachDashboardData();
-            const coachCentre: any = coachData?.centre;
-            if (
-              coachCentre &&
-              (coachCentre.id === id || coachCentre.id?.toLowerCase() === id?.toLowerCase())
-            ) {
-              const subStatus = getCentreSubscriptionStatus(coachCentre);
-              const coachCatSlugs = (coachCentre.category ? coachCentre.category.split(',') : ['tennis'])
-                .map((s: string) => s.trim().toLowerCase())
-                .filter(Boolean);
-              const coachActivityNames = coachCatSlugs.map((slug: string) => getCategoryDisplayName(slug));
+        const isPreview = !isPublicLive && (isOwner || isAdmin);
+        setIsOwnerPreview(isPreview);
+        setPreviewReason(isPreview ? subStatus.publicListingMessage : '');
 
-              const coachBatchFees = (coachCentre.batches || [])
-                .map((b: any) => Number(b.monthlyFee))
-                .filter((f: number) => !isNaN(f) && f > 0);
-              const coachStartingFee = coachBatchFees.length > 0 ? Math.min(...coachBatchFees) : Number(coachCentre.monthlyTuitionFee || 0);
-
-              const coachDocsPayload = parseDocsPayload(coachCentre);
-              const coachVenuePhotos = (coachDocsPayload?.venuePhotos || [])
-                .map((p: any) => p.url)
-                .filter((u: string) => u && (u.startsWith('http') || u.startsWith('data:image/')));
-
-              const coachRawCustomImage = (coachCentre as any).image;
-              const coachHasCustomImage = Boolean(
-                (coachRawCustomImage && typeof coachRawCustomImage === 'string' && !coachRawCustomImage.includes('photo-1534438327276-14e5300c3a48') && (coachRawCustomImage.startsWith('http') || coachRawCustomImage.startsWith('data:image/'))) ||
-                coachVenuePhotos.length > 0
-              );
-              const coachPrimaryImage = coachVenuePhotos[0] || (coachHasCustomImage ? coachRawCustomImage : '');
-              const coachPrimaryPillar = coachCatSlugs[0] ? getCategoryPillar(coachCatSlugs[0]) : 'education';
-
-              const mapped: Academy = {
-                id: coachCentre.id,
-                name: coachCentre.name,
-                tagline: coachCentre.tagline || `Verified ${coachPrimaryPillar === 'education' ? 'Academic Coaching Center' : 'Sports & Activities Academy'} in ${(coachCentre as any).city || activeCity || 'Agra'}`,
-                category: (coachCentre.category as any) || 'tennis',
-                categorySlugs: coachCatSlugs,
-                activities: coachActivityNames.length > 0 ? coachActivityNames : [getCategoryDisplayName(coachCentre.category)],
-                activitiesText: coachActivityNames.length > 0 ? coachActivityNames.join(' • ') : getCategoryDisplayName(coachCentre.category),
-                locality: extractCleanLocalitySlug(coachCentre.locality, coachCentre.address),
-                localityName: extractCleanLocalityName(coachCentre.locality, coachCentre.address, (coachCentre as any).city || activeCity || 'Kamla Nagar'),
-                city: (coachCentre as any).city || activeCity || 'Agra',
-                address: coachCentre.address || `${(coachCentre as any).city || activeCity || 'Agra'}, Uttar Pradesh`,
-                phone: coachCentre.phone || '+91 98970 12345',
-                distance: (() => {
-                  const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
-                  if (!isAllIndia && activeCoords && typeof coachCentre.latitude === 'number' && typeof coachCentre.longitude === 'number') {
-                    const d = calculateDistance(activeCoords.lat, activeCoords.lon, coachCentre.latitude, coachCentre.longitude);
-                    return d <= 100 ? d : undefined;
-                  }
-                  return undefined;
-                })(),
-                distanceText: (() => {
-                  const isAllIndia = !activeCity || activeCity.toLowerCase() === 'all' || activeCity.toLowerCase().includes('india');
-                  if (!isAllIndia && activeCoords && typeof coachCentre.latitude === 'number' && typeof coachCentre.longitude === 'number') {
-                    const d = calculateDistance(activeCoords.lat, activeCoords.lon, coachCentre.latitude, coachCentre.longitude);
-                    return d <= 100 ? formatDistanceText(d) : undefined;
-                  }
-                  return undefined;
-                })(),
-                age: ['u8', 'u12', 'u16'],
-                ageText: coachCentre.eligibleAgeGroup || '4 - 17 Yrs',
-                fee: coachStartingFee,
-                trialFee: Number(coachCentre.trialFee) || 0,
-                rating: Number(coachCentre.rating) || 5.0,
-                reviewsCount: typeof coachCentre.reviewsCount === 'number' ? coachCentre.reviewsCount : (Number(coachCentre.reviewsCount) || 0),
-                verifiedTag: coachCentre.kycStatus === 'APPROVED' ? (coachCentre.safetyGrade === 'GRADE_A_PLUS' ? 'Verified Academy' : 'Safety Audited') : 'Pending Verification',
-                image: coachPrimaryImage,
-                hasCustomImage: coachHasCustomImage,
-                venuePhotos: coachVenuePhotos,
-                primaryPillar: coachPrimaryPillar,
-                coachName: coachCentre.headCoachName || 'Certified Head Coach',
-                coachTitle: coachCentre.nisCertified
-                  ? 'NIS Certified Head Coach'
-                  : (coachPrimaryPillar === 'education' ? 'Lead Academic Mentor & Faculty' : 'Certified Head Coach'),
-                coachBio: coachCentre.headCoachBio,
-                coachesCount: coachCentre.coachesCount ?? (coachPrimaryPillar === 'education' ? 1 : 2),
-                ratio: coachCentre.studentCoachRatio || '1 : 8',
-                nisCertified: Boolean(coachCentre.nisCertified),
-                policeVerifiedStaff: Boolean(coachCentre.policeVerifiedStaff),
-                cctvMonitored: Boolean(coachCentre.cctvMonitored),
-                firstAidAvailable: Boolean(coachCentre.firstAidAvailable),
-                facilities: (coachCentre.facilities || []).map((f: any) => f.description),
-                safety: '24/7 CCTV • First Aid • Police Verified Staff',
-                isTopInArea: coachCentre.isTopInArea,
-                planTier: coachCentre.planTier,
-                isVerifiedBatch: coachCentre.kycStatus === 'APPROVED' && Boolean(coachCentre.isVerifiedBatch),
-                coachType: coachCentre.coachType,
-                classMode: (coachCentre as any)?.classMode || 'offline',
-                batches: (coachCentre.batches || []).map((b: any) => ({
-                  id: b.id,
-                  name: b.name,
-                  category: b.category,
-                  categoryDisplayName: b.categoryDisplayName || (b.category ? getCategoryDisplayName(b.category) : undefined),
-                  categoryEmoji: b.categoryEmoji || (b.category ? getCategoryEmoji(b.category) : undefined),
-                  coachName: b.coachName,
-                  time: b.pureSchedule || b.schedule,
-                  schedule: b.pureSchedule || b.schedule,
-                  ageGroup: b.ageGroup || 'All Ages',
-                  monthlyFee: Number(b.monthlyFee) > 0 ? Number(b.monthlyFee) : coachStartingFee,
-                  totalSeats: b.totalSeats || 15,
-                  seatsFilled: b.seatsFilled || 0,
-                })),
-              };
-              setAcademy(mapped);
-              setIsOwnerPreview(true);
-              setPreviewReason(subStatus.publicListingMessage);
-              setLoading(false);
-              return;
-            }
-          } catch (coachErr) {
-            console.warn('Could not load private coach preview:', coachErr);
-          }
-        }
-
-        setAcademy(null);
-      } catch (err: any) {
-        console.error('[DB_ERROR] Failed to load academy details in activities/[id] page:', err);
-        setDbError(err?.message || 'Database connection error: Failed to load academy profile.');
-        setAcademy(null);
-      } finally {
+        setAcademy(mapDbCentreToAcademy(foundInDb, activeCity, activeCoords));
         setLoading(false);
+        return;
       }
-  }, [id, activeCity, userEmail]);
+
+      // If not in public discovery, check if the active user is the coach owner previewing their private profile
+      if (userEmail) {
+        try {
+          const coachData = await getCoachDashboardData();
+          const coachCentre: any = coachData?.centre;
+          if (
+            coachCentre &&
+            (coachCentre.id === id || coachCentre.id?.toLowerCase() === id?.toLowerCase())
+          ) {
+            rawCentreRef.current = coachCentre;
+            const subStatus = getCentreSubscriptionStatus(coachCentre);
+            setIsOwnerPreview(true);
+            setPreviewReason(subStatus.publicListingMessage);
+            setAcademy(mapDbCentreToAcademy(coachCentre, activeCity, activeCoords));
+            setLoading(false);
+            return;
+          }
+        } catch (coachErr) {
+          console.warn('Could not load private coach preview:', coachErr);
+        }
+      }
+
+      setAcademy(null);
+    } catch (err: any) {
+      console.error('[DB_ERROR] Failed to load academy details in activities/[id] page:', err);
+      setDbError(err?.message || 'Database connection error: Failed to load academy profile.');
+      setAcademy(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [id, userEmail, session?.user?.id, (user as any)?.centreId, (user as any)?.role, activeCity, activeCoords, mapDbCentreToAcademy]);
 
   useEffect(() => {
     loadAcademy();
-  }, [loadAcademy]);
+  }, [id, loadAcademy]);
 
   const { isSaved, toggleBookmark } = useBookmarks();
   const isBookmarked = isSaved(id);

@@ -177,6 +177,16 @@ export const fetchDiscoveryData = async () => {
   });
 };
 
+// Global in-memory cache (0.1ms access time, eliminates DB hits on repeated queries)
+let memoryDiscoveryCache: { data: any; timestamp: number } | null = null;
+const academyMemoryCache = new Map<string, { data: any; timestamp: number }>();
+const MEMORY_TTL_MS = 60 * 1000; // 60 seconds ultra-fast RAM cache
+
+export function invalidateServerCache() {
+  memoryDiscoveryCache = null;
+  academyMemoryCache.clear();
+}
+
 const _getCachedDiscoveryData = unstable_cache(
   fetchDiscoveryData,
   ['discovery-data-cache'],
@@ -188,12 +198,25 @@ const _getCachedDiscoveryData = unstable_cache(
 
 export async function getCachedDiscoveryData() {
   try {
-    if (process.env.NODE_ENV === 'development') {
-      return await fetchDiscoveryData();
+    const now = Date.now();
+    if (memoryDiscoveryCache && (now - memoryDiscoveryCache.timestamp < MEMORY_TTL_MS)) {
+      return memoryDiscoveryCache.data;
     }
-    return await _getCachedDiscoveryData();
+
+    let data;
+    if (process.env.NODE_ENV === 'development') {
+      data = await fetchDiscoveryData();
+    } else {
+      data = await _getCachedDiscoveryData();
+    }
+
+    memoryDiscoveryCache = { data, timestamp: now };
+    return data;
   } catch (err) {
     console.warn('[DB_FETCH_WARNING] Database query failed in getCachedDiscoveryData:', (err as any)?.message);
+    if (memoryDiscoveryCache?.data) {
+      return memoryDiscoveryCache.data;
+    }
     return toPlainObject({
       centres: [],
       competitions: [],
@@ -208,62 +231,82 @@ export async function getCachedDiscoveryData() {
 }
 
 /**
- * Cached Academy By ID:
- * Cached per academy with background revalidation and tag invalidation via
- * revalidateTag('academies') and revalidateTag(`academy-${id}`).
+ * Module-level Cached Academy By ID:
+ * Defined at top level so Next.js unstable_cache correctly caches across requests.
  */
+const _getCachedAcademyById = unstable_cache(
+  async (targetId: string) => {
+    try {
+      const centre = await prisma.coachingCentre.findFirst({
+        where: {
+          OR: [
+            { id: targetId },
+            { id: { equals: targetId, mode: 'insensitive' } },
+          ],
+        },
+        include: {
+          batches: true,
+          facilities: true,
+          reviews: {
+            orderBy: { createdAt: 'desc' },
+          },
+          owner: {
+            select: {
+              id: true,
+              phone: true,
+            },
+          },
+        },
+      });
+      if (centre) {
+        try {
+          const raw = await prisma.$queryRawUnsafe<Array<{ classMode?: string }>>(
+            'SELECT "classMode" FROM "CoachingCentre" WHERE "id" = $1 LIMIT 1',
+            centre.id
+          );
+          if (raw?.[0]?.classMode) {
+            (centre as any).classMode = raw[0].classMode;
+          }
+        } catch {}
+        return toPlainObject(centre);
+      }
+      return null;
+    } catch (err) {
+      console.warn(`[DB_OFFLINE] Database unreachable during cached academy lookup (${targetId}):`, (err as any)?.message);
+      return null;
+    }
+  },
+  ['academy-profile-cache'],
+  {
+    revalidate: 300,
+    tags: ['academies'],
+  }
+);
+
 export async function getCachedAcademyById(id: string) {
   const cleanId = id?.trim();
   if (!cleanId) return null;
 
-  const fetcher = unstable_cache(
-    async (targetId: string) => {
-      try {
-        const centre = await prisma.coachingCentre.findFirst({
-          where: {
-            OR: [
-              { id: targetId },
-              { id: { equals: targetId, mode: 'insensitive' } },
-            ],
-          },
-          include: {
-            batches: true,
-            facilities: true,
-            reviews: {
-              orderBy: { createdAt: 'desc' },
-            },
-            owner: {
-              select: {
-                id: true,
-                phone: true,
-              },
-            },
-          },
-        });
-        if (centre) {
-          try {
-            const raw = await prisma.$queryRawUnsafe<Array<{ classMode?: string }>>(
-              'SELECT "classMode" FROM "CoachingCentre" WHERE "id" = $1 LIMIT 1',
-              centre.id
-            );
-            if (raw?.[0]?.classMode) {
-              (centre as any).classMode = raw[0].classMode;
-            }
-          } catch {}
-          return toPlainObject(centre);
-        }
-        return null;
-      } catch (err) {
-        console.warn(`[DB_OFFLINE] Database unreachable during cached academy lookup (${targetId}):`, (err as any)?.message);
-        return null;
-      }
-    },
-    [`academy-profile-${cleanId}`],
-    {
-      revalidate: 300,
-      tags: ['academies', `academy-${cleanId}`],
-    }
-  );
+  const now = Date.now();
+  const cached = academyMemoryCache.get(cleanId);
+  if (cached && (now - cached.timestamp < MEMORY_TTL_MS)) {
+    return cached.data;
+  }
 
-  return fetcher(cleanId);
+  // Fast path: Check if this academy is already in the loaded discovery dataset in RAM
+  if (memoryDiscoveryCache?.data?.centres) {
+    const fromDiscovery = memoryDiscoveryCache.data.centres.find(
+      (c: any) => c.id === cleanId || c.id?.toLowerCase() === cleanId.toLowerCase()
+    );
+    if (fromDiscovery && fromDiscovery.batches && fromDiscovery.facilities) {
+      academyMemoryCache.set(cleanId, { data: fromDiscovery, timestamp: now });
+      return fromDiscovery;
+    }
+  }
+
+  const data = await _getCachedAcademyById(cleanId);
+  if (data) {
+    academyMemoryCache.set(cleanId, { data, timestamp: now });
+  }
+  return data;
 }

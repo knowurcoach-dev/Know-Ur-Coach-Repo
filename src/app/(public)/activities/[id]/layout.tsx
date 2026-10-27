@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Metadata } from 'next';
-import { prisma } from '@/lib/prisma';
+import { getCachedAcademyById } from '@/lib/cached-queries';
 import { AcademyJsonLd } from '@/components/seo/JsonLd';
 
 import { extractCleanLocalityName } from '@/lib/categories';
@@ -12,18 +12,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   try {
-    const centre = await prisma.coachingCentre.findUnique({
-      where: { id },
-      select: {
-        name: true,
-        tagline: true,
-        locality: true,
-        address: true,
-        category: true,
-        rating: true,
-        monthlyTuitionFee: true,
-      },
-    });
+    const centre = await getCachedAcademyById(id);
 
     if (!centre) {
       return {
@@ -77,25 +66,11 @@ export default async function ActivityDetailLayout({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  let centre = null;
+  let centre: any = null;
   try {
-    centre = await prisma.coachingCentre.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        tagline: true,
-        category: true,
-        locality: true,
-        address: true,
-        phone: true,
-        rating: true,
-        reviewsCount: true,
-        monthlyTuitionFee: true,
-      },
-    });
+    centre = await getCachedAcademyById(id);
   } catch (error) {
-    // Graceful fallback if database read fails
+    // Graceful fallback if cached read fails
   }
 
   return (

@@ -632,17 +632,25 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
   const initialCategory = rawCat || inferred?.category || 'all';
   const initialActivityPillar = rawActivity || (initialCategory !== 'all' ? getCategoryPillar(initialCategory) : (inferred?.pillar || 'all'));
 
+  const rawCentresRef = useRef<any[]>(initialData?.centres || initialData?.academies || []);
+
   const [academiesList, setAcademiesList] = useState<Academy[]>(() => {
-    const raw = initialData?.centres || initialData?.academies || [];
+    const raw = rawCentresRef.current;
     if (raw.length > 0) {
       return raw.map((c: any) => mapCentreToAcademy(c, activeCity, activeCoords));
     }
     return [];
   });
   const [activitiesList, setActivitiesList] = useState<any[]>(() => initialData?.activities || []);
-  const [isLoadingDb, setIsLoadingDb] = useState(!initialData?.centres || initialData.centres.length === 0);
+  const [isLoadingDb, setIsLoadingDb] = useState(rawCentresRef.current.length === 0);
   const [dbError, setDbError] = useState<string | null>(null);
-  const initialLoadedRef = useRef(Boolean(initialData?.centres && initialData.centres.length > 0));
+
+  // Instant in-memory remapping when activeCity or activeCoords change (0ms, zero network calls!)
+  useEffect(() => {
+    if (rawCentresRef.current.length > 0) {
+      setAcademiesList(rawCentresRef.current.map((c: any) => mapCentreToAcademy(c, activeCity, activeCoords)));
+    }
+  }, [activeCity, activeCoords]);
 
   // Selected Activity Pillar: 'all' | 'sports' | 'education' | 'brain-booster' | 'arts'
   const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(initialActivityPillar);
@@ -783,8 +791,9 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
     return () => clearTimeout(timer);
   }, [searchQuery, searchParams, updateUrl]);
 
-  // Fetch verified academies and taxonomy from DB
+  // Fetch verified academies and taxonomy from DB only if initialData was not provided
   const fetchDbData = useCallback(async () => {
+    if (rawCentresRef.current.length > 0) return;
     setIsLoadingDb(true);
     setDbError(null);
     try {
@@ -793,6 +802,7 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
         setActivitiesList(res.activities);
       }
       const rawCentres = (res as any).centres || (res as any).academies || [];
+      rawCentresRef.current = rawCentres;
       if (rawCentres.length > 0) {
         const mapped: Academy[] = rawCentres.map((c: any) => mapCentreToAcademy(c, activeCity, activeCoords));
         setAcademiesList(mapped);
@@ -809,11 +819,9 @@ export function ActivitiesExploreView({ initialData }: { initialData?: any } = {
   }, [activeCity, activeCoords]);
 
   useEffect(() => {
-    if (initialLoadedRef.current) {
-      initialLoadedRef.current = false;
-      return;
+    if (rawCentresRef.current.length === 0) {
+      fetchDbData();
     }
-    fetchDbData();
   }, [fetchDbData]);
 
   // City-filtered academies

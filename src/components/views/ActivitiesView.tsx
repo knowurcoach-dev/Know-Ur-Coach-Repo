@@ -91,18 +91,25 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
   const initialPillar = rawActivity || (initialCategory ? getCategoryPillar(initialCategory) : (inferred?.pillar || 'all'));
   const initialSearch = rawSearch || (initialCategory ? getCategoryDisplayName(initialCategory) : '');
 
+  const rawCentresRef = useRef<any[]>(initialData?.centres || []);
+
   const [activitiesList, setActivitiesList] = useState<any[]>(() => initialData?.activities || []);
   const [academiesCountMap, setAcademiesCountMap] = useState<Record<string, number>>(() =>
-    initialData?.centres ? computeCountMap(initialData.centres, activeCity) : {}
+    rawCentresRef.current.length > 0 ? computeCountMap(rawCentresRef.current, activeCity) : {}
   );
   const [totalAcademiesCount, setTotalAcademiesCount] = useState<number>(() =>
-    initialData?.centres?.length || 0
+    rawCentresRef.current.length || 0
   );
   const hasTaxonomy = Boolean(initialData?.activities && initialData.activities.length > 0);
-  const [isLoadingDb, setIsLoadingDb] = useState(!hasTaxonomy);
+  const [isLoadingDb, setIsLoadingDb] = useState(rawCentresRef.current.length === 0 && !hasTaxonomy);
   const [dbError, setDbError] = useState<string | null>(null);
 
-  const initialLoadedRef = useRef(hasTaxonomy);
+  // Instant in-memory recalculation of count map when activeCity changes (0ms, zero network calls!)
+  useEffect(() => {
+    if (rawCentresRef.current.length > 0) {
+      setAcademiesCountMap(computeCountMap(rawCentresRef.current, activeCity));
+    }
+  }, [activeCity]);
 
   // Filter state for categories on this browse page
   const [selectedActivityPillar, setSelectedActivityPillar] = useState<string>(initialPillar);
@@ -133,8 +140,9 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // Fetch activities taxonomy & academy distribution
+  // Fetch activities taxonomy & academy distribution only if initialData was not provided
   const fetchDbData = React.useCallback(async () => {
+    if (rawCentresRef.current.length > 0) return;
     setIsLoadingDb(true);
     setDbError(null);
     try {
@@ -143,6 +151,7 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
         setActivitiesList(res.activities);
       }
       const rawCentres = (res as any).centres || (res as any).academies || [];
+      rawCentresRef.current = rawCentres;
       if (rawCentres.length > 0) {
         setTotalAcademiesCount(rawCentres.length);
         setAcademiesCountMap(computeCountMap(rawCentres, activeCity));
@@ -157,11 +166,9 @@ export function ActivitiesView({ initialData }: { initialData?: any } = {}) {
   }, [activeCity]);
 
   useEffect(() => {
-    if (initialLoadedRef.current) {
-      initialLoadedRef.current = false;
-      return;
+    if (rawCentresRef.current.length === 0) {
+      fetchDbData();
     }
-    fetchDbData();
   }, [fetchDbData]);
 
   // Check scroll state of activity tabs

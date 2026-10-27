@@ -85,6 +85,7 @@ export function AppHeader({
             <nav className="flex items-center gap-1 lg:gap-2 text-xs font-bold shrink-0 whitespace-nowrap">
               <Link
                 href="/"
+                prefetch={true}
                 className={`px-2.5 lg:px-3 py-2 rounded-xl transition-all shrink-0 whitespace-nowrap ${
                   pathname === '/' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
@@ -93,6 +94,7 @@ export function AppHeader({
               </Link>
               <Link
                 href="/activities"
+                prefetch={true}
                 id="desktop-nav-discover"
                 className={`px-2.5 lg:px-3 py-2 rounded-xl transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${
                   pathname === '/activities' ? 'text-emerald-700 bg-emerald-50 font-extrabold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -103,6 +105,7 @@ export function AppHeader({
               </Link>
               <Link
                 href="/competitions"
+                prefetch={true}
                 id="desktop-nav-tournaments"
                 className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap font-extrabold text-xs shadow-xs ${
                   pathname === '/competitions'
@@ -324,6 +327,7 @@ export function AppHeader({
         <div className="flex items-center gap-1.5 w-max">
           <Link
             href="/"
+            prefetch={true}
             className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
               pathname === '/' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-gray-600 hover:bg-gray-50'
             }`}
@@ -333,6 +337,7 @@ export function AppHeader({
           </Link>
           <Link
             href="/activities"
+            prefetch={true}
             className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
               pathname === '/activities' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-gray-600 hover:bg-gray-50'
             }`}
@@ -342,6 +347,7 @@ export function AppHeader({
           </Link>
           <Link
             href="/competitions"
+            prefetch={true}
             id="mobile-nav-tournaments"
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black transition-all shrink-0 whitespace-nowrap shadow-xs ${
               pathname === '/competitions'

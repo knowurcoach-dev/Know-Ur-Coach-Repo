@@ -203,10 +203,19 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
   const [isAllNeighbourhoodsExpanded, setIsAllNeighbourhoodsExpanded] = useState(false);
   const [geocodedNearbyPlaces, setGeocodedNearbyPlaces] = useState<CityNeighbourhood[]>([]);
 
-  const initialLoadedRef = useRef(hasDiscoveryData);
+  // Cache raw centres in-memory so city/location changes update instantaneously without network round trips!
+  const rawCentresRef = useRef<any[]>(initialData?.centres || []);
 
-  // Load dynamic data from DB (Centres, Categories, Activities, Hero Slides)
+  // Update featured academies in-memory when activeCity or activeCoords change (0ms, zero network calls!)
+  useEffect(() => {
+    if (rawCentresRef.current.length > 0) {
+      setFeaturedAcademies(mapCentresToAcademies(rawCentresRef.current, activeCity, activeCoords));
+    }
+  }, [activeCity, activeCoords]);
+
+  // Load dynamic data from DB only if initialData was not provided by SSR
   const loadData = useCallback(async () => {
+    if (rawCentresRef.current.length > 0) return;
     setIsLoading(true);
     setDbError(null);
     try {
@@ -230,6 +239,7 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
         setPlatformCategories([]);
       }
       if (data.centres && Array.isArray(data.centres) && data.centres.length > 0) {
+        rawCentresRef.current = data.centres;
         setFeaturedAcademies(mapCentresToAcademies(data.centres, activeCity, activeCoords));
       } else {
         setFeaturedAcademies([]);
@@ -244,11 +254,9 @@ export function HomeView({ initialData }: { initialData?: any } = {}) {
   }, [activeCity, activeCoords]);
 
   useEffect(() => {
-    if (initialLoadedRef.current) {
-      initialLoadedRef.current = false;
-      return;
+    if (rawCentresRef.current.length === 0) {
+      loadData();
     }
-    loadData();
   }, [loadData]);
 
   // Carousel Autoplay Timer (Exact 5 seconds with automatic reset on manual navigation)

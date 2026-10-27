@@ -25,7 +25,58 @@ import {
   ArrowCounterClockwise,
 } from '@phosphor-icons/react';
 
-export function CompetitionsView() {
+interface CompetitionsViewProps {
+  initialData?: any;
+}
+
+function mapRawCompetitions(competitions: any[], activeCity?: string | null): Competition[] {
+  if (!competitions || !competitions.length) return [];
+  return competitions.map((c: any) => {
+    const rawCat = (c.category || 'sports').toLowerCase();
+    const normalizedCategory = ['badminton', 'football', 'tennis', 'cricket', 'swimming', 'athletics', 'sports'].includes(rawCat)
+      ? 'sports'
+      : rawCat;
+
+    const rawAgeText = (c.ageDivisions || '').toLowerCase();
+    const derivedAge: string[] = [];
+    if (rawAgeText.includes('9') || rawAgeText.includes('u-9') || rawAgeText.includes('u9')) derivedAge.push('u9');
+    if (rawAgeText.includes('11') || rawAgeText.includes('12') || rawAgeText.includes('u-11') || rawAgeText.includes('u-12') || rawAgeText.includes('u12')) derivedAge.push('u12');
+    if (rawAgeText.includes('15') || rawAgeText.includes('16') || rawAgeText.includes('u-15') || rawAgeText.includes('u-16') || rawAgeText.includes('u15')) derivedAge.push('u15');
+    if (rawAgeText.includes('17') || rawAgeText.includes('18') || rawAgeText.includes('u-17') || rawAgeText.includes('u-18') || rawAgeText.includes('u18')) derivedAge.push('u18');
+    if (derivedAge.length === 0) derivedAge.push('u12', 'u15');
+
+    return {
+      id: c.id,
+      title: c.title,
+      sport: c.sport || 'Sports',
+      category: normalizedCategory as any,
+      locality: (c.locality as any) || 'kamla-nagar',
+      venue: c.venue || (activeCity ? `${activeCity} Sports Complex` : 'Sports Complex'),
+      venueShort: c.venue ? c.venue.split(',')[0] : (activeCity ? `${activeCity} Venue` : 'Sports Venue'),
+      status: c.status || 'open',
+      statusText: c.statusText || 'Registrations Open',
+      age: derivedAge,
+      ageText: c.ageDivisions || 'Under-11 & Under-15',
+      fee: Number(c.registrationFee || c.fee) || 450,
+      feeUnit: c.feeUnit || '/ participant',
+      date: c.dates || 'Upcoming',
+      timing: c.timing || 'Morning 9:00 AM to 5:30 PM',
+      organizer: c.organizer || 'District Sports Association',
+      badgeSpecial: c.badgeSpecial,
+      prizePool: c.prizePool || 'Medals & Certificates',
+      tags: c.tags || ['🏆 Verified Tournament', '📜 Certificate For All'],
+      equipment: c.equipmentRules || 'Standard sports kit required',
+      reporting: c.reportingRules || '30 mins before match',
+      format: c.matchFormat || 'Knockout format',
+      umpiring: c.umpiringRules || 'Certified referees',
+      contact: c.contactPhone || c.contactEmail || c.contact || 'District Sports Council',
+      rulebookPdf: c.rulebookPdfUrl || 'Tournament_Rulebook.pdf',
+      isTeam: Boolean(c.isTeam),
+    };
+  });
+}
+
+export function CompetitionsView({ initialData }: CompetitionsViewProps = {}) {
   const { showToast, activeCity } = usePersona();
   const { openModal } = useModalStore();
   const { session, user, isGuest, isParent, isCoach, isAdmin, role } = useAuth();
@@ -34,15 +85,31 @@ export function CompetitionsView() {
   // Host Tournament is strictly authorized for Coach / Admin roles; hidden for Guests and Parents
   const canHostTournament = !isGuest && !isParent && (isCoach || isAdmin || role === 'COACH' || role === 'ADMIN');
 
+  const rawCompsRef = React.useRef<any[]>(initialData?.competitions || []);
+  const initialMapped = useMemo(() => {
+    return initialData?.competitions?.length
+      ? mapRawCompetitions(initialData.competitions, activeCity)
+      : [];
+  }, [initialData, activeCity]);
+
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocality, setSelectedLocality] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedAge, setSelectedAge] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [competitionsList, setCompetitionsList] = useState<Competition[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [competitionsList, setCompetitionsList] = useState<Competition[]>(initialMapped);
+  const [isLoading, setIsLoading] = useState(!initialData?.competitions?.length);
   const [dbError, setDbError] = useState<string | null>(null);
+
+  // Sync if initialData arrives
+  useEffect(() => {
+    if (initialData?.competitions?.length) {
+      rawCompsRef.current = initialData.competitions;
+      setCompetitionsList(mapRawCompetitions(initialData.competitions, activeCity));
+      setIsLoading(false);
+    }
+  }, [initialData, activeCity]);
 
   async function loadComps() {
     setIsLoading(true);
@@ -50,50 +117,8 @@ export function CompetitionsView() {
     try {
       const { competitions } = await getDiscoveryData();
       if (competitions && competitions.length > 0) {
-        const mapped: Competition[] = competitions.map((c: any) => {
-          const rawCat = (c.category || 'sports').toLowerCase();
-          const normalizedCategory = ['badminton', 'football', 'tennis', 'cricket', 'swimming', 'athletics', 'sports'].includes(rawCat)
-            ? 'sports'
-            : rawCat;
-
-          const rawAgeText = (c.ageDivisions || '').toLowerCase();
-          const derivedAge: string[] = [];
-          if (rawAgeText.includes('9') || rawAgeText.includes('u-9') || rawAgeText.includes('u9')) derivedAge.push('u9');
-          if (rawAgeText.includes('11') || rawAgeText.includes('12') || rawAgeText.includes('u-11') || rawAgeText.includes('u-12') || rawAgeText.includes('u12')) derivedAge.push('u12');
-          if (rawAgeText.includes('15') || rawAgeText.includes('16') || rawAgeText.includes('u-15') || rawAgeText.includes('u-16') || rawAgeText.includes('u15')) derivedAge.push('u15');
-          if (rawAgeText.includes('17') || rawAgeText.includes('18') || rawAgeText.includes('u-17') || rawAgeText.includes('u-18') || rawAgeText.includes('u18')) derivedAge.push('u18');
-          if (derivedAge.length === 0) derivedAge.push('u12', 'u15');
-
-          return {
-            id: c.id,
-            title: c.title,
-            sport: c.sport || 'Sports',
-            category: normalizedCategory as any,
-            locality: (c.locality as any) || 'kamla-nagar',
-            venue: c.venue || (activeCity ? `${activeCity} Sports Complex` : 'Sports Complex'),
-            venueShort: c.venue ? c.venue.split(',')[0] : (activeCity ? `${activeCity} Venue` : 'Sports Venue'),
-            status: c.status || 'open',
-            statusText: c.statusText || 'Registrations Open',
-            age: derivedAge,
-            ageText: c.ageDivisions || 'Under-11 & Under-15',
-            fee: Number(c.registrationFee || c.fee) || 450,
-            feeUnit: c.feeUnit || '/ participant',
-            date: c.dates || 'Upcoming',
-            timing: c.timing || 'Morning 9:00 AM to 5:30 PM',
-            organizer: c.organizer || 'District Sports Association',
-            badgeSpecial: c.badgeSpecial,
-            prizePool: c.prizePool || 'Medals & Certificates',
-            tags: c.tags || ['🏆 Verified Tournament', '📜 Certificate For All'],
-            equipment: c.equipmentRules || 'Standard sports kit required',
-            reporting: c.reportingRules || '30 mins before match',
-            format: c.matchFormat || 'Knockout format',
-            umpiring: c.umpiringRules || 'Certified referees',
-            contact: c.contactPhone || c.contactEmail || c.contact || 'District Sports Council',
-            rulebookPdf: c.rulebookPdfUrl || 'Tournament_Rulebook.pdf',
-            isTeam: Boolean(c.isTeam),
-          };
-        });
-        setCompetitionsList(mapped);
+        rawCompsRef.current = competitions;
+        setCompetitionsList(mapRawCompetitions(competitions, activeCity));
       } else {
         setCompetitionsList([]);
       }
@@ -107,7 +132,9 @@ export function CompetitionsView() {
   }
 
   useEffect(() => {
-    loadComps();
+    if (!rawCompsRef.current || rawCompsRef.current.length === 0) {
+      loadComps();
+    }
   }, []);
 
   const handleResetFilters = () => {
