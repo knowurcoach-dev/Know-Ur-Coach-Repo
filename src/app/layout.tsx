@@ -1,16 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ClientProviders } from "@/components/providers/ClientProviders";
 import { AppShell } from "@/components/shell/AppShell";
 import { GlobalJsonLd } from "@/components/seo/JsonLd";
 import { siteMetadata, siteViewport } from "@/lib/seo-config";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: "--font-plus-jakarta-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 export const viewport: Viewport = siteViewport;
 export const metadata: Metadata = siteMetadata;
@@ -23,10 +16,16 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plusJakartaSans.variable} font-sans h-full antialiased`}
+      className="font-sans h-full antialiased"
       suppressHydrationWarning
     >
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
         <GlobalJsonLd />
       </head>
       <body
