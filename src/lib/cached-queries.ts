@@ -4,7 +4,8 @@ import { KycStatus, SubscriptionPlan } from '@prisma/client';
 import { readHeroCarouselTheme } from '@/lib/hero-theme-server';
 import { formatBatchItem } from '@/lib/batch-helpers';
 import { DEFAULT_HERO_CAROUSEL_THEME } from '@/lib/hero-theme';
-import { registerDynamicTaxonomy } from '@/lib/categories';
+import { registerDynamicTaxonomy, resolveCategoryCoverImage } from '@/lib/categories';
+import { cleanStatusNotes } from '@/lib/coach-docs';
 import { DEFAULT_CLASS_MODES } from '@/lib/class-modes';
 
 function toPlainObject<T>(data: T): T {
@@ -136,7 +137,9 @@ export const fetchDiscoveryData = async () => {
     name: act.name,
     slug: act.slug,
     description: act.description,
-    imageUrl: act.imageUrl,
+    imageUrl: act.imageUrl && act.imageUrl.startsWith('data:image/') && act.imageUrl.length > 2000
+      ? resolveCategoryCoverImage(act.slug, '')
+      : act.imageUrl,
     icon: act.icon,
     accentColor: act.accentColor,
     order: act.order,
@@ -147,7 +150,9 @@ export const fetchDiscoveryData = async () => {
       name: d.name,
       slug: d.slug,
       shortDesc: d.shortDesc,
-      imageUrl: d.imageUrl,
+      imageUrl: d.imageUrl && d.imageUrl.startsWith('data:image/') && d.imageUrl.length > 2000
+        ? resolveCategoryCoverImage(d.slug, '')
+        : d.imageUrl,
       icon: d.icon,
       badge: d.badge,
       order: d.order,
@@ -161,6 +166,8 @@ export const fetchDiscoveryData = async () => {
 
   const mappedCentres = (centres || []).map((c: any) => ({
     ...c,
+    // Sanitize statusNotes for public discovery: strip private KYC IDs & large base64 documents
+    statusNotes: cleanStatusNotes(c.statusNotes),
     classMode: modesById[c.id] || c.classMode || 'offline',
     batches: (c.batches || []).map((b: any) => formatBatchItem(b, c.category)),
   }));
